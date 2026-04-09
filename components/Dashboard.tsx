@@ -37,7 +37,7 @@ const FACILITIES: { name: string; cat: string }[] = [
 ];
 
 const TEAM = [
-  "— Select Engineer —",
+  "— Select Team Member —",
   "Usama Nasir",
   "Muhammad Usman",
   "Ali Raza",
@@ -66,9 +66,16 @@ interface Ticket {
   reportedBy: string;
   assignedTo: string;
   resolvedBy: string;
-  status: "open" | "inprogress" | "resolved";
+  status: "open" | "inprogress" | "resolved" | "pending";
   ts: string;
   resolvedTs: string;
+}
+
+interface DailyStats {
+  received: number;
+  resolved: number;
+  pending: number;
+  inprogress: number;
 }
 
 const INET_OPTS: { v: RAGStatus; l: string }[] = [
@@ -99,10 +106,11 @@ const RAG: Record<RAGStatus, { bg: string; border: string; text: string; label: 
 const CAT_COLORS: Record<string,string> = {
   Projects:"#3b5bdb", Imarat:"#0c7a6d", Graana:"#7c3aed", Agency21:"#c05621",
 };
-const TICKET_STATUS: Record<string,{ bg:string; text:string; label:string }> = {
-  open:       { bg:"#fdf0f0", text:"#8b1c1c", label:"Open" },
-  inprogress: { bg:"#fef8ec", text:"#7a5200", label:"In Progress" },
-  resolved:   { bg:"#edf7f0", text:"#1a6b35", label:"Resolved" },
+const TICKET_STATUS: Record<string,{ bg:string; text:string; label:string; border:string }> = {
+  open:       { bg:"#fdf0f0", text:"#8b1c1c", label:"Open",        border:"#f5b8b8" },
+  inprogress: { bg:"#fef8ec", text:"#7a5200", label:"In Progress",  border:"#f5d48a" },
+  resolved:   { bg:"#edf7f0", text:"#1a6b35", label:"Resolved",     border:"#a8d5b5" },
+  pending:    { bg:"#f0f4ff", text:"#3b5bdb", label:"Pending",      border:"#b4c6fb" },
 };
 
 function nowTime() {
@@ -111,9 +119,7 @@ function nowTime() {
 function nowFull() {
   return new Date().toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
 }
-function uid() {
-  return "TKT-" + Math.random().toString(36).substr(2,6).toUpperCase();
-}
+function uid() { return "TKT-" + Math.random().toString(36).substr(2,6).toUpperCase(); }
 function calcOverall(s: FacilityState): RAGStatus {
   const vals = [s.internet, s.bio, s.printing];
   if (vals.includes("red")) return "red";
@@ -131,6 +137,10 @@ function loadFromStorage(): AppState {
 function loadTickets(): Ticket[] {
   try { const r = localStorage.getItem("rag_tickets"); if (r) return JSON.parse(r); } catch {}
   return [];
+}
+function loadStats(): DailyStats {
+  try { const r = localStorage.getItem("rag_daily_stats"); if (r) return JSON.parse(r); } catch {}
+  return { received:0, resolved:0, pending:0, inprogress:0 };
 }
 
 function Dot({ s }: { s: RAGStatus }) {
@@ -154,6 +164,23 @@ function Sel({ value, opts, onChange }: { value:RAGStatus; opts:{v:RAGStatus;l:s
   );
 }
 
+function StatInput({ label, value, color, bg, border, onChange }: { label:string; value:number; color:string; bg:string; border:string; onChange:(v:number)=>void }) {
+  return (
+    <div style={{ background:bg, border:`1px solid ${border}`, borderRadius:8, padding:"12px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
+      <div>
+        <div style={{ fontSize:10, color:"#8a94a6", marginBottom:4, letterSpacing:".3px" }}>{label}</div>
+        <div style={{ fontSize:26, fontWeight:700, color }}>{value}</div>
+      </div>
+      <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+        <button onClick={()=>onChange(value+1)}
+          style={{ width:28, height:28, border:`1px solid ${border}`, borderRadius:4, background:"#fff", color, fontSize:16, cursor:"pointer", fontWeight:700, lineHeight:1 }}>+</button>
+        <button onClick={()=>onChange(Math.max(0,value-1))}
+          style={{ width:28, height:28, border:`1px solid ${border}`, borderRadius:4, background:"#fff", color, fontSize:16, cursor:"pointer", fontWeight:700, lineHeight:1 }}>-</button>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [state, setState] = useState<AppState>({});
   const [filter, setFilter] = useState<FilterMode>("all");
@@ -162,6 +189,7 @@ export default function Dashboard() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [showTicketForm, setShowTicketForm] = useState(false);
   const [newTicket, setNewTicket] = useState({ office:"", description:"", reportedBy:"", assignedTo:"" });
+  const [stats, setStats] = useState<DailyStats>({ received:0, resolved:0, pending:0, inprogress:0 });
 
   useEffect(() => {
     const saved = loadFromStorage();
@@ -169,6 +197,7 @@ export default function Dashboard() {
     FACILITIES.forEach(f => { init[f.name] = saved[f.name] ?? defaultState(); });
     setState(init);
     setTickets(loadTickets());
+    setStats(loadStats());
     const fmt = () => new Date().toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
     setNow(fmt());
     setMounted(true);
@@ -178,10 +207,15 @@ export default function Dashboard() {
 
   useEffect(() => { if (mounted) localStorage.setItem("rag_v6", JSON.stringify(state)); }, [state, mounted]);
   useEffect(() => { if (mounted) localStorage.setItem("rag_tickets", JSON.stringify(tickets)); }, [tickets, mounted]);
+  useEffect(() => { if (mounted) localStorage.setItem("rag_daily_stats", JSON.stringify(stats)); }, [stats, mounted]);
 
   const updateField = useCallback((name:string, field:keyof FacilityState, val:string) => {
     setState(prev => ({ ...prev, [name]: { ...prev[name], [field]: val, ts: nowTime() } }));
   }, []);
+
+  const updateStat = (field: keyof DailyStats, val: number) => {
+    setStats(prev => ({ ...prev, [field]: val }));
+  };
 
   const addTicket = () => {
     if (!newTicket.description) return;
@@ -205,16 +239,12 @@ export default function Dashboard() {
     setTickets(prev => prev.map(t => {
       if (t.id !== id) return t;
       const updated = { ...t, [field]: val };
-      if (field === "status" && val === "resolved") {
-        updated.resolvedTs = nowFull();
-      }
+      if (field === "status" && val === "resolved") updated.resolvedTs = nowFull();
       return updated;
     }));
   };
 
-  const deleteTicket = (id:string) => {
-    setTickets(prev => prev.filter(t => t.id !== id));
-  };
+  const deleteTicket = (id:string) => setTickets(prev => prev.filter(t => t.id !== id));
 
   const counts = { green:0, amber:0, red:0, na:0 };
   const iC = { green:0, amber:0, red:0 };
@@ -228,7 +258,7 @@ export default function Dashboard() {
     if (s.printing !== "na") pC[s.printing as "green"|"amber"|"red"]++;
   });
 
-  const tCounts = { open:0, inprogress:0, resolved:0 };
+  const tCounts = { open:0, inprogress:0, resolved:0, pending:0 };
   tickets.forEach(t => { tCounts[t.status]++; });
 
   const visible = filter === "all" ? FACILITIES : FACILITIES.filter(f => { const s = state[f.name]; return s && calcOverall(s) === filter; });
@@ -291,9 +321,8 @@ export default function Dashboard() {
       headStyles: { fillColor:[44,74,110], textColor:255, fontStyle:"bold", fontSize:7.5 },
       alternateRowStyles: { fillColor:[244,246,249] },
       columnStyles: {
-        0:{ cellWidth:8, halign:"center" },
-        1:{ cellWidth:38 }, 2:{ cellWidth:18 }, 3:{ cellWidth:22 },
-        4:{ cellWidth:26 }, 5:{ cellWidth:20 }, 6:{ cellWidth:20 },
+        0:{ cellWidth:8, halign:"center" }, 1:{ cellWidth:38 }, 2:{ cellWidth:18 },
+        3:{ cellWidth:22 }, 4:{ cellWidth:26 }, 5:{ cellWidth:20 }, 6:{ cellWidth:20 },
         7:{ cellWidth:32 }, 8:{ cellWidth:28 }, 9:{ cellWidth:18, halign:"center" },
       },
       didParseCell: (data) => {
@@ -326,27 +355,23 @@ export default function Dashboard() {
       doc.setTextColor(255,255,255); doc.setFontSize(13); doc.setFont("helvetica","bold");
       doc.text("IT Support Tickets", 10, 12);
       doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(148,184,212);
-      doc.text(`Total: ${tickets.length}  |  Open: ${tCounts.open}  |  In Progress: ${tCounts.inprogress}  |  Resolved: ${tCounts.resolved}`, W-10, 12, { align:"right" });
-
-      const tRows = tickets.map(t => [t.id, t.office, t.description, t.reportedBy, t.assignedTo||"Unassigned", t.resolvedBy||"—", t.status.toUpperCase(), t.ts, t.resolvedTs||"—"]);
+      doc.text(`Queries Today: ${stats.received}  |  Resolved: ${stats.resolved}  |  Pending: ${stats.pending}  |  In Progress: ${stats.inprogress}`, W-10, 12, { align:"right" });
+      const tRows = tickets.map(t => [t.id, t.office, t.description, t.reportedBy, t.assignedTo||"Unassigned", t.resolvedBy||"—", TICKET_STATUS[t.status].label, t.ts, t.resolvedTs||"—"]);
       autoTable(doc, {
         startY: 22,
-        head: [["ID","Office","Issue Description","Reported By","Assigned To","Resolved By","Status","Reported At","Resolved At"]],
+        head: [["ID","Office","Description","Reported By","Assigned To","Resolved By","Status","Reported At","Resolved At"]],
         body: tRows,
         styles: { fontSize:7, cellPadding:2.5, font:"helvetica" },
         headStyles: { fillColor:[44,74,110], textColor:255, fontStyle:"bold", fontSize:7.5 },
         alternateRowStyles: { fillColor:[244,246,249] },
-        columnStyles: {
-          0:{ cellWidth:20 }, 1:{ cellWidth:30 }, 2:{ cellWidth:55 },
-          3:{ cellWidth:25 }, 4:{ cellWidth:25 }, 5:{ cellWidth:25 },
-          6:{ cellWidth:20, halign:"center" }, 7:{ cellWidth:28 }, 8:{ cellWidth:28 },
-        },
+        columnStyles: { 0:{ cellWidth:20 }, 1:{ cellWidth:30 }, 2:{ cellWidth:55 }, 3:{ cellWidth:25 }, 4:{ cellWidth:25 }, 5:{ cellWidth:25 }, 6:{ cellWidth:22, halign:"center" }, 7:{ cellWidth:28 }, 8:{ cellWidth:28 } },
         didParseCell: (data) => {
           if (data.section === "body" && data.column.index === 6) {
             const st = tRows[data.row.index][6];
-            if (st === "OPEN") { data.cell.styles.fillColor = [255,199,206]; data.cell.styles.textColor = [139,28,28]; data.cell.styles.fontStyle = "bold"; }
-            if (st === "INPROGRESS") { data.cell.styles.fillColor = [255,235,156]; data.cell.styles.textColor = [122,82,0]; data.cell.styles.fontStyle = "bold"; }
-            if (st === "RESOLVED") { data.cell.styles.fillColor = [198,239,206]; data.cell.styles.textColor = [26,107,53]; data.cell.styles.fontStyle = "bold"; }
+            if (st==="Open")        { data.cell.styles.fillColor=[255,199,206]; data.cell.styles.textColor=[139,28,28]; data.cell.styles.fontStyle="bold"; }
+            if (st==="In Progress") { data.cell.styles.fillColor=[255,235,156]; data.cell.styles.textColor=[122,82,0];  data.cell.styles.fontStyle="bold"; }
+            if (st==="Resolved")    { data.cell.styles.fillColor=[198,239,206]; data.cell.styles.textColor=[26,107,53]; data.cell.styles.fontStyle="bold"; }
+            if (st==="Pending")     { data.cell.styles.fillColor=[220,228,255]; data.cell.styles.textColor=[59,91,219]; data.cell.styles.fontStyle="bold"; }
           }
         },
       });
@@ -376,6 +401,28 @@ export default function Dashboard() {
       </div>
 
       <div style={{ padding:"16px 20px" }}>
+
+        {/* Daily Query Stats */}
+        <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, padding:"14px 18px", marginBottom:16 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+            <div>
+              <div style={{ fontSize:13, fontWeight:600, color:"#1a1f2e" }}>Today's Query Summary</div>
+              <div style={{ fontSize:10, color:"#8a94a6", marginTop:2 }}>Manually track daily IT support queries — use + / - to update counts</div>
+            </div>
+            <button onClick={() => setStats({ received:0, resolved:0, pending:0, inprogress:0 })}
+              style={{ padding:"4px 12px", background:"#f1f4f8", border:"1px solid #dde1e8", borderRadius:4, fontSize:11, color:"#6b7280", cursor:"pointer" }}>
+              Reset Day
+            </button>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12 }}>
+            <StatInput label="QUERIES RECEIVED TODAY" value={stats.received} color="#1A3A5C" bg="#f0f4ff" border="#b4c6fb" onChange={v=>updateStat("received",v)} />
+            <StatInput label="RESOLVED TODAY" value={stats.resolved} color="#1a6b35" bg="#edf7f0" border="#a8d5b5" onChange={v=>updateStat("resolved",v)} />
+            <StatInput label="PENDING" value={stats.pending} color="#7a5200" bg="#fef8ec" border="#f5d48a" onChange={v=>updateStat("pending",v)} />
+            <StatInput label="IN PROGRESS" value={stats.inprogress} color="#8b1c1c" bg="#fdf0f0" border="#f5b8b8" onChange={v=>updateStat("inprogress",v)} />
+          </div>
+        </div>
+
+        {/* Facility Summary Cards */}
         <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:16 }}>
           {[
             { label:"Total Facilities", value:FACILITIES.length, color:"#1a1f2e", border:"#d1d9e6", bg:"#fff" },
@@ -390,6 +437,7 @@ export default function Dashboard() {
           ))}
         </div>
 
+        {/* Status Panels */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:12, marginBottom:16 }}>
           {[
             { title:"Internet Status", rows:[{l:`${iC.green} Sites Stable`,s:"green" as RAGStatus},{l:`${iC.amber} Slow / Intermittent`,s:"amber" as RAGStatus},{l:`${iC.red} Sites Down`,s:"red" as RAGStatus}] },
@@ -421,6 +469,7 @@ export default function Dashboard() {
           ))}
         </div>
 
+        {/* Facility Table */}
         <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, overflow:"hidden", marginBottom:16 }}>
           <div style={{ padding:"12px 16px", borderBottom:"1px solid #e2e6ed", display:"flex", alignItems:"center", gap:8 }}>
             <div style={{ fontSize:13, fontWeight:600, color:"#1a1f2e" }}>RAG Status of All Facilities</div>
@@ -474,20 +523,21 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ── IT Support Tickets ── */}
+        {/* IT Support Tickets */}
         <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, overflow:"hidden" }}>
           <div style={{ padding:"12px 16px", borderBottom:"1px solid #e2e6ed", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
             <div>
               <div style={{ fontSize:13, fontWeight:600, color:"#1a1f2e" }}>IT Support Tickets</div>
-              <div style={{ fontSize:10, color:"#8a94a6", marginTop:2 }}>Track issues reported from any office including unknown / remote locations</div>
+              <div style={{ fontSize:10, color:"#8a94a6", marginTop:2 }}>Track issues from any office including unknown / remote locations</div>
             </div>
-            <div style={{ display:"flex", gap:8, marginLeft:"auto", alignItems:"center" }}>
+            <div style={{ display:"flex", gap:8, marginLeft:"auto", alignItems:"center", flexWrap:"wrap" }}>
               {[
-                { label:`Open: ${tCounts.open}`, bg:"#fdf0f0", text:"#8b1c1c" },
-                { label:`In Progress: ${tCounts.inprogress}`, bg:"#fef8ec", text:"#7a5200" },
-                { label:`Resolved: ${tCounts.resolved}`, bg:"#edf7f0", text:"#1a6b35" },
+                { lbl:`Open: ${tCounts.open}`, ...TICKET_STATUS.open },
+                { lbl:`In Progress: ${tCounts.inprogress}`, ...TICKET_STATUS.inprogress },
+                { lbl:`Pending: ${tCounts.pending}`, ...TICKET_STATUS.pending },
+                { lbl:`Resolved: ${tCounts.resolved}`, ...TICKET_STATUS.resolved },
               ].map(b => (
-                <span key={b.label} style={{ background:b.bg, color:b.text, padding:"3px 10px", borderRadius:4, fontSize:11, fontWeight:600 }}>{b.label}</span>
+                <span key={b.label} style={{ background:b.bg, color:b.text, border:`1px solid ${b.border}`, padding:"3px 10px", borderRadius:4, fontSize:11, fontWeight:600 }}>{b.lbl}</span>
               ))}
               <button onClick={() => setShowTicketForm(v => !v)}
                 style={{ padding:"5px 14px", background:"#1A3A5C", border:"none", borderRadius:4, fontSize:11, color:"#fff", cursor:"pointer", fontWeight:600 }}>
@@ -517,13 +567,13 @@ export default function Dashboard() {
                   style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} />
               </div>
               <div>
-                <div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>ASSIGN TO ENGINEER</div>
+                <div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>ASSIGN TO TEAM MEMBER</div>
                 <select value={newTicket.assignedTo} onChange={e=>setNewTicket(p=>({...p,assignedTo:e.target.value}))}
                   style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff", cursor:"pointer" }}>
-                  {TEAM.map(m=><option key={m} value={m==="— Select Engineer —"?"":m}>{m}</option>)}
+                  {TEAM.map(m=><option key={m} value={m.startsWith("—")?"":m}>{m}</option>)}
                 </select>
               </div>
-              <div style={{ display:"flex", alignItems:"flex-end", gap:8, gridColumn:"span 3" }}>
+              <div style={{ display:"flex", alignItems:"flex-end", gap:8, gridColumn:"span 2" }}>
                 <button onClick={addTicket}
                   style={{ padding:"6px 18px", background:"#1A3A5C", border:"none", borderRadius:4, fontSize:12, color:"#fff", cursor:"pointer", fontWeight:600 }}>
                   Add Ticket
@@ -545,7 +595,7 @@ export default function Dashboard() {
               <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
                 <thead>
                   <tr style={{ background:"#f8f9fb" }}>
-                    {["TICKET ID","OFFICE / LOCATION","ISSUE DESCRIPTION","REPORTED BY","ASSIGNED TO","STATUS","RESOLVED BY","REPORTED AT","RESOLVED AT",""].map(h => (
+                    {["TICKET ID","OFFICE / LOCATION","ISSUE DESCRIPTION","REPORTED BY","ASSIGNED TO TEAM MEMBER","STATUS","RESOLVED BY","REPORTED AT","RESOLVED AT",""].map(h => (
                       <th key={h} style={{ textAlign:"left", padding:"9px 10px", color:"#8a94a6", fontWeight:600, fontSize:10, borderBottom:"2px solid #e2e6ed", whiteSpace:"nowrap" }}>{h}</th>
                     ))}
                   </tr>
@@ -555,19 +605,20 @@ export default function Dashboard() {
                     <tr key={t.id} style={{ borderBottom:"1px solid #f0f2f5", background:i%2===0?"#fff":"#fafbfc" }}>
                       <td style={{ padding:"7px 10px", fontFamily:"monospace", fontSize:11, fontWeight:600, color:"#1A3A5C" }}>{t.id}</td>
                       <td style={{ padding:"7px 10px", fontWeight:600, color:"#1a1f2e", whiteSpace:"nowrap" }}>{t.office}</td>
-                      <td style={{ padding:"7px 10px", color:"#4a5568", maxWidth:220 }}>{t.description}</td>
+                      <td style={{ padding:"7px 10px", color:"#4a5568", maxWidth:200 }}>{t.description}</td>
                       <td style={{ padding:"7px 10px", color:"#4a5568", whiteSpace:"nowrap" }}>{t.reportedBy}</td>
                       <td style={{ padding:"7px 10px" }}>
                         <select value={t.assignedTo} onChange={e=>updateTicket(t.id,"assignedTo",e.target.value)}
                           style={{ border:"1px solid #dde1e8", borderRadius:3, padding:"3px 6px", fontSize:11, color:"#1a1f2e", background:"#fff", cursor:"pointer" }}>
-                          {TEAM.map(m=><option key={m} value={m==="— Select Engineer —"?"":m}>{m}</option>)}
+                          {TEAM.map(m=><option key={m} value={m.startsWith("—")?"":m}>{m}</option>)}
                         </select>
                       </td>
                       <td style={{ padding:"7px 10px" }}>
                         <select value={t.status} onChange={e=>updateTicket(t.id,"status",e.target.value)}
-                          style={{ background:TICKET_STATUS[t.status].bg, color:TICKET_STATUS[t.status].text, border:"none", borderRadius:3, padding:"3px 8px", fontSize:11, fontWeight:600, cursor:"pointer" }}>
+                          style={{ background:TICKET_STATUS[t.status].bg, color:TICKET_STATUS[t.status].text, border:`1px solid ${TICKET_STATUS[t.status].border}`, borderRadius:3, padding:"3px 8px", fontSize:11, fontWeight:600, cursor:"pointer" }}>
                           <option value="open">Open</option>
                           <option value="inprogress">In Progress</option>
+                          <option value="pending">Pending</option>
                           <option value="resolved">Resolved</option>
                         </select>
                       </td>
@@ -575,7 +626,7 @@ export default function Dashboard() {
                         {t.status === "resolved" ? (
                           <select value={t.resolvedBy} onChange={e=>updateTicket(t.id,"resolvedBy",e.target.value)}
                             style={{ border:"1px solid #a8d5b5", borderRadius:3, padding:"3px 6px", fontSize:11, color:"#1a6b35", background:"#edf7f0", cursor:"pointer" }}>
-                            {TEAM.map(m=><option key={m} value={m==="— Select Engineer —"?"":m}>{m}</option>)}
+                            {TEAM.map(m=><option key={m} value={m.startsWith("—")?"":m}>{m}</option>)}
                           </select>
                         ) : <span style={{ color:"#c0c8d6", fontSize:11 }}>—</span>}
                       </td>
