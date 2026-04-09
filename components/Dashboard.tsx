@@ -49,6 +49,7 @@ const TEAM = [
 
 type RAGStatus = "green" | "amber" | "red" | "na";
 interface FacilityState {
+  bandwidth: string;
   internet: RAGStatus;
   bio: RAGStatus;
   printing: RAGStatus;
@@ -128,7 +129,7 @@ function calcOverall(s: FacilityState): RAGStatus {
   return "green";
 }
 function defaultState(): FacilityState {
-  return { internet:"green", bio:"green", printing:"green", issue:"", notes:"", ts:nowTime() };
+  return { internet:"green", bio:"green", printing:"green", bandwidth:"", issue:"", notes:"", ts:nowTime() };
 }
 function loadFromStorage(): AppState {
   try { const r = localStorage.getItem("rag_v6"); if (r) return JSON.parse(r); } catch {}
@@ -310,12 +311,12 @@ export default function Dashboard() {
     const rows = FACILITIES.map((f,i) => {
       const s = state[f.name] ?? defaultState();
       const ov = calcOverall(s);
-      return [String(i+1), f.name, f.cat, iL[s.internet], bL[s.bio], pL[s.printing], oL[ov], s.issue||"—", s.notes||"—", s.ts];
+      return [String(i+1), f.name, f.cat, iL[s.internet], bL[s.bio], pL[s.printing], oL[ov], s.bandwidth||"—", s.issue||"—", s.notes||"—", s.ts];
     });
 
     autoTable(doc, {
       startY: 60,
-      head: [["#","Facility","Category","Internet","Biometric","Printing","Overall","Reported Issue","Notes","Updated"]],
+      head: [["#","Facility","Category","Internet","Biometric","Printing","Overall","Bandwidth","Reported Issue","Notes","Updated"]],
       body: rows,
       styles: { fontSize:7, cellPadding:2.5, font:"helvetica" },
       headStyles: { fillColor:[44,74,110], textColor:255, fontStyle:"bold", fontSize:7.5 },
@@ -323,7 +324,7 @@ export default function Dashboard() {
       columnStyles: {
         0:{ cellWidth:8, halign:"center" }, 1:{ cellWidth:38 }, 2:{ cellWidth:18 },
         3:{ cellWidth:22 }, 4:{ cellWidth:26 }, 5:{ cellWidth:20 }, 6:{ cellWidth:20 },
-        7:{ cellWidth:32 }, 8:{ cellWidth:28 }, 9:{ cellWidth:18, halign:"center" },
+        7:{ cellWidth:18 }, 8:{ cellWidth:28 }, 9:{ cellWidth:24 }, 10:{ cellWidth:16, halign:"center" },
       },
       didParseCell: (data) => {
         if (data.section === "body") {
@@ -488,7 +489,7 @@ export default function Dashboard() {
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
               <thead>
                 <tr style={{ background:"#f8f9fb" }}>
-                  {["#","FACILITY","CATEGORY","INTERNET","BIOMETRIC","PRINTING DEVICES","OVERALL","REPORTED ISSUE / OUTSTANDING","NOTES","UPDATED"].map(h => (
+                  {["#","FACILITY","CATEGORY","INTERNET","BIOMETRIC","PRINTING DEVICES","OVERALL","BANDWIDTH","REPORTED ISSUE / OUTSTANDING","NOTES","UPDATED"].map(h => (
                     <th key={h} style={{ textAlign:"left", padding:"9px 10px", color:"#8a94a6", fontWeight:600, fontSize:10, letterSpacing:".3px", borderBottom:"2px solid #e2e6ed", whiteSpace:"nowrap" }}>{h}</th>
                   ))}
                 </tr>
