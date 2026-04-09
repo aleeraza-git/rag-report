@@ -148,7 +148,7 @@ export default function Dashboard() {
   const pC = { green:0, amber:0, red:0 };
   FACILITIES.forEach(f => {
     const s = state[f.name]; if (!s) return;
-    const ov = calcOverall(s); counts[ov]++;
+    const ov = calcOverall(s); counts[ov as RAGStatus]++;
     if (s.internet !== "na") iC[s.internet as "green"|"amber"|"red"]++;
     if (s.bio !== "na") bC[s.bio as "green"|"amber"|"red"]++;
     if (s.printing !== "na") pC[s.printing as "green"|"amber"|"red"]++;
@@ -325,7 +325,7 @@ export default function Dashboard() {
           ].map(panel => (
             <div key={panel.title} style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, padding:"14px 16px" }}>
               <div style={{ fontSize:12, fontWeight:600, color:"#1a1f2e", marginBottom:10 }}>{panel.title}</div>
-              {panel.rows.map((r:any) => (
+              {panel.rows.map((r: {l:string;s:RAGStatus;c?:number}) => (
                 <div key={r.l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"5px 0", borderBottom:"1px solid #f5f5f5" }}>
                   <div style={{ display:"flex", alignItems:"center", gap:7, fontSize:11, color:"#1a1f2e" }}>
                     <Dot s={r.s} />{r.l}
@@ -403,3 +403,4 @@ export default function Dashboard() {
     </div>
   );
 }
+
