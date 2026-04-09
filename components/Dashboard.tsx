@@ -49,10 +49,10 @@ const TEAM = [
 
 type RAGStatus = "green" | "amber" | "red" | "na";
 interface FacilityState {
-  bandwidth: string;
   internet: RAGStatus;
   bio: RAGStatus;
   printing: RAGStatus;
+  bandwidth: string;
   issue: string;
   notes: string;
   ts: string;
@@ -107,11 +107,11 @@ const RAG: Record<RAGStatus, { bg: string; border: string; text: string; label: 
 const CAT_COLORS: Record<string,string> = {
   Projects:"#3b5bdb", Imarat:"#0c7a6d", Graana:"#7c3aed", Agency21:"#c05621",
 };
-const TICKET_STATUS: Record<string,{ bg:string; text:string; label:string; border:string }> = {
-  open:       { bg:"#fdf0f0", text:"#8b1c1c", label:"Open",        border:"#f5b8b8" },
-  inprogress: { bg:"#fef8ec", text:"#7a5200", label:"In Progress",  border:"#f5d48a" },
-  resolved:   { bg:"#edf7f0", text:"#1a6b35", label:"Resolved",     border:"#a8d5b5" },
-  pending:    { bg:"#f0f4ff", text:"#3b5bdb", label:"Pending",      border:"#b4c6fb" },
+const TICKET_STATUS: Record<string,{ bg:string; text:string; lbl:string; border:string }> = {
+  open:       { bg:"#fdf0f0", text:"#8b1c1c", lbl:"Open",        border:"#f5b8b8" },
+  inprogress: { bg:"#fef8ec", text:"#7a5200", lbl:"In Progress",  border:"#f5d48a" },
+  resolved:   { bg:"#edf7f0", text:"#1a6b35", lbl:"Resolved",     border:"#a8d5b5" },
+  pending:    { bg:"#f0f4ff", text:"#3b5bdb", lbl:"Pending",      border:"#b4c6fb" },
 };
 
 function nowTime() {
@@ -132,7 +132,7 @@ function defaultState(): FacilityState {
   return { internet:"green", bio:"green", printing:"green", bandwidth:"", issue:"", notes:"", ts:nowTime() };
 }
 function loadFromStorage(): AppState {
-  try { const r = localStorage.getItem("rag_v6"); if (r) return JSON.parse(r); } catch {}
+  try { const r = localStorage.getItem("rag_v7"); if (r) return JSON.parse(r); } catch {}
   return {};
 }
 function loadTickets(): Ticket[] {
@@ -173,10 +173,8 @@ function StatInput({ label, value, color, bg, border, onChange }: { label:string
         <div style={{ fontSize:26, fontWeight:700, color }}>{value}</div>
       </div>
       <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-        <button onClick={()=>onChange(value+1)}
-          style={{ width:28, height:28, border:`1px solid ${border}`, borderRadius:4, background:"#fff", color, fontSize:16, cursor:"pointer", fontWeight:700, lineHeight:1 }}>+</button>
-        <button onClick={()=>onChange(Math.max(0,value-1))}
-          style={{ width:28, height:28, border:`1px solid ${border}`, borderRadius:4, background:"#fff", color, fontSize:16, cursor:"pointer", fontWeight:700, lineHeight:1 }}>-</button>
+        <button onClick={()=>onChange(value+1)} style={{ width:28, height:28, border:`1px solid ${border}`, borderRadius:4, background:"#fff", color, fontSize:16, cursor:"pointer", fontWeight:700, lineHeight:1 }}>+</button>
+        <button onClick={()=>onChange(Math.max(0,value-1))} style={{ width:28, height:28, border:`1px solid ${border}`, borderRadius:4, background:"#fff", color, fontSize:16, cursor:"pointer", fontWeight:700, lineHeight:1 }}>-</button>
       </div>
     </div>
   );
@@ -206,7 +204,7 @@ export default function Dashboard() {
     return () => clearInterval(t);
   }, []);
 
-  useEffect(() => { if (mounted) localStorage.setItem("rag_v6", JSON.stringify(state)); }, [state, mounted]);
+  useEffect(() => { if (mounted) localStorage.setItem("rag_v7", JSON.stringify(state)); }, [state, mounted]);
   useEffect(() => { if (mounted) localStorage.setItem("rag_tickets", JSON.stringify(tickets)); }, [tickets, mounted]);
   useEffect(() => { if (mounted) localStorage.setItem("rag_daily_stats", JSON.stringify(stats)); }, [stats, mounted]);
 
@@ -322,9 +320,17 @@ export default function Dashboard() {
       headStyles: { fillColor:[44,74,110], textColor:255, fontStyle:"bold", fontSize:7.5 },
       alternateRowStyles: { fillColor:[244,246,249] },
       columnStyles: {
-        0:{ cellWidth:8, halign:"center" }, 1:{ cellWidth:38 }, 2:{ cellWidth:18 },
-        3:{ cellWidth:22 }, 4:{ cellWidth:26 }, 5:{ cellWidth:20 }, 6:{ cellWidth:20 },
-        7:{ cellWidth:18 }, 8:{ cellWidth:28 }, 9:{ cellWidth:24 }, 10:{ cellWidth:16, halign:"center" },
+        0:{ cellWidth:7, halign:"center" },
+        1:{ cellWidth:34 },
+        2:{ cellWidth:16 },
+        3:{ cellWidth:20 },
+        4:{ cellWidth:24 },
+        5:{ cellWidth:18 },
+        6:{ cellWidth:18 },
+        7:{ cellWidth:18 },
+        8:{ cellWidth:28 },
+        9:{ cellWidth:24 },
+        10:{ cellWidth:15, halign:"center" },
       },
       didParseCell: (data) => {
         if (data.section === "body") {
@@ -346,6 +352,11 @@ export default function Dashboard() {
               data.cell.styles.fontStyle = "bold";
             }
           }
+          if (data.column.index === 7 && row[7] !== "—") {
+            data.cell.styles.fillColor = [220,228,255];
+            data.cell.styles.textColor = [26,58,92];
+            data.cell.styles.fontStyle = "bold";
+          }
         }
       },
     });
@@ -357,7 +368,7 @@ export default function Dashboard() {
       doc.text("IT Support Tickets", 10, 12);
       doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(148,184,212);
       doc.text(`Queries Today: ${stats.received}  |  Resolved: ${stats.resolved}  |  Pending: ${stats.pending}  |  In Progress: ${stats.inprogress}`, W-10, 12, { align:"right" });
-      const tRows = tickets.map(t => [t.id, t.office, t.description, t.reportedBy, t.assignedTo||"Unassigned", t.resolvedBy||"—", TICKET_STATUS[t.status].label, t.ts, t.resolvedTs||"—"]);
+      const tRows = tickets.map(t => [t.id, t.office, t.description, t.reportedBy, t.assignedTo||"Unassigned", t.resolvedBy||"—", TICKET_STATUS[t.status].lbl, t.ts, t.resolvedTs||"—"]);
       autoTable(doc, {
         startY: 22,
         head: [["ID","Office","Description","Reported By","Assigned To","Resolved By","Status","Reported At","Resolved At"]],
@@ -403,7 +414,6 @@ export default function Dashboard() {
 
       <div style={{ padding:"16px 20px" }}>
 
-        {/* Daily Query Stats */}
         <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, padding:"14px 18px", marginBottom:16 }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
             <div>
@@ -423,7 +433,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Facility Summary Cards */}
         <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:16 }}>
           {[
             { label:"Total Facilities", value:FACILITIES.length, color:"#1a1f2e", border:"#d1d9e6", bg:"#fff" },
@@ -438,7 +447,6 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* Status Panels */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:12, marginBottom:16 }}>
           {[
             { title:"Internet Status", rows:[{l:`${iC.green} Sites Stable`,s:"green" as RAGStatus},{l:`${iC.amber} Slow / Intermittent`,s:"amber" as RAGStatus},{l:`${iC.red} Sites Down`,s:"red" as RAGStatus}] },
@@ -470,7 +478,6 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* Facility Table */}
         <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, overflow:"hidden", marginBottom:16 }}>
           <div style={{ padding:"12px 16px", borderBottom:"1px solid #e2e6ed", display:"flex", alignItems:"center", gap:8 }}>
             <div style={{ fontSize:13, fontWeight:600, color:"#1a1f2e" }}>RAG Status of All Facilities</div>
@@ -508,12 +515,16 @@ export default function Dashboard() {
                       <td style={{ padding:"7px 10px" }}><Sel value={s.printing} opts={PRINT_OPTS} onChange={v=>updateField(f.name,"printing",v)} /></td>
                       <td style={{ padding:"7px 10px" }}><Badge s={ov} /></td>
                       <td style={{ padding:"7px 10px" }}>
+                        <input defaultValue={s.bandwidth} onBlur={e=>updateField(f.name,"bandwidth",e.target.value)} placeholder="e.g. 50 Mbps"
+                          style={{ background:"#f0f4ff", border:"1px solid #b4c6fb", borderRadius:3, padding:"3px 7px", color:"#1A3A5C", fontSize:11, width:95, fontWeight:500 }} />
+                      </td>
+                      <td style={{ padding:"7px 10px" }}>
                         <input defaultValue={s.issue} onBlur={e=>updateField(f.name,"issue",e.target.value)} placeholder="Reported issue..."
                           style={{ background:"#fff8f8", border:"1px solid #f5b8b8", borderRadius:3, padding:"3px 7px", color:"#8b1c1c", fontSize:11, width:160 }} />
                       </td>
                       <td style={{ padding:"7px 10px" }}>
                         <input defaultValue={s.notes} onBlur={e=>updateField(f.name,"notes",e.target.value)} placeholder="Notes..."
-                          style={{ background:"#f8f9fb", border:"1px solid #dde1e8", borderRadius:3, padding:"3px 7px", color:"#1a1f2e", fontSize:11, width:120 }} />
+                          style={{ background:"#f8f9fb", border:"1px solid #dde1e8", borderRadius:3, padding:"3px 7px", color:"#1a1f2e", fontSize:11, width:110 }} />
                       </td>
                       <td style={{ padding:"7px 10px", fontFamily:"monospace", fontSize:10, color:"#8a94a6", whiteSpace:"nowrap" }}>{s.ts}</td>
                     </tr>
@@ -524,7 +535,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* IT Support Tickets */}
         <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, overflow:"hidden" }}>
           <div style={{ padding:"12px 16px", borderBottom:"1px solid #e2e6ed", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
             <div>
@@ -533,12 +543,12 @@ export default function Dashboard() {
             </div>
             <div style={{ display:"flex", gap:8, marginLeft:"auto", alignItems:"center", flexWrap:"wrap" }}>
               {[
-                { lbl:`Open: ${tCounts.open}`, ...TICKET_STATUS.open },
-                { lbl:`In Progress: ${tCounts.inprogress}`, ...TICKET_STATUS.inprogress },
-                { lbl:`Pending: ${tCounts.pending}`, ...TICKET_STATUS.pending },
-                { lbl:`Resolved: ${tCounts.resolved}`, ...TICKET_STATUS.resolved },
+                { lbl:`Open: ${tCounts.open}`, bg:TICKET_STATUS.open.bg, text:TICKET_STATUS.open.text, border:TICKET_STATUS.open.border },
+                { lbl:`In Progress: ${tCounts.inprogress}`, bg:TICKET_STATUS.inprogress.bg, text:TICKET_STATUS.inprogress.text, border:TICKET_STATUS.inprogress.border },
+                { lbl:`Pending: ${tCounts.pending}`, bg:TICKET_STATUS.pending.bg, text:TICKET_STATUS.pending.text, border:TICKET_STATUS.pending.border },
+                { lbl:`Resolved: ${tCounts.resolved}`, bg:TICKET_STATUS.resolved.bg, text:TICKET_STATUS.resolved.text, border:TICKET_STATUS.resolved.border },
               ].map(b => (
-                <span key={b.label} style={{ background:b.bg, color:b.text, border:`1px solid ${b.border}`, padding:"3px 10px", borderRadius:4, fontSize:11, fontWeight:600 }}>{b.lbl}</span>
+                <span key={b.lbl} style={{ background:b.bg, color:b.text, border:`1px solid ${b.border}`, padding:"3px 10px", borderRadius:4, fontSize:11, fontWeight:600 }}>{b.lbl}</span>
               ))}
               <button onClick={() => setShowTicketForm(v => !v)}
                 style={{ padding:"5px 14px", background:"#1A3A5C", border:"none", borderRadius:4, fontSize:11, color:"#fff", cursor:"pointer", fontWeight:600 }}>
