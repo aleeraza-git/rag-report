@@ -36,6 +36,17 @@ const FACILITIES: { name: string; cat: string }[] = [
   { name: "Faisalabad Office", cat: "Agency21" },
 ];
 
+const TEAM = [
+  "— Select Engineer —",
+  "Usama Nasir",
+  "Muhammad Usman",
+  "Ali Raza",
+  "Rameez Gulzar",
+  "Hamza",
+  "Mubasher Hassan",
+  "Huzaifa Talib",
+];
+
 type RAGStatus = "green" | "amber" | "red" | "na";
 interface FacilityState {
   internet: RAGStatus;
@@ -47,6 +58,18 @@ interface FacilityState {
 }
 type AppState = Record<string, FacilityState>;
 type FilterMode = "all" | "green" | "amber" | "red";
+
+interface Ticket {
+  id: string;
+  office: string;
+  description: string;
+  reportedBy: string;
+  assignedTo: string;
+  resolvedBy: string;
+  status: "open" | "inprogress" | "resolved";
+  ts: string;
+  resolvedTs: string;
+}
 
 const INET_OPTS: { v: RAGStatus; l: string }[] = [
   { v: "green", l: "Working" },
@@ -76,9 +99,20 @@ const RAG: Record<RAGStatus, { bg: string; border: string; text: string; label: 
 const CAT_COLORS: Record<string,string> = {
   Projects:"#3b5bdb", Imarat:"#0c7a6d", Graana:"#7c3aed", Agency21:"#c05621",
 };
+const TICKET_STATUS: Record<string,{ bg:string; text:string; label:string }> = {
+  open:       { bg:"#fdf0f0", text:"#8b1c1c", label:"Open" },
+  inprogress: { bg:"#fef8ec", text:"#7a5200", label:"In Progress" },
+  resolved:   { bg:"#edf7f0", text:"#1a6b35", label:"Resolved" },
+};
 
 function nowTime() {
   return new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", second:"2-digit" });
+}
+function nowFull() {
+  return new Date().toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
+}
+function uid() {
+  return "TKT-" + Math.random().toString(36).substr(2,6).toUpperCase();
 }
 function calcOverall(s: FacilityState): RAGStatus {
   const vals = [s.internet, s.bio, s.printing];
@@ -93,6 +127,10 @@ function defaultState(): FacilityState {
 function loadFromStorage(): AppState {
   try { const r = localStorage.getItem("rag_v6"); if (r) return JSON.parse(r); } catch {}
   return {};
+}
+function loadTickets(): Ticket[] {
+  try { const r = localStorage.getItem("rag_tickets"); if (r) return JSON.parse(r); } catch {}
+  return [];
 }
 
 function Dot({ s }: { s: RAGStatus }) {
@@ -121,12 +159,16 @@ export default function Dashboard() {
   const [filter, setFilter] = useState<FilterMode>("all");
   const [mounted, setMounted] = useState(false);
   const [now, setNow] = useState("");
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [showTicketForm, setShowTicketForm] = useState(false);
+  const [newTicket, setNewTicket] = useState({ office:"", description:"", reportedBy:"", assignedTo:"" });
 
   useEffect(() => {
     const saved = loadFromStorage();
     const init: AppState = {};
     FACILITIES.forEach(f => { init[f.name] = saved[f.name] ?? defaultState(); });
     setState(init);
+    setTickets(loadTickets());
     const fmt = () => new Date().toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
     setNow(fmt());
     setMounted(true);
@@ -134,13 +176,45 @@ export default function Dashboard() {
     return () => clearInterval(t);
   }, []);
 
-  useEffect(() => {
-    if (mounted) localStorage.setItem("rag_v6", JSON.stringify(state));
-  }, [state, mounted]);
+  useEffect(() => { if (mounted) localStorage.setItem("rag_v6", JSON.stringify(state)); }, [state, mounted]);
+  useEffect(() => { if (mounted) localStorage.setItem("rag_tickets", JSON.stringify(tickets)); }, [tickets, mounted]);
 
   const updateField = useCallback((name:string, field:keyof FacilityState, val:string) => {
     setState(prev => ({ ...prev, [name]: { ...prev[name], [field]: val, ts: nowTime() } }));
   }, []);
+
+  const addTicket = () => {
+    if (!newTicket.description) return;
+    const t: Ticket = {
+      id: uid(),
+      office: newTicket.office || "Unknown / Remote Office",
+      description: newTicket.description,
+      reportedBy: newTicket.reportedBy || "Unknown",
+      assignedTo: newTicket.assignedTo,
+      resolvedBy: "",
+      status: "open",
+      ts: nowFull(),
+      resolvedTs: "",
+    };
+    setTickets(prev => [t, ...prev]);
+    setNewTicket({ office:"", description:"", reportedBy:"", assignedTo:"" });
+    setShowTicketForm(false);
+  };
+
+  const updateTicket = (id:string, field:keyof Ticket, val:string) => {
+    setTickets(prev => prev.map(t => {
+      if (t.id !== id) return t;
+      const updated = { ...t, [field]: val };
+      if (field === "status" && val === "resolved") {
+        updated.resolvedTs = nowFull();
+      }
+      return updated;
+    }));
+  };
+
+  const deleteTicket = (id:string) => {
+    setTickets(prev => prev.filter(t => t.id !== id));
+  };
 
   const counts = { green:0, amber:0, red:0, na:0 };
   const iC = { green:0, amber:0, red:0 };
@@ -154,37 +228,33 @@ export default function Dashboard() {
     if (s.printing !== "na") pC[s.printing as "green"|"amber"|"red"]++;
   });
 
+  const tCounts = { open:0, inprogress:0, resolved:0 };
+  tickets.forEach(t => { tCounts[t.status]++; });
+
   const visible = filter === "all" ? FACILITIES : FACILITIES.filter(f => { const s = state[f.name]; return s && calcOverall(s) === filter; });
 
   const exportPDF = () => {
     const d = new Date();
     const today = d.toLocaleDateString("en-GB", { day:"2-digit", month:"long", year:"numeric" });
     const timeNow = d.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", second:"2-digit" });
-
     const doc = new jsPDF({ orientation:"landscape", unit:"mm", format:"a4" });
     const W = doc.internal.pageSize.getWidth();
 
-    doc.setFillColor(26,58,92);
-    doc.rect(0,0,W,28,"F");
-    doc.setTextColor(255,255,255);
-    doc.setFontSize(18); doc.setFont("helvetica","bold");
+    doc.setFillColor(26,58,92); doc.rect(0,0,W,28,"F");
+    doc.setTextColor(255,255,255); doc.setFontSize(18); doc.setFont("helvetica","bold");
     doc.text("IMARAT GROUP",10,12);
-    doc.setFontSize(8); doc.setFont("helvetica","normal");
-    doc.setTextColor(148,184,212);
+    doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(148,184,212);
     doc.text("INFORMATION TECHNOLOGY DEPARTMENT",10,18);
-    doc.setTextColor(255,255,255);
-    doc.setFontSize(11); doc.setFont("helvetica","bold");
+    doc.setTextColor(255,255,255); doc.setFontSize(11); doc.setFont("helvetica","bold");
     doc.text("IT Facilities RAG Dashboard", W-10, 10, { align:"right" });
-    doc.setFontSize(8); doc.setFont("helvetica","normal");
-    doc.setTextColor(148,184,212);
+    doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(148,184,212);
     doc.text(today, W-10, 16, { align:"right" });
     doc.text("Report Time: "+timeNow, W-10, 22, { align:"right" });
 
-    doc.setFillColor(34,55,90);
-    doc.rect(0,28,W,10,"F");
+    doc.setFillColor(34,55,90); doc.rect(0,28,W,10,"F");
     doc.setTextColor(148,184,212); doc.setFontSize(7.5);
     const infos = [`Period: Daily`,`Total: ${FACILITIES.length}`,`Operational: ${counts.green}`,`Degraded: ${counts.amber}`,`Critical: ${counts.red}`,`Support: it.support@imarat.com.pk`];
-    const step = W / infos.length;
+    const step = W/infos.length;
     infos.forEach((t,i) => doc.text(t, 10+i*step, 34.5));
 
     const cards = [
@@ -222,15 +292,9 @@ export default function Dashboard() {
       alternateRowStyles: { fillColor:[244,246,249] },
       columnStyles: {
         0:{ cellWidth:8, halign:"center" },
-        1:{ cellWidth:38 },
-        2:{ cellWidth:18 },
-        3:{ cellWidth:22 },
-        4:{ cellWidth:26 },
-        5:{ cellWidth:20 },
-        6:{ cellWidth:20 },
-        7:{ cellWidth:32 },
-        8:{ cellWidth:28 },
-        9:{ cellWidth:18, halign:"center" },
+        1:{ cellWidth:38 }, 2:{ cellWidth:18 }, 3:{ cellWidth:22 },
+        4:{ cellWidth:26 }, 5:{ cellWidth:20 }, 6:{ cellWidth:20 },
+        7:{ cellWidth:32 }, 8:{ cellWidth:28 }, 9:{ cellWidth:18, halign:"center" },
       },
       didParseCell: (data) => {
         if (data.section === "body") {
@@ -255,6 +319,38 @@ export default function Dashboard() {
         }
       },
     });
+
+    if (tickets.length > 0) {
+      doc.addPage();
+      doc.setFillColor(26,58,92); doc.rect(0,0,W,18,"F");
+      doc.setTextColor(255,255,255); doc.setFontSize(13); doc.setFont("helvetica","bold");
+      doc.text("IT Support Tickets", 10, 12);
+      doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(148,184,212);
+      doc.text(`Total: ${tickets.length}  |  Open: ${tCounts.open}  |  In Progress: ${tCounts.inprogress}  |  Resolved: ${tCounts.resolved}`, W-10, 12, { align:"right" });
+
+      const tRows = tickets.map(t => [t.id, t.office, t.description, t.reportedBy, t.assignedTo||"Unassigned", t.resolvedBy||"—", t.status.toUpperCase(), t.ts, t.resolvedTs||"—"]);
+      autoTable(doc, {
+        startY: 22,
+        head: [["ID","Office","Issue Description","Reported By","Assigned To","Resolved By","Status","Reported At","Resolved At"]],
+        body: tRows,
+        styles: { fontSize:7, cellPadding:2.5, font:"helvetica" },
+        headStyles: { fillColor:[44,74,110], textColor:255, fontStyle:"bold", fontSize:7.5 },
+        alternateRowStyles: { fillColor:[244,246,249] },
+        columnStyles: {
+          0:{ cellWidth:20 }, 1:{ cellWidth:30 }, 2:{ cellWidth:55 },
+          3:{ cellWidth:25 }, 4:{ cellWidth:25 }, 5:{ cellWidth:25 },
+          6:{ cellWidth:20, halign:"center" }, 7:{ cellWidth:28 }, 8:{ cellWidth:28 },
+        },
+        didParseCell: (data) => {
+          if (data.section === "body" && data.column.index === 6) {
+            const st = tRows[data.row.index][6];
+            if (st === "OPEN") { data.cell.styles.fillColor = [255,199,206]; data.cell.styles.textColor = [139,28,28]; data.cell.styles.fontStyle = "bold"; }
+            if (st === "INPROGRESS") { data.cell.styles.fillColor = [255,235,156]; data.cell.styles.textColor = [122,82,0]; data.cell.styles.fontStyle = "bold"; }
+            if (st === "RESOLVED") { data.cell.styles.fillColor = [198,239,206]; data.cell.styles.textColor = [26,107,53]; data.cell.styles.fontStyle = "bold"; }
+          }
+        },
+      });
+    }
 
     doc.save(`Imarat_RAG_${d.toISOString().slice(0,10)}.pdf`);
   };
@@ -325,7 +421,7 @@ export default function Dashboard() {
           ))}
         </div>
 
-        <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, overflow:"hidden" }}>
+        <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, overflow:"hidden", marginBottom:16 }}>
           <div style={{ padding:"12px 16px", borderBottom:"1px solid #e2e6ed", display:"flex", alignItems:"center", gap:8 }}>
             <div style={{ fontSize:13, fontWeight:600, color:"#1a1f2e" }}>RAG Status of All Facilities</div>
             <div style={{ marginLeft:"auto", display:"flex", gap:8 }}>
@@ -377,9 +473,128 @@ export default function Dashboard() {
             </table>
           </div>
         </div>
+
+        {/* ── IT Support Tickets ── */}
+        <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, overflow:"hidden" }}>
+          <div style={{ padding:"12px 16px", borderBottom:"1px solid #e2e6ed", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+            <div>
+              <div style={{ fontSize:13, fontWeight:600, color:"#1a1f2e" }}>IT Support Tickets</div>
+              <div style={{ fontSize:10, color:"#8a94a6", marginTop:2 }}>Track issues reported from any office including unknown / remote locations</div>
+            </div>
+            <div style={{ display:"flex", gap:8, marginLeft:"auto", alignItems:"center" }}>
+              {[
+                { label:`Open: ${tCounts.open}`, bg:"#fdf0f0", text:"#8b1c1c" },
+                { label:`In Progress: ${tCounts.inprogress}`, bg:"#fef8ec", text:"#7a5200" },
+                { label:`Resolved: ${tCounts.resolved}`, bg:"#edf7f0", text:"#1a6b35" },
+              ].map(b => (
+                <span key={b.label} style={{ background:b.bg, color:b.text, padding:"3px 10px", borderRadius:4, fontSize:11, fontWeight:600 }}>{b.label}</span>
+              ))}
+              <button onClick={() => setShowTicketForm(v => !v)}
+                style={{ padding:"5px 14px", background:"#1A3A5C", border:"none", borderRadius:4, fontSize:11, color:"#fff", cursor:"pointer", fontWeight:600 }}>
+                + New Ticket
+              </button>
+            </div>
+          </div>
+
+          {showTicketForm && (
+            <div style={{ padding:"16px", background:"#f8f9fb", borderBottom:"1px solid #e2e6ed", display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:10 }}>
+              <div>
+                <div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>OFFICE / LOCATION</div>
+                <input value={newTicket.office} onChange={e=>setNewTicket(p=>({...p,office:e.target.value}))}
+                  placeholder="Office name or Unknown / Remote"
+                  style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} />
+              </div>
+              <div style={{ gridColumn:"span 2" }}>
+                <div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>ISSUE DESCRIPTION</div>
+                <input value={newTicket.description} onChange={e=>setNewTicket(p=>({...p,description:e.target.value}))}
+                  placeholder="Describe the issue..."
+                  style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} />
+              </div>
+              <div>
+                <div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>REPORTED BY</div>
+                <input value={newTicket.reportedBy} onChange={e=>setNewTicket(p=>({...p,reportedBy:e.target.value}))}
+                  placeholder="Name or Unknown"
+                  style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} />
+              </div>
+              <div>
+                <div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>ASSIGN TO ENGINEER</div>
+                <select value={newTicket.assignedTo} onChange={e=>setNewTicket(p=>({...p,assignedTo:e.target.value}))}
+                  style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff", cursor:"pointer" }}>
+                  {TEAM.map(m=><option key={m} value={m==="— Select Engineer —"?"":m}>{m}</option>)}
+                </select>
+              </div>
+              <div style={{ display:"flex", alignItems:"flex-end", gap:8, gridColumn:"span 3" }}>
+                <button onClick={addTicket}
+                  style={{ padding:"6px 18px", background:"#1A3A5C", border:"none", borderRadius:4, fontSize:12, color:"#fff", cursor:"pointer", fontWeight:600 }}>
+                  Add Ticket
+                </button>
+                <button onClick={() => setShowTicketForm(false)}
+                  style={{ padding:"6px 14px", background:"#f1f4f8", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#4a5568", cursor:"pointer" }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {tickets.length === 0 ? (
+            <div style={{ padding:"32px", textAlign:"center", color:"#8a94a6", fontSize:13 }}>
+              No tickets yet. Click "+ New Ticket" to log an issue.
+            </div>
+          ) : (
+            <div style={{ overflowX:"auto" }}>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+                <thead>
+                  <tr style={{ background:"#f8f9fb" }}>
+                    {["TICKET ID","OFFICE / LOCATION","ISSUE DESCRIPTION","REPORTED BY","ASSIGNED TO","STATUS","RESOLVED BY","REPORTED AT","RESOLVED AT",""].map(h => (
+                      <th key={h} style={{ textAlign:"left", padding:"9px 10px", color:"#8a94a6", fontWeight:600, fontSize:10, borderBottom:"2px solid #e2e6ed", whiteSpace:"nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {tickets.map((t,i) => (
+                    <tr key={t.id} style={{ borderBottom:"1px solid #f0f2f5", background:i%2===0?"#fff":"#fafbfc" }}>
+                      <td style={{ padding:"7px 10px", fontFamily:"monospace", fontSize:11, fontWeight:600, color:"#1A3A5C" }}>{t.id}</td>
+                      <td style={{ padding:"7px 10px", fontWeight:600, color:"#1a1f2e", whiteSpace:"nowrap" }}>{t.office}</td>
+                      <td style={{ padding:"7px 10px", color:"#4a5568", maxWidth:220 }}>{t.description}</td>
+                      <td style={{ padding:"7px 10px", color:"#4a5568", whiteSpace:"nowrap" }}>{t.reportedBy}</td>
+                      <td style={{ padding:"7px 10px" }}>
+                        <select value={t.assignedTo} onChange={e=>updateTicket(t.id,"assignedTo",e.target.value)}
+                          style={{ border:"1px solid #dde1e8", borderRadius:3, padding:"3px 6px", fontSize:11, color:"#1a1f2e", background:"#fff", cursor:"pointer" }}>
+                          {TEAM.map(m=><option key={m} value={m==="— Select Engineer —"?"":m}>{m}</option>)}
+                        </select>
+                      </td>
+                      <td style={{ padding:"7px 10px" }}>
+                        <select value={t.status} onChange={e=>updateTicket(t.id,"status",e.target.value)}
+                          style={{ background:TICKET_STATUS[t.status].bg, color:TICKET_STATUS[t.status].text, border:"none", borderRadius:3, padding:"3px 8px", fontSize:11, fontWeight:600, cursor:"pointer" }}>
+                          <option value="open">Open</option>
+                          <option value="inprogress">In Progress</option>
+                          <option value="resolved">Resolved</option>
+                        </select>
+                      </td>
+                      <td style={{ padding:"7px 10px" }}>
+                        {t.status === "resolved" ? (
+                          <select value={t.resolvedBy} onChange={e=>updateTicket(t.id,"resolvedBy",e.target.value)}
+                            style={{ border:"1px solid #a8d5b5", borderRadius:3, padding:"3px 6px", fontSize:11, color:"#1a6b35", background:"#edf7f0", cursor:"pointer" }}>
+                            {TEAM.map(m=><option key={m} value={m==="— Select Engineer —"?"":m}>{m}</option>)}
+                          </select>
+                        ) : <span style={{ color:"#c0c8d6", fontSize:11 }}>—</span>}
+                      </td>
+                      <td style={{ padding:"7px 10px", fontFamily:"monospace", fontSize:10, color:"#8a94a6", whiteSpace:"nowrap" }}>{t.ts}</td>
+                      <td style={{ padding:"7px 10px", fontFamily:"monospace", fontSize:10, color:t.resolvedTs?"#1a6b35":"#c0c8d6", whiteSpace:"nowrap" }}>{t.resolvedTs||"—"}</td>
+                      <td style={{ padding:"7px 10px" }}>
+                        <button onClick={()=>deleteTicket(t.id)}
+                          style={{ padding:"2px 8px", background:"#fdf0f0", border:"1px solid #f5b8b8", borderRadius:3, fontSize:10, color:"#8b1c1c", cursor:"pointer" }}>
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
-
-
