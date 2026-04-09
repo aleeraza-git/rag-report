@@ -1,0 +1,13 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0a0e1a;
+  color: #e2e8f0;
+  font-family: var(--font-syne), sans-serif;
+  min-height: 100vh;
+}
+select { appearance: none; -webkit-appearance: none; cursor: pointer; }
+select:focus { outline: none; }
+input:focus { outline: none; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #111827; }
+::-webkit-scrollbar-thumb { background: #2d3f55; border-radius: 3px; }
