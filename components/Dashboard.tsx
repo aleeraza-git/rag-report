@@ -165,6 +165,19 @@ function fieldLabel(f: string): string {
   const m: Record<string,string> = { internet:"Internet", bio:"Biometric", printing:"Printing", bandwidth:"Current BW", requiredBandwidth:"Required BW", issue:"Reported Issue", notes:"Notes" };
   return m[f] || f;
 }
+function humanVal(field: string, val: string): string {
+  if (!val || val === "—") return "—";
+  const statusMap: Record<string,string> = {
+    green: "Working / OK",
+    amber: "Slow / Degraded",
+    red:   "Down / Critical",
+    na:    "N/A",
+  };
+  if (["internet","bio","printing","Internet","Biometric","Printing"].some(f => field.toLowerCase().includes(f.toLowerCase()))) {
+    return statusMap[val] || val;
+  }
+  return val;
+}
 
 function Dot({ s }: { s: RAGStatus }) {
   return <span style={{ display:"inline-block", width:9, height:9, borderRadius:"50%", background:RAG[s].dot, flexShrink:0 }} />;
@@ -274,7 +287,8 @@ export default function Dashboard() {
     const newVal = String((data as any)[changedField] || "");
     if (oldVal !== newVal) {
       const type: ActivityLog["type"] = ["internet","bio","printing"].includes(changedField) ? "status" : changedField === "issue" ? "issue" : changedField.includes("andwidth") ? "bandwidth" : "notes";
-      await addLog({ facility: name, field: fieldLabel(changedField), oldVal: oldVal||"—", newVal: newVal||"—", type });
+      const fl = fieldLabel(changedField);
+      await addLog({ facility: name, field: fl, oldVal: humanVal(fl, oldVal)||"—", newVal: humanVal(fl, newVal)||"—", type });
     }
     setLastSync(nowTime());
   }, [addLog]);
