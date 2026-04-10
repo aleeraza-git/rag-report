@@ -355,15 +355,17 @@ export default function Dashboard() {
     setState(prev => {
       const oldData = prev[name] || defaultState();
       const updated = { ...oldData, [field]: val, ts: nowTime() };
+      // Always update UI immediately
+      const newState = { ...prev, [name]: updated };
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      // For status fields (dropdowns) save immediately, not debounced
       const isStatus = ["internet","bio","printing"].includes(field as string);
       if (isStatus) {
+        // Save and log immediately for status fields
         saveFacility(name, updated, oldData, field as string);
       } else {
         saveTimer.current = setTimeout(() => saveFacility(name, updated, oldData, field as string), 800);
       }
-      return { ...prev, [name]: updated };
+      return newState;
     });
   }, [saveFacility]);
 
@@ -730,9 +732,10 @@ export default function Dashboard() {
         {/* Live Activity Feed */}
         <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, marginBottom:16, overflow:"hidden" }}>
           <div style={{ background:"#1A3A5C", padding:"10px 16px", display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-            <div style={{ color:"#fff", fontWeight:600, fontSize:13 }}>Live Activity Feed</div>
-            <span style={{ background:"#22c55e", width:8, height:8, borderRadius:"50%", display:"inline-block", flexShrink:0 }} />
-            <span style={{ color:"#94B8D4", fontSize:10 }}>{activityLog.length} changes recorded</span>
+            <div style={{ color:"#fff", fontWeight:600, fontSize:13 }}>Live RAG Status Feed</div>
+            <span style={{ background:"#22c55e", width:8, height:8, borderRadius:"50%", display:"inline-block", flexShrink:0, animation:"pulse 2s infinite" }} />
+            <span style={{ color:"#94B8D4", fontSize:10 }}>{activityLog.filter(l=>l.type==="status").length} status changes recorded</span>
+            <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}`}</style>
             <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
               <span style={{ fontSize:10, color:"#94B8D4" }}>Export PDF from:</span>
               <input type="datetime-local" value={logFrom} onChange={e=>setLogFrom(e.target.value)}
@@ -748,26 +751,37 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
-          {activityLog.length === 0 ? (
-            <div style={{ padding:"12px 16px", color:"#8a94a6", fontSize:12, textAlign:"center" }}>No activity yet — every change will appear here automatically</div>
-          ) : (
-            <div style={{ maxHeight:200, overflowY:"auto" }}>
-              {activityLog.slice(0,100).map((l,i) => {
-                const ls = LOG_STYLE[l.type] || LOG_STYLE.notes;
-                return (
-                  <div key={l.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"6px 16px", borderBottom:"1px solid #f5f5f5", background:i%2===0?"#fff":"#fafbfc" }}>
-                    <span style={{ fontFamily:"monospace", fontSize:10, color:"#8a94a6", whiteSpace:"nowrap" as const, minWidth:145, flexShrink:0 }}>{l.ts}</span>
-                    <span style={{ fontWeight:600, color:"#1A3A5C", fontSize:11, minWidth:130, whiteSpace:"nowrap" as const, flexShrink:0 }}>{l.facility}</span>
-                    <span style={{ fontSize:11, color:"#4a5568", minWidth:90, flexShrink:0 }}>{l.field}</span>
-                    <span style={{ fontSize:11, color:"#8b1c1c", minWidth:60 }}>{l.oldVal}</span>
-                    <span style={{ fontSize:12, color:"#6b7280", fontWeight:700, flexShrink:0 }}>→</span>
-                    <span style={{ fontSize:11, color:"#1a6b35", fontWeight:600, flex:1 }}>{l.newVal}</span>
-                    <span style={{ background:ls.bg, border:`1px solid ${ls.border}`, color:ls.text, padding:"1px 7px", borderRadius:3, fontSize:9, fontWeight:600, textTransform:"uppercase" as const, flexShrink:0 }}>{l.type}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          {(() => {
+              const statusOnly = activityLog.filter(l => l.type === "status");
+              return statusOnly.length === 0 ? (
+                <div style={{ padding:"12px 16px", color:"#8a94a6", fontSize:12, textAlign:"center" }}>No status changes yet — Internet, Biometric and Printing changes will appear here in real-time</div>
+              ) : (
+                <div style={{ maxHeight:220, overflowY:"auto" }}>
+                  {statusOnly.slice(0,100).map((l,i) => {
+                    const isRed = l.newVal.includes("Down") || l.newVal.includes("Critical");
+                    const isAmber = l.newVal.includes("Slow") || l.newVal.includes("Degraded");
+                    const isGreen = l.newVal.includes("Working") || l.newVal.includes("OK") || l.newVal.includes("Operational") || l.newVal.includes("Sync");
+                    const dotColor = isRed ? "#ef4444" : isAmber ? "#f59e0b" : isGreen ? "#22c55e" : "#9ca3af";
+                    const newValColor = isRed ? "#8b1c1c" : isAmber ? "#7a5200" : isGreen ? "#1a6b35" : "#6b7280";
+                    const newValBg = isRed ? "#fdf0f0" : isAmber ? "#fef8ec" : isGreen ? "#edf7f0" : "#f1f4f8";
+                    const newValBorder = isRed ? "#f5b8b8" : isAmber ? "#f5d48a" : isGreen ? "#a8d5b5" : "#c8d0dc";
+                    return (
+                      <div key={l.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"7px 16px", borderBottom:"1px solid #f5f5f5", background:i%2===0?"#fff":"#fafbfc" }}>
+                        <span style={{ fontFamily:"monospace", fontSize:10, color:"#8a94a6", whiteSpace:"nowrap" as const, minWidth:148, flexShrink:0 }}>{l.ts}</span>
+                        <span style={{ fontWeight:700, color:"#1A3A5C", fontSize:11, minWidth:130, whiteSpace:"nowrap" as const, flexShrink:0, overflow:"hidden", textOverflow:"ellipsis" }}>{l.facility}</span>
+                        <span style={{ fontSize:11, color:"#4a5568", minWidth:80, flexShrink:0, fontWeight:500 }}>{l.field}</span>
+                        <span style={{ fontSize:11, color:"#8a94a6", minWidth:80, textDecoration:"line-through" }}>{l.oldVal}</span>
+                        <span style={{ fontSize:13, color:"#9ca3af", fontWeight:700, flexShrink:0 }}>→</span>
+                        <span style={{ display:"inline-flex", alignItems:"center", gap:5, background:newValBg, border:`1px solid ${newValBorder}`, color:newValColor, padding:"2px 10px", borderRadius:20, fontSize:11, fontWeight:700, whiteSpace:"nowrap" as const }}>
+                          <span style={{ width:7, height:7, borderRadius:"50%", background:dotColor, display:"inline-block", flexShrink:0 }} />
+                          {l.newVal}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
         </div>
 
         {/* Daily Stats */}
