@@ -378,7 +378,8 @@ export default function Dashboard() {
 
     autoTable(doc, {
       startY: 74,
-      margin: { left:10, right:10, top:75 },
+      pageBreak: 'avoid',
+      margin: { left:8, right:8 },
       head: [["#","Facility Name","Category","Internet","Biometric","Printing","Overall Status","Bandwidth","Reported Issue","Notes"]],
       body: rows,
       styles: {
@@ -403,16 +404,16 @@ export default function Dashboard() {
       alternateRowStyles: { fillColor:[245,248,252] },
       rowPageBreak: "auto",
       columnStyles: {
-        0: { cellWidth:8,  halign:"center", textColor:[150,160,180], fontStyle:"bold" },
-        1: { cellWidth:36, fontStyle:"bold", textColor:[15,40,75] },
-        2: { cellWidth:18, halign:"center", fontStyle:"bold" },
-        3: { cellWidth:24, halign:"center" },
-        4: { cellWidth:25, halign:"center" },
-        5: { cellWidth:21, halign:"center" },
-        6: { cellWidth:22, halign:"center", fontStyle:"bold" },
-        7: { cellWidth:17, halign:"center" },
-        8: { cellWidth:30 },
-        9: { cellWidth:22 },
+        0: { cellWidth:7,  halign:"center", textColor:[150,160,180], fontStyle:"bold" },
+        1: { cellWidth:32, fontStyle:"bold", textColor:[15,40,75] },
+        2: { cellWidth:16, halign:"center", fontStyle:"bold" },
+        3: { cellWidth:22, halign:"center" },
+        4: { cellWidth:23, halign:"center" },
+        5: { cellWidth:19, halign:"center" },
+        6: { cellWidth:20, halign:"center", fontStyle:"bold" },
+        7: { cellWidth:16, halign:"center" },
+        8: { cellWidth:32 },
+        9: { cellWidth:26 },
       },
       didParseCell: (data) => {
         if (data.section === "body") {
@@ -462,6 +463,7 @@ export default function Dashboard() {
           if (data.pageNumber > 1) {
             drawHeader("IT Facilities RAG Dashboard","Daily Facility Monitoring Report — All Sites");
             drawFooter();
+            (doc as any).autoTable.previous.finalY = 76;
           }
         },
     });
