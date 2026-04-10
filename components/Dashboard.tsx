@@ -127,7 +127,7 @@ const TICKET_STATUS: Record<string,{ bg:string; text:string; lbl:string; border:
   resolved:   { bg:"#edf7f0", text:"#1a6b35", lbl:"Resolved",    border:"#a8d5b5" },
   pending:    { bg:"#f0f4ff", text:"#3b5bdb", lbl:"Pending",     border:"#b4c6fb" },
 };
-const LOG_TYPE_STYLE: Record<string,{ bg:string; text:string; border:string }> = {
+const LOG_STYLE: Record<string,{ bg:string; text:string; border:string }> = {
   status:    { bg:"#f0f4ff", text:"#1A3A5C", border:"#b4c6fb" },
   issue:     { bg:"#fdf0f0", text:"#8b1c1c", border:"#f5b8b8" },
   notes:     { bg:"#f8f9fb", text:"#4a5568", border:"#dde1e8" },
@@ -161,9 +161,9 @@ function bwCompare(cur: string, req: string): { label: string; bg: string; borde
   if (pct >= 70)  return { label:`${pct}% LOW`,      bg:"#fef8ec", border:"#f5d48a", color:"#7a5200" };
   return             { label:`${pct}% CRITICAL`, bg:"#fdf0f0", border:"#f5b8b8", color:"#8b1c1c" };
 }
-function fieldLabel(field: string): string {
+function fieldLabel(f: string): string {
   const m: Record<string,string> = { internet:"Internet", bio:"Biometric", printing:"Printing", bandwidth:"Current BW", requiredBandwidth:"Required BW", issue:"Reported Issue", notes:"Notes" };
-  return m[field] || field;
+  return m[f] || f;
 }
 
 function Dot({ s }: { s: RAGStatus }) {
@@ -213,7 +213,6 @@ export default function Dashboard() {
   const [newTicket, setNewTicket] = useState({ office:"", description:"", reportedBy:"", assignedTo:"", medium:"" });
   const [stats, setStats] = useState<DailyStats>({ received:0, resolved:0, pending:0, inprogress:0 });
   const [activityLog, setActivityLog] = useState<ActivityLog[]>([]);
-  const [showLog, setShowLog] = useState(false);
   const [logFrom, setLogFrom] = useState("");
   const [logTo, setLogTo] = useState("");
   const saveTimer = useRef<NodeJS.Timeout|null>(null);
@@ -228,7 +227,7 @@ export default function Dashboard() {
           supabase.from("facility_state").select("*"),
           supabase.from("tickets").select("*"),
           supabase.from("daily_stats").select("*").eq("id","today").single(),
-          supabase.from("activity_log").select("*").order("ts", { ascending: false }).limit(500),
+          supabase.from("activity_log").select("*").order("updated_at", { ascending: false }).limit(500),
         ]);
         if (fsData) fsData.forEach((row: any) => { if (init[row.id]) init[row.id] = { ...defaultState(), ...row.data }; });
         if (tkData) setTickets(tkData.map((r: any) => r.data).sort((a: Ticket, b: Ticket) => b.ts.localeCompare(a.ts)));
@@ -257,7 +256,7 @@ export default function Dashboard() {
       if (payload.new) { setStats(payload.new.data); setLastSync(nowTime()); }
     }).subscribe();
     const logSub = supabase.channel("log_ch").on("postgres_changes", { event:"*", schema:"public", table:"activity_log" }, async () => {
-      const { data } = await supabase.from("activity_log").select("*").order("ts", { ascending: false }).limit(500);
+      const { data } = await supabase.from("activity_log").select("*").order("updated_at", { ascending: false }).limit(500);
       if (data) setActivityLog(data.map((r: any) => r.data));
     }).subscribe();
 
@@ -340,10 +339,12 @@ export default function Dashboard() {
 
   const filteredLog = activityLog.filter(l => {
     if (!logFrom && !logTo) return true;
-    const lts = new Date(l.ts.split(", ").reverse().join(" ")).getTime();
-    const from = logFrom ? new Date(logFrom).getTime() : 0;
-    const to = logTo ? new Date(logTo+"T23:59:59").getTime() : Infinity;
-    return lts >= from && lts <= to;
+    try {
+      const lts = new Date(l.ts).getTime();
+      const from = logFrom ? new Date(logFrom).getTime() : 0;
+      const to = logTo ? new Date(logTo).getTime() : Infinity;
+      return lts >= from && lts <= to;
+    } catch { return true; }
   });
 
   const exportPDF = () => {
@@ -462,29 +463,30 @@ export default function Dashboard() {
       didDrawPage:(data:any)=>{ try{drawFooter();if(data.pageNumber>1)drawHeader("IT Facilities RAG Dashboard","Daily Facility Monitoring Report — All Sites");}catch(e){} },
     });
 
-    // ACTIVITY LOG PAGE
+    // ACTIVITY LOG PAGE - filtered by time range
     if(filteredLog.length>0){
       doc.addPage();
-      const rangeLabel = logFrom||logTo ? `${logFrom||"All"} → ${logTo||"Now"}` : "All Time";
+      const rangeLabel = logFrom||logTo ? `${logFrom?logFrom.replace("T"," "):"Start"} → ${logTo?logTo.replace("T"," "):"Now"}` : "All Time";
       drawHeader("Activity Log",`Change History — ${rangeLabel}`);
       drawFooter();
       const lRows=filteredLog.map(l=>[l.ts,l.facility,l.field,l.oldVal,l.newVal,l.type.toUpperCase()]);
       autoTable(doc,{
-        startY:44,showHead:"everyPage",tableWidth:TW,margin:{left:ML,right:ML},
+        startY:44, showHead:"everyPage", tableWidth:TW, margin:{left:ML,right:ML},
         head:[["Timestamp","Facility","Field Changed","Previous Value","New Value","Type"]],
         body:lRows,
         styles:{fontSize:7,cellPadding:{top:2.5,bottom:2.5,left:2,right:2},font:"helvetica",lineColor:[215,222,232],lineWidth:0.25,textColor:[25,35,55],overflow:"linebreak",minCellHeight:7},
         headStyles:{fillColor:[15,40,75],textColor:[255,255,255],fontStyle:"bold",fontSize:7,halign:"center",cellPadding:{top:3,bottom:3,left:2,right:2},lineColor:[201,163,66],lineWidth:0.4},
         alternateRowStyles:{fillColor:[246,249,252]},
         rowPageBreak:"avoid",
-        columnStyles:{0:{cellWidth:38},1:{cellWidth:38,fontStyle:"bold",textColor:[15,40,75]},2:{cellWidth:28},3:{cellWidth:46},4:{cellWidth:46},5:{cellWidth:24,halign:"center",fontStyle:"bold"}},
+        columnStyles:{0:{cellWidth:38},1:{cellWidth:38,fontStyle:"bold",textColor:[15,40,75]},2:{cellWidth:28},3:{cellWidth:46},4:{cellWidth:46},5:{cellWidth:25,halign:"center",fontStyle:"bold"}},
         didParseCell:(data:any)=>{
           if(data.section==="body"&&data.column.index===5){
             const t=lRows[data.row.index][5];
-            if(t==="STATUS")  {data.cell.styles.fillColor=[219,234,254];data.cell.styles.textColor=[15,40,75];}
-            if(t==="ISSUE")   {data.cell.styles.fillColor=[255,199,206];data.cell.styles.textColor=[155,20,20];}
-            if(t==="TICKET")  {data.cell.styles.fillColor=[255,235,156];data.cell.styles.textColor=[120,70,0];}
-            if(t==="BANDWIDTH"){data.cell.styles.fillColor=[198,239,206];data.cell.styles.textColor=[15,90,40];}
+            if(t==="STATUS")  {data.cell.styles.fillColor=[219,234,254];data.cell.styles.textColor=[15,40,75];data.cell.styles.fontStyle="bold";}
+            if(t==="ISSUE")   {data.cell.styles.fillColor=[255,199,206];data.cell.styles.textColor=[155,20,20];data.cell.styles.fontStyle="bold";}
+            if(t==="TICKET")  {data.cell.styles.fillColor=[255,235,156];data.cell.styles.textColor=[120,70,0];data.cell.styles.fontStyle="bold";}
+            if(t==="BANDWIDTH"){data.cell.styles.fillColor=[198,239,206];data.cell.styles.textColor=[15,90,40];data.cell.styles.fontStyle="bold";}
+            if(t==="NOTES")   {data.cell.styles.fillColor=[240,242,245];data.cell.styles.textColor=[70,80,100];data.cell.styles.fontStyle="bold";}
           }
         },
         didDrawPage:(data:any)=>{ try{drawFooter();if(data.pageNumber>1)drawHeader("Activity Log",`Change History — ${rangeLabel}`);}catch(e){} },
@@ -549,6 +551,8 @@ export default function Dashboard() {
 
   return (
     <div style={{ minHeight:"100vh", background:"#eef1f7", fontFamily:"'Segoe UI',Arial,sans-serif" }}>
+
+      {/* Top Nav */}
       <div style={{ background:"#1A3A5C", padding:"0 24px", display:"flex", alignItems:"center", height:56 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <div style={{ width:32, height:32, background:"#2c5282", borderRadius:6, display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -569,10 +573,57 @@ export default function Dashboard() {
       </div>
 
       <div style={{ padding:"16px 20px" }}>
+
+        {/* Live Activity Feed + PDF Export Controls */}
+        <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, marginBottom:16, overflow:"hidden" }}>
+          <div style={{ background:"#1A3A5C", padding:"10px 16px", display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+            <div style={{ color:"#fff", fontWeight:600, fontSize:13 }}>Live Activity Feed</div>
+            <span style={{ background:"#22c55e", width:8, height:8, borderRadius:"50%", display:"inline-block", flexShrink:0 }} />
+            <span style={{ color:"#94B8D4", fontSize:10 }}>{activityLog.length} changes recorded</span>
+            <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+              <span style={{ fontSize:10, color:"#94B8D4" }}>PDF Export From:</span>
+              <input type="datetime-local" value={logFrom} onChange={e=>setLogFrom(e.target.value)}
+                style={{ padding:"3px 6px", border:"1px solid #2c5282", borderRadius:4, fontSize:11, color:"#1a1f2e", background:"#fff" }} />
+              <span style={{ fontSize:10, color:"#94B8D4" }}>To:</span>
+              <input type="datetime-local" value={logTo} onChange={e=>setLogTo(e.target.value)}
+                style={{ padding:"3px 6px", border:"1px solid #2c5282", borderRadius:4, fontSize:11, color:"#1a1f2e", background:"#fff" }} />
+              <button onClick={()=>{setLogFrom("");setLogTo("");}}
+                style={{ padding:"4px 10px", background:"#2c5282", border:"none", borderRadius:4, fontSize:11, color:"#94B8D4", cursor:"pointer" }}>Clear</button>
+              <button onClick={exportPDF}
+                style={{ padding:"5px 14px", background:"#C9A342", border:"none", borderRadius:4, fontSize:11, color:"#fff", cursor:"pointer", fontWeight:600 }}>
+                {logFrom||logTo ? "EXPORT PDF (Filtered)" : "EXPORT PDF"}
+              </button>
+            </div>
+          </div>
+          {activityLog.length === 0 ? (
+            <div style={{ padding:"12px 16px", color:"#8a94a6", fontSize:12, textAlign:"center" }}>
+              No activity yet — every change will appear here automatically in real-time
+            </div>
+          ) : (
+            <div style={{ maxHeight:200, overflowY:"auto" }}>
+              {filteredLog.slice(0,100).map((l,i) => {
+                const ls = LOG_STYLE[l.type] || LOG_STYLE.notes;
+                return (
+                  <div key={l.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"6px 16px", borderBottom:"1px solid #f5f5f5", background:i%2===0?"#fff":"#fafbfc" }}>
+                    <span style={{ fontFamily:"monospace", fontSize:10, color:"#8a94a6", whiteSpace:"nowrap" as const, minWidth:145, flexShrink:0 }}>{l.ts}</span>
+                    <span style={{ fontWeight:600, color:"#1A3A5C", fontSize:11, minWidth:130, whiteSpace:"nowrap" as const, flexShrink:0 }}>{l.facility}</span>
+                    <span style={{ fontSize:11, color:"#4a5568", minWidth:90, flexShrink:0 }}>{l.field}</span>
+                    <span style={{ fontSize:11, color:"#8b1c1c", minWidth:60 }}>{l.oldVal}</span>
+                    <span style={{ fontSize:12, color:"#6b7280", fontWeight:700, flexShrink:0 }}>→</span>
+                    <span style={{ fontSize:11, color:"#1a6b35", fontWeight:600, flex:1 }}>{l.newVal}</span>
+                    <span style={{ background:ls.bg, border:`1px solid ${ls.border}`, color:ls.text, padding:"1px 7px", borderRadius:3, fontSize:9, fontWeight:600, textTransform:"uppercase" as const, flexShrink:0 }}>{l.type}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Daily Stats */}
         <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, padding:"14px 18px", marginBottom:16 }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
             <div>
-              <div style={{ fontSize:13, fontWeight:600, color:"#1a1f2e" }}>Today's Query Summary</div>
+              <div style={{ fontSize:13, fontWeight:600, color:"#1a1f2e" }}>{"Today's Query Summary"}</div>
               <div style={{ fontSize:10, color:"#8a94a6", marginTop:2 }}>Shared across all users in real-time</div>
             </div>
             <button onClick={resetStats} style={{ padding:"4px 12px", background:"#f1f4f8", border:"1px solid #dde1e8", borderRadius:4, fontSize:11, color:"#6b7280", cursor:"pointer" }}>Reset Day</button>
@@ -585,6 +636,7 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Summary Cards */}
         <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:16 }}>
           {[
             { label:"Total Facilities", value:FACILITIES.length, color:"#1a1f2e", border:"#d1d9e6", bg:"#fff" },
@@ -599,6 +651,7 @@ export default function Dashboard() {
           ))}
         </div>
 
+        {/* Status Panels */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:12, marginBottom:16 }}>
           {[
             { title:"Internet Status", rows:[{l:`${iC.green} Sites Stable`,s:"green" as RAGStatus},{l:`${iC.amber} Slow / Intermittent`,s:"amber" as RAGStatus},{l:`${iC.red} Sites Down`,s:"red" as RAGStatus}] },
@@ -611,8 +664,10 @@ export default function Dashboard() {
               {panel.rows.map((r:{l:string;s:RAGStatus;c?:number}) => (
                 <div key={r.l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"5px 0", borderBottom:"1px solid #f5f5f5" }}>
                   <div style={{ display:"flex", alignItems:"center", gap:7, fontSize:11, color:"#1a1f2e" }}><Dot s={r.s} />{r.l}</div>
-                  {r.c!==undefined ? <span style={{ fontSize:12, fontWeight:700, color:RAG[r.s].text }}>{r.c}/{FACILITIES.length}</span>
-                    : <span style={{ background:RAG[r.s].bg, color:RAG[r.s].text, border:`1px solid ${RAG[r.s].border}`, padding:"1px 7px", borderRadius:3, fontSize:10, fontWeight:600 }}>{r.s==="green"?"OK":r.s==="amber"?"WARN":"DOWN"}</span>}
+                  {r.c!==undefined
+                    ? <span style={{ fontSize:12, fontWeight:700, color:RAG[r.s].text }}>{r.c}/{FACILITIES.length}</span>
+                    : <span style={{ background:RAG[r.s].bg, color:RAG[r.s].text, border:`1px solid ${RAG[r.s].border}`, padding:"1px 7px", borderRadius:3, fontSize:10, fontWeight:600 }}>{r.s==="green"?"OK":r.s==="amber"?"WARN":"DOWN"}</span>
+                  }
                 </div>
               ))}
               {panel.title==="Overall RAG"&&(<div style={{ marginTop:8, paddingTop:6, borderTop:"1px solid #f0f2f5", fontSize:10, color:"#8a94a6" }}><span style={{ color:"#1A3A5C", fontWeight:600 }}>it.support@imarat.com.pk</span></div>)}
@@ -620,12 +675,15 @@ export default function Dashboard() {
           ))}
         </div>
 
+        {/* Facility Table */}
         <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, overflow:"hidden", marginBottom:16 }}>
           <div style={{ padding:"12px 16px", borderBottom:"1px solid #e2e6ed", display:"flex", alignItems:"center", gap:8 }}>
             <div style={{ fontSize:13, fontWeight:600, color:"#1a1f2e" }}>RAG Status of All Facilities</div>
             <div style={{ marginLeft:"auto", display:"flex", gap:8 }}>
-              <button onClick={()=>setFilter(fOpts[(fOpts.indexOf(filter)+1)%fOpts.length])} style={{ padding:"5px 12px", background:"#f1f4f8", border:"1px solid #dde1e8", borderRadius:4, fontSize:11, color:"#4a5568", cursor:"pointer" }}>{fLabels[filter]}</button>
-              <button onClick={exportPDF} style={{ padding:"5px 14px", background:"#1A3A5C", border:"none", borderRadius:4, fontSize:11, color:"#fff", cursor:"pointer", fontWeight:600 }}>EXPORT PDF</button>
+              <button onClick={()=>setFilter(fOpts[(fOpts.indexOf(filter)+1)%fOpts.length])}
+                style={{ padding:"5px 12px", background:"#f1f4f8", border:"1px solid #dde1e8", borderRadius:4, fontSize:11, color:"#4a5568", cursor:"pointer" }}>
+                {fLabels[filter]}
+              </button>
             </div>
           </div>
           <div style={{ overflowX:"auto" }}>
@@ -682,63 +740,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Activity Log */}
-        <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, overflow:"hidden", marginBottom:16 }}>
-          <div style={{ padding:"12px 16px", borderBottom:"1px solid #e2e6ed", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
-            <div>
-              <div style={{ fontSize:13, fontWeight:600, color:"#1a1f2e" }}>Activity Log</div>
-              <div style={{ fontSize:10, color:"#8a94a6", marginTop:2 }}>Every change is automatically recorded with timestamp</div>
-            </div>
-            <div style={{ marginLeft:"auto", display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-              <div style={{ fontSize:10, color:"#6b7280" }}>From:</div>
-              <input type="date" value={logFrom} onChange={e=>setLogFrom(e.target.value)}
-                style={{ padding:"4px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:11, color:"#1a1f2e" }} />
-              <div style={{ fontSize:10, color:"#6b7280" }}>To:</div>
-              <input type="date" value={logTo} onChange={e=>setLogTo(e.target.value)}
-                style={{ padding:"4px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:11, color:"#1a1f2e" }} />
-              <button onClick={()=>{setLogFrom("");setLogTo("");}} style={{ padding:"4px 10px", background:"#f1f4f8", border:"1px solid #dde1e8", borderRadius:4, fontSize:11, color:"#6b7280", cursor:"pointer" }}>Clear</button>
-              <span style={{ background:"#f0f4ff", border:"1px solid #b4c6fb", color:"#1A3A5C", padding:"3px 10px", borderRadius:4, fontSize:11, fontWeight:600 }}>{filteredLog.length} entries</span>
-              <button onClick={()=>setShowLog(v=>!v)} style={{ padding:"5px 12px", background:"#1A3A5C", border:"none", borderRadius:4, fontSize:11, color:"#fff", cursor:"pointer", fontWeight:600 }}>
-                {showLog ? "Hide Log" : "Show Log"}
-              </button>
-            </div>
-          </div>
-          {showLog && (
-            filteredLog.length === 0 ? (
-              <div style={{ padding:"24px", textAlign:"center", color:"#8a94a6", fontSize:13 }}>No activity recorded yet. Changes will appear here automatically.</div>
-            ) : (
-              <div style={{ overflowX:"auto", maxHeight:400, overflowY:"auto" }}>
-                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
-                  <thead style={{ position:"sticky", top:0 }}>
-                    <tr style={{ background:"#f8f9fb" }}>
-                      {["TIMESTAMP","FACILITY","FIELD CHANGED","PREVIOUS VALUE","NEW VALUE","TYPE"].map(h=>(
-                        <th key={h} style={{ textAlign:"left", padding:"9px 10px", color:"#8a94a6", fontWeight:600, fontSize:10, borderBottom:"2px solid #e2e6ed", whiteSpace:"nowrap" }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredLog.map((l,i)=>{
-                      const ts=LOG_TYPE_STYLE[l.type]||LOG_TYPE_STYLE.notes;
-                      return (
-                        <tr key={l.id} style={{ borderBottom:"1px solid #f0f2f5", background:i%2===0?"#fff":"#fafbfc" }}>
-                          <td style={{ padding:"7px 10px", fontFamily:"monospace", fontSize:10, color:"#8a94a6", whiteSpace:"nowrap" }}>{l.ts}</td>
-                          <td style={{ padding:"7px 10px", fontWeight:600, color:"#1A3A5C", whiteSpace:"nowrap" }}>{l.facility}</td>
-                          <td style={{ padding:"7px 10px", color:"#4a5568" }}>{l.field}</td>
-                          <td style={{ padding:"7px 10px", color:"#8b1c1c", fontSize:11 }}>{l.oldVal}</td>
-                          <td style={{ padding:"7px 10px", color:"#1a6b35", fontSize:11, fontWeight:600 }}>{l.newVal}</td>
-                          <td style={{ padding:"7px 10px" }}>
-                            <span style={{ background:ts.bg, border:`1px solid ${ts.border}`, color:ts.text, padding:"2px 8px", borderRadius:3, fontSize:10, fontWeight:600, textTransform:"uppercase" as const }}>{l.type}</span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )
-          )}
-        </div>
-
         {/* Tickets */}
         <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, overflow:"hidden" }}>
           <div style={{ padding:"12px 16px", borderBottom:"1px solid #e2e6ed", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
@@ -760,9 +761,11 @@ export default function Dashboard() {
           {showTicketForm&&(
             <div style={{ padding:"16px", background:"#f8f9fb", borderBottom:"1px solid #e2e6ed", display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:10 }}>
               <div><div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>OFFICE / LOCATION</div>
-                <input value={newTicket.office} onChange={e=>setNewTicket(p=>({...p,office:e.target.value}))} placeholder="Office name or Unknown / Remote" style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} /></div>
+                <input value={newTicket.office} onChange={e=>setNewTicket(p=>({...p,office:e.target.value}))} placeholder="Office name or Unknown / Remote"
+                  style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} /></div>
               <div><div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>MEDIUM</div>
-                <select value={newTicket.medium} onChange={e=>setNewTicket(p=>({...p,medium:e.target.value}))} style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff", cursor:"pointer" }}>
+                <select value={newTicket.medium} onChange={e=>setNewTicket(p=>({...p,medium:e.target.value}))}
+                  style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff", cursor:"pointer" }}>
                   <option value="">— Select Medium —</option>
                   <option value="Email">Email</option>
                   <option value="Helpdesk Ticket">Helpdesk Ticket</option>
@@ -770,11 +773,14 @@ export default function Dashboard() {
                   <option value="In Person">In Person</option>
                 </select></div>
               <div style={{ gridColumn:"span 2" }}><div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>ISSUE DESCRIPTION</div>
-                <input value={newTicket.description} onChange={e=>setNewTicket(p=>({...p,description:e.target.value}))} placeholder="Describe the issue..." style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} /></div>
+                <input value={newTicket.description} onChange={e=>setNewTicket(p=>({...p,description:e.target.value}))} placeholder="Describe the issue..."
+                  style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} /></div>
               <div><div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>REPORTED BY</div>
-                <input value={newTicket.reportedBy} onChange={e=>setNewTicket(p=>({...p,reportedBy:e.target.value}))} placeholder="Name or Unknown" style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} /></div>
+                <input value={newTicket.reportedBy} onChange={e=>setNewTicket(p=>({...p,reportedBy:e.target.value}))} placeholder="Name or Unknown"
+                  style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} /></div>
               <div><div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>ASSIGN TO TEAM MEMBER</div>
-                <select value={newTicket.assignedTo} onChange={e=>setNewTicket(p=>({...p,assignedTo:e.target.value}))} style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff", cursor:"pointer" }}>
+                <select value={newTicket.assignedTo} onChange={e=>setNewTicket(p=>({...p,assignedTo:e.target.value}))}
+                  style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff", cursor:"pointer" }}>
                   {TEAM.map(m=><option key={m} value={m.startsWith("—")?"":m}>{m}</option>)}
                 </select></div>
               <div style={{ display:"flex", alignItems:"flex-end", gap:8, gridColumn:"span 2" }}>
@@ -805,18 +811,24 @@ export default function Dashboard() {
                       <td style={{ padding:"7px 10px", color:"#4a5568", maxWidth:200 }}>{t.description}</td>
                       <td style={{ padding:"7px 10px", color:"#4a5568", whiteSpace:"nowrap" }}>{t.reportedBy}</td>
                       <td style={{ padding:"7px 10px" }}>
-                        <select value={t.assignedTo} onChange={e=>updateTicket(t.id,"assignedTo",e.target.value)} style={{ border:"1px solid #dde1e8", borderRadius:3, padding:"3px 6px", fontSize:11, color:"#1a1f2e", background:"#fff", cursor:"pointer" }}>
+                        <select value={t.assignedTo} onChange={e=>updateTicket(t.id,"assignedTo",e.target.value)}
+                          style={{ border:"1px solid #dde1e8", borderRadius:3, padding:"3px 6px", fontSize:11, color:"#1a1f2e", background:"#fff", cursor:"pointer" }}>
                           {TEAM.map(m=><option key={m} value={m.startsWith("—")?"":m}>{m}</option>)}
                         </select>
                       </td>
                       <td style={{ padding:"7px 10px" }}>
-                        <select value={t.status} onChange={e=>updateTicket(t.id,"status",e.target.value)} style={{ background:TICKET_STATUS[t.status].bg, color:TICKET_STATUS[t.status].text, border:`1px solid ${TICKET_STATUS[t.status].border}`, borderRadius:3, padding:"3px 8px", fontSize:11, fontWeight:600, cursor:"pointer" }}>
-                          <option value="open">Open</option><option value="inprogress">In Progress</option><option value="pending">Pending</option><option value="resolved">Resolved</option>
+                        <select value={t.status} onChange={e=>updateTicket(t.id,"status",e.target.value)}
+                          style={{ background:TICKET_STATUS[t.status].bg, color:TICKET_STATUS[t.status].text, border:`1px solid ${TICKET_STATUS[t.status].border}`, borderRadius:3, padding:"3px 8px", fontSize:11, fontWeight:600, cursor:"pointer" }}>
+                          <option value="open">Open</option>
+                          <option value="inprogress">In Progress</option>
+                          <option value="pending">Pending</option>
+                          <option value="resolved">Resolved</option>
                         </select>
                       </td>
                       <td style={{ padding:"7px 10px" }}>
                         {t.status==="resolved" ? (
-                          <select value={t.resolvedBy} onChange={e=>updateTicket(t.id,"resolvedBy",e.target.value)} style={{ border:"1px solid #a8d5b5", borderRadius:3, padding:"3px 6px", fontSize:11, color:"#1a6b35", background:"#edf7f0", cursor:"pointer" }}>
+                          <select value={t.resolvedBy} onChange={e=>updateTicket(t.id,"resolvedBy",e.target.value)}
+                            style={{ border:"1px solid #a8d5b5", borderRadius:3, padding:"3px 6px", fontSize:11, color:"#1a6b35", background:"#edf7f0", cursor:"pointer" }}>
                             {TEAM.map(m=><option key={m} value={m.startsWith("—")?"":m}>{m}</option>)}
                           </select>
                         ) : <span style={{ color:"#c0c8d6", fontSize:11 }}>—</span>}
@@ -833,6 +845,7 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+
       </div>
     </div>
   );
