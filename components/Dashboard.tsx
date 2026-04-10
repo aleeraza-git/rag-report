@@ -51,6 +51,7 @@ const TEAM = [
 
 type RAGStatus = "green" | "amber" | "red" | "na";
 interface FacilityState {
+  requiredBandwidth: string;
   internet: RAGStatus;
   bio: RAGStatus;
   printing: RAGStatus;
@@ -132,7 +133,7 @@ function calcOverall(s: FacilityState): RAGStatus {
   return "green";
 }
 function defaultState(): FacilityState {
-  return { internet:"green", bio:"green", printing:"green", bandwidth:"", issue:"", notes:"", ts:nowTime() };
+  return { internet:"green", bio:"green", printing:"green", bandwidth:"", requiredBandwidth:"", issue:"", notes:"", ts:nowTime() };
 }
 
 function Dot({ s }: { s: RAGStatus }) {
@@ -386,14 +387,21 @@ export default function Dashboard() {
     const rows = FACILITIES.map((f,i) => {
       const s = state[f.name] ?? defaultState();
       const ov = calcOverall(s);
-      return [String(i+1), f.name, f.cat, iL[s.internet], bL[s.bio], pL[s.printing], oL[ov], s.bandwidth||"—", s.issue||"—", s.notes||"—"];
+      const cur = s.bandwidth?.replace(/[^0-9.]/g,"");
+      const req = s.requiredBandwidth?.replace(/[^0-9.]/g,"");
+      let bwStatus = "—";
+      if (cur && req) {
+        const pct = Math.round((parseFloat(cur)/parseFloat(req))*100);
+        bwStatus = pct >= 100 ? `${pct}% OK` : pct >= 70 ? `${pct}% LOW` : `${pct}% CRITICAL`;
+      }
+      return [String(i+1), f.name, f.cat, iL[s.internet], bL[s.bio], pL[s.printing], oL[ov], s.bandwidth||"—", s.requiredBandwidth||"—", bwStatus, s.issue||"—", s.notes||"—"];
     });
 
     autoTable(doc, {
       startY: 76,
       showHead: "everyPage",
       margin: { left:8, right:8 },
-      head: [["#","Facility Name","Category","Internet","Biometric","Printing","Overall","Bandwidth","Reported Issue","Notes"]],
+      head: [["#","Facility Name","Category","Internet","Biometric","Printing","Overall","Bandwidth","Required BW","BW Status","Reported Issue","Notes"]],
       body: rows,
       styles: { fontSize:7.5, cellPadding:{ top:3,bottom:3,left:3,right:3 }, font:"helvetica", lineColor:[210,218,230], lineWidth:0.3, textColor:[30,40,60], overflow:"linebreak" },
       headStyles: { fillColor:[15,40,75], textColor:[255,255,255], fontStyle:"bold", fontSize:7.5, cellPadding:{ top:4,bottom:4,left:3,right:3 }, lineColor:[201,163,66], lineWidth:0.5, halign:"center" },
@@ -401,15 +409,17 @@ export default function Dashboard() {
       rowPageBreak: "avoid",
       columnStyles: {
         0:{ cellWidth:6,  halign:"center", textColor:[150,160,180], fontStyle:"bold" },
-        1:{ cellWidth:30, fontStyle:"bold", textColor:[15,40,75] },
-        2:{ cellWidth:15, halign:"center", fontStyle:"bold" },
-        3:{ cellWidth:20, halign:"center" },
-        4:{ cellWidth:22, halign:"center" },
-        5:{ cellWidth:18, halign:"center" },
-        6:{ cellWidth:19, halign:"center", fontStyle:"bold" },
-        7:{ cellWidth:15, halign:"center" },
-        8:{ cellWidth:28 },
-        9:{ cellWidth:24 },
+        1:{ cellWidth:28, fontStyle:"bold", textColor:[15,40,75] },
+        2:{ cellWidth:14, halign:"center", fontStyle:"bold" },
+        3:{ cellWidth:18, halign:"center" },
+        4:{ cellWidth:20, halign:"center" },
+        5:{ cellWidth:16, halign:"center" },
+        6:{ cellWidth:18, halign:"center", fontStyle:"bold" },
+        7:{ cellWidth:14, halign:"center" },
+        8:{ cellWidth:14, halign:"center" },
+        9:{ cellWidth:16, halign:"center", fontStyle:"bold" },
+        10:{ cellWidth:26 },
+        11:{ cellWidth:20 },
       },
       didParseCell: (data: any) => {
         if (data.section === "body") {
@@ -436,7 +446,14 @@ export default function Dashboard() {
             if (catColors[row[2]]) { data.cell.styles.textColor = catColors[row[2]]; data.cell.styles.fontStyle = "bold"; }
           }
           if (data.column.index === 7 && row[7] !== "—") { data.cell.styles.fillColor = [219,234,254]; data.cell.styles.textColor = [30,64,175]; data.cell.styles.fontStyle = "bold"; }
-          if (data.column.index === 8 && row[8] !== "—") { data.cell.styles.textColor = [160,20,20]; }
+          if (data.column.index === 8 && row[8] !== "—") { data.cell.styles.fillColor = [219,234,254]; data.cell.styles.textColor = [30,64,175]; data.cell.styles.fontStyle = "bold"; }
+          if (data.column.index === 9 && row[9] !== "—") {
+            const v = row[9];
+            if (v.includes("OK"))       { data.cell.styles.fillColor=[198,239,206]; data.cell.styles.textColor=[15,90,40];  data.cell.styles.fontStyle="bold"; }
+            if (v.includes("LOW"))      { data.cell.styles.fillColor=[255,235,156]; data.cell.styles.textColor=[120,70,0];  data.cell.styles.fontStyle="bold"; }
+            if (v.includes("CRITICAL")) { data.cell.styles.fillColor=[255,199,206]; data.cell.styles.textColor=[160,20,20]; data.cell.styles.fontStyle="bold"; }
+          }
+          if (data.column.index === 10 && row[10] !== "—") { data.cell.styles.textColor = [160,20,20]; }
         }
       },
       didDrawPage: (data: any) => {
@@ -628,7 +645,7 @@ export default function Dashboard() {
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
               <thead>
                 <tr style={{ background:"#f8f9fb" }}>
-                  {["#","FACILITY","CATEGORY","INTERNET","BIOMETRIC","PRINTING DEVICES","OVERALL","BANDWIDTH","REPORTED ISSUE / OUTSTANDING","NOTES","UPDATED"].map(h => (
+                  {["#","FACILITY","CATEGORY","INTERNET","BIOMETRIC","PRINTING DEVICES","OVERALL","BANDWIDTH","REQUIRED BW","STATUS","REPORTED ISSUE / OUTSTANDING","NOTES","UPDATED"].map(h => (
                     <th key={h} style={{ textAlign:"left", padding:"9px 10px", color:"#8a94a6", fontWeight:600, fontSize:10, letterSpacing:".3px", borderBottom:"2px solid #e2e6ed", whiteSpace:"nowrap" }}>{h}</th>
                   ))}
                 </tr>
