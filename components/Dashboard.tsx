@@ -594,8 +594,8 @@ export default function Dashboard() {
     // ═══════════════════════════════════════════════════════
     if (filteredLog.length > 0) {
       doc.addPage();
-      const rl = logFrom||logTo ? `${logFrom?logFrom.replace("T"," "):"All"} — ${logTo?logTo.replace("T"," "):"Now"}` : "Complete History";
-      header("Activity Log", "Change History  |  "+rl);
+      const rl = logFrom||logTo ? `${logFrom?logFrom.replace("T"," "):"Start"} to ${logTo?logTo.replace("T"," "):"Now"}` : "Complete History";
+      header("Activity Log", rl === "Complete History" ? "All Recorded Changes" : "Filtered: "+rl);
       footer();
 
       // Type count badges
@@ -617,7 +617,14 @@ export default function Dashboard() {
       doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(...C.muted);
       doc.text(`${filteredLog.length} total entries recorded`, bx+2, 32.5);
 
-      const lRows = filteredLog.map(l => [l.ts, l.facility, l.field, l.oldVal, l.newVal, l.type.toUpperCase()]);
+      const humanize = (v: string) => {
+        const m: Record<string,string> = {
+          green:"Working / OK", amber:"Slow / Degraded", red:"Down / Critical", na:"N/A",
+          open:"Open", inprogress:"In Progress", resolved:"Resolved", pending:"Pending",
+        };
+        return m[v.toLowerCase()] || v;
+      };
+      const lRows = filteredLog.map(l => [l.ts, l.facility, l.field, humanize(l.oldVal), humanize(l.newVal), l.type.toUpperCase()]);
       autoTable(doc, {
         startY: 39,
         showHead: "everyPage",
