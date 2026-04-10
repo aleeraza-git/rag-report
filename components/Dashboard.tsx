@@ -368,144 +368,123 @@ export default function Dashboard() {
     const doc = new jsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
     const W = doc.internal.pageSize.getWidth();
     const H = doc.internal.pageSize.getHeight();
-    const ML = 12; const MR = 12; const TW = W - ML - MR;
+    const ML = 14; const MR = 14; const TW = W - ML - MR;
 
     const iL: Record<RAGStatus,string> = { green:"Working", amber:"Slow / Intermittent", red:"Down", na:"N/A" };
     const bL: Record<RAGStatus,string> = { green:"Working & Syncing", amber:"Delayed", red:"Not Working", na:"N/A" };
     const pL: Record<RAGStatus,string> = { green:"Working", amber:"Partial", red:"Not Working", na:"N/A" };
     const oL: Record<RAGStatus,string> = { green:"Operational", amber:"Degraded", red:"Critical", na:"N/A" };
 
-    const STATUS_FILLS: Record<RAGStatus,[number,number,number]> = {
-      green:[198,239,206], amber:[255,235,156], red:[255,199,206], na:[240,242,246]
-    };
-    const STATUS_TEXTS: Record<RAGStatus,[number,number,number]> = {
-      green:[15,90,40], amber:[120,70,0], red:[155,20,20], na:[120,130,145]
-    };
+    const SF: Record<RAGStatus,[number,number,number]> = { green:[198,239,206], amber:[255,235,156], red:[255,199,206], na:[240,242,246] };
+    const ST: Record<RAGStatus,[number,number,number]> = { green:[15,90,40], amber:[120,70,0], red:[155,20,20], na:[120,130,145] };
 
-    const pageNum = { n: 0 };
+    let pg = 0;
 
-    const drawLogo = (x: number, y: number) => {
-      // Outer circle
-      doc.setDrawColor(40,40,40); doc.setLineWidth(0.6);
-      doc.circle(x+8, y+8, 7.5, "S");
-      // Inner decorative ring
-      doc.setLineWidth(0.3);
-      doc.circle(x+8, y+8, 6, "S");
-      // I - vertical stroke (letterform)
-      doc.setFillColor(40,40,40);
-      doc.rect(x+7, y+4.5, 2, 7, "F");
-      // Top serif
-      doc.rect(x+5.5, y+4.5, 5, 0.8, "F");
-      // Bottom serif
-      doc.rect(x+5.5, y+10.7, 5, 0.8, "F");
-      // Small decorative dots top left and right of circle
-      doc.circle(x+2, y+2, 0.4, "F");
-      doc.circle(x+14, y+2, 0.4, "F");
-      doc.circle(x+2, y+14, 0.4, "F");
-      doc.circle(x+14, y+14, 0.4, "F");
-    };
-
-    const drawHeader = (title: string, subtitle: string) => {
-      pageNum.n++;
-      // Top gold bar
-      doc.setFillColor(180,145,50); doc.rect(0,0,W,2,"F");
-      // Header background
-      doc.setFillColor(18,35,65); doc.rect(0,2,W,40,"F");
-      // Bottom gold bar
-      doc.setFillColor(180,145,50); doc.rect(0,42,W,1.2,"F");
-
-      // Logo circle area
-      doc.setFillColor(255,255,255); doc.circle(ML+10, 22, 11, "F");
-      drawLogo(ML+1.5, 12);
-
-      // Company name block
+    const drawHeader = (title: string, sub: string) => {
+      pg++;
+      // Full width dark header
+      doc.setFillColor(22,42,76); doc.rect(0,0,W,44,"F");
+      // Left gold accent bar
+      doc.setFillColor(192,152,55); doc.rect(0,0,6,44,"F");
+      // Company name - large serif style using helvetica bold
       doc.setTextColor(255,255,255);
-      doc.setFontSize(15); doc.setFont("helvetica","bold");
-      doc.text("IMARAT", ML+26, 18);
-      doc.setFontSize(7.5); doc.setFont("helvetica","normal"); doc.setTextColor(200,210,230);
-      doc.text("Group of Companies", ML+26, 24);
-      // Thin separator line
-      doc.setDrawColor(180,145,50); doc.setLineWidth(0.3);
-      doc.line(ML+26, 27, ML+80, 27);
-      doc.setFontSize(6.5); doc.setFont("helvetica","normal"); doc.setTextColor(160,178,210);
-      doc.text("Information Technology Department", ML+26, 31);
-      doc.text("it.support@imarat.com.pk", ML+26, 36);
-
-      // Vertical divider
-      doc.setDrawColor(180,145,50); doc.setLineWidth(0.4);
-      doc.line(ML+88, 6, ML+88, 38);
-
-      // Report title block
-      doc.setTextColor(255,255,255); doc.setFontSize(12); doc.setFont("helvetica","bold");
-      doc.text(title, ML+92, 16);
-      doc.setFontSize(7.5); doc.setFont("helvetica","normal"); doc.setTextColor(180,195,220);
-      doc.text(subtitle, ML+92, 22);
-      doc.setDrawColor(180,145,50); doc.setLineWidth(0.2);
-      doc.line(ML+92, 25, W-MR, 25);
-      doc.setFontSize(7.5); doc.setFont("helvetica","bold"); doc.setTextColor(200,170,80);
-      doc.text(today, W-MR, 30, { align:"right" });
-      doc.setFontSize(7); doc.setFont("helvetica","normal"); doc.setTextColor(160,178,210);
-      doc.text("Time: "+timeNow, W-MR, 36, { align:"right" });
-      doc.text("Page: "+String(pageNum.n), W-MR, 40, { align:"right" });
+      doc.setFontSize(22); doc.setFont("helvetica","bold");
+      doc.text("IMARAT", 14, 18);
+      doc.setFontSize(9); doc.setFont("helvetica","normal"); doc.setTextColor(192,152,55);
+      doc.text("GROUP OF COMPANIES", 14, 25);
+      // Thin rule under company name
+      doc.setDrawColor(192,152,55); doc.setLineWidth(0.3);
+      doc.line(14,28,70,28);
+      doc.setFontSize(7); doc.setFont("helvetica","normal"); doc.setTextColor(170,185,210);
+      doc.text("Information Technology Department", 14, 32);
+      doc.text("it.support@imarat.com.pk", 14, 37);
+      // Vertical rule
+      doc.setDrawColor(192,152,55); doc.setLineWidth(0.4);
+      doc.line(80,6,80,40);
+      // Right side - report title
+      doc.setTextColor(255,255,255);
+      doc.setFontSize(13); doc.setFont("helvetica","bold");
+      doc.text(title, 86, 16);
+      doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(170,185,210);
+      doc.text(sub, 86, 23);
+      doc.setDrawColor(192,152,55); doc.setLineWidth(0.2);
+      doc.line(86,26,W-ML,26);
+      doc.setFontSize(8); doc.setFont("helvetica","bold"); doc.setTextColor(192,152,55);
+      doc.text(today, W-ML, 32, { align:"right" });
+      doc.setFontSize(7); doc.setFont("helvetica","normal"); doc.setTextColor(170,185,210);
+      doc.text("Generated: "+timeNow, W-ML, 38, { align:"right" });
+      // Bottom border of header
+      doc.setFillColor(192,152,55); doc.rect(0,44,W,1,"F");
     };
 
     const drawFooter = () => {
-      doc.setFillColor(18,35,65); doc.rect(0,H-11,W,11,"F");
-      doc.setFillColor(180,145,50); doc.rect(0,H-11,W,0.8,"F");
-      doc.setTextColor(160,178,210); doc.setFontSize(6.5); doc.setFont("helvetica","normal");
-      doc.text("IMARAT Group of Companies  |  IT Facilities RAG Report  |  CONFIDENTIAL  |  Internal Use Only", ML, H-4);
-      doc.text(`${today}  |  ${timeNow}`, W-MR, H-4, { align:"right" });
+      // Footer line
+      doc.setFillColor(192,152,55); doc.rect(0,H-12,W,0.5,"F");
+      doc.setFillColor(245,246,250); doc.rect(0,H-11.5,W,11.5,"F");
+      doc.setFillColor(22,42,76); doc.rect(0,H-11.5,4,11.5,"F");
+      doc.setTextColor(80,90,110); doc.setFontSize(6.5); doc.setFont("helvetica","normal");
+      doc.text("IMARAT Group of Companies  |  IT RAG Report  |  Confidential  |  Internal Use Only", 10, H-5);
+      doc.text(`Page ${pg}  |  ${today}  |  ${timeNow}`, W-ML, H-5, { align:"right" });
     };
 
+    // STATUS LEGEND
     const drawLegend = (y: number) => {
-      doc.setFillColor(247,249,253); doc.roundedRect(ML, y, TW, 12, 2, 2, "F");
-      doc.setDrawColor(215,222,235); doc.setLineWidth(0.3); doc.roundedRect(ML, y, TW, 12, 2, 2, "S");
-      doc.setFontSize(7); doc.setFont("helvetica","bold"); doc.setTextColor(60,75,100);
-      doc.text("STATUS GUIDE:", ML+3, y+8);
+      doc.setFillColor(245,247,252); doc.roundedRect(ML,y,TW,11,1.5,1.5,"F");
+      doc.setDrawColor(210,218,232); doc.setLineWidth(0.25); doc.roundedRect(ML,y,TW,11,1.5,1.5,"S");
+      doc.setFontSize(6.5); doc.setFont("helvetica","bold"); doc.setTextColor(50,65,95);
+      doc.text("STATUS KEY:", ML+2.5, y+7);
       const items = [
-        { label:"  Operational / Working",   fill:[198,239,206] as [number,number,number], text:[15,90,40]  as [number,number,number], dot:[15,90,40]   as [number,number,number] },
-        { label:"  Warning / Degraded",       fill:[255,235,156] as [number,number,number], text:[120,70,0]  as [number,number,number], dot:[180,130,0]  as [number,number,number] },
-        { label:"  Critical / Down",          fill:[255,199,206] as [number,number,number], text:[155,20,20] as [number,number,number], dot:[200,30,30]  as [number,number,number] },
-        { label:"  Not Applicable",           fill:[240,242,246] as [number,number,number], text:[100,110,130]as [number,number,number],dot:[150,158,170] as [number,number,number] },
+        { label:"Operational / Working", r:198,g:239,b:206, tr:15,tg:90,tb:40 },
+        { label:"Warning / Degraded",    r:255,g:235,b:156, tr:120,tg:70,tb:0 },
+        { label:"Critical / Down",       r:255,g:199,b:206, tr:155,tg:20,tb:20 },
+        { label:"Not Applicable (N/A)",  r:240,g:242,b:246, tr:100,tg:110,tb:130 },
       ];
-      let lx = ML+34;
+      let lx = ML+28;
       items.forEach(item => {
-        doc.setFillColor(...item.fill); doc.roundedRect(lx, y+2, 40, 8, 1.5, 1.5, "F");
-        doc.setFillColor(...item.dot); doc.circle(lx+4, y+6.5, 2, "F");
-        doc.setTextColor(...item.text); doc.setFontSize(6.5); doc.setFont("helvetica","bold");
-        doc.text(item.label, lx+1, y+8);
-        lx += 43;
+        doc.setFillColor(item.r,item.g,item.b); doc.roundedRect(lx,y+1.5,40,8,1,1,"F");
+        doc.setFillColor(item.tr,item.tg,item.tb); doc.circle(lx+3.5,y+5.8,1.8,"F");
+        doc.setTextColor(item.tr,item.tg,item.tb); doc.setFontSize(6.3); doc.setFont("helvetica","bold");
+        doc.text(item.label, lx+7, y+7);
+        lx += 44;
       });
     };
 
-    const drawSummaryCards = (y: number) => {
+    // SUMMARY SECTION
+    const drawSummary = (y: number) => {
+      // Section label
+      doc.setFontSize(8); doc.setFont("helvetica","bold"); doc.setTextColor(22,42,76);
+      doc.text("DAILY SUMMARY", ML, y+5);
+      doc.setFillColor(192,152,55); doc.rect(ML,y+6.5,TW,0.4,"F");
+
       const cards = [
-        { label:"Total Facilities",  val:String(FACILITIES.length), fill:[232,238,252] as [number,number,number], accent:[18,35,65] as [number,number,number] },
-        { label:"Fully Operational", val:String(counts.green),       fill:[198,239,206] as [number,number,number], accent:[15,90,40] as [number,number,number] },
-        { label:"Warning Sites",     val:String(counts.amber),       fill:[255,235,156] as [number,number,number], accent:[120,70,0] as [number,number,number] },
-        { label:"Critical Sites",    val:String(counts.red),         fill:[255,199,206] as [number,number,number], accent:[155,20,20] as [number,number,number] },
-        { label:"Queries Today",     val:String(stats.received),     fill:[219,234,254] as [number,number,number], accent:[30,64,175] as [number,number,number] },
-        { label:"Resolved Today",    val:String(stats.resolved),     fill:[187,247,208] as [number,number,number], accent:[4,120,87]  as [number,number,number] },
-        { label:"Pending",           val:String(stats.pending),      fill:[254,215,170] as [number,number,number], accent:[120,53,15] as [number,number,number] },
+        { label:"Total Facilities",  val:String(FACILITIES.length), r:22,g:42,b:76,   bg:[232,237,250] as [number,number,number] },
+        { label:"Fully Operational", val:String(counts.green),       r:15,g:90,b:40,   bg:[198,239,206] as [number,number,number] },
+        { label:"Warning Sites",     val:String(counts.amber),       r:130,g:75,b:0,   bg:[255,235,156] as [number,number,number] },
+        { label:"Critical Sites",    val:String(counts.red),         r:155,g:20,b:20,  bg:[255,199,206] as [number,number,number] },
+        { label:"Queries Today",     val:String(stats.received),     r:30,g:60,b:175,  bg:[219,234,254] as [number,number,number] },
+        { label:"Resolved",          val:String(stats.resolved),     r:4,g:115,b:85,   bg:[185,245,205] as [number,number,number] },
+        { label:"Pending",           val:String(stats.pending),      r:130,g:58,b:10,  bg:[254,215,170] as [number,number,number] },
       ];
       const cw = TW/cards.length;
       cards.forEach((c,i) => {
         const x = ML+i*cw;
-        doc.setFillColor(...c.fill); doc.roundedRect(x+0.8, y, cw-2, 20, 1.5, 1.5, "F");
-        // Top accent line
-        doc.setFillColor(...c.accent); doc.roundedRect(x+0.8, y, cw-2, 3, 1.5, 1.5, "F"); doc.rect(x+0.8, y+1.5, cw-2, 1.5, "F");
-        doc.setTextColor(...c.accent);
-        doc.setFontSize(13); doc.setFont("helvetica","bold");
-        doc.text(c.val, x+cw/2-0.5, y+13, { align:"center" });
+        const [br,bg2,bb] = c.bg;
+        doc.setFillColor(br,bg2,bb); doc.roundedRect(x+0.5,y+9,cw-1.5,22,1.5,1.5,"F");
+        // top accent
+        doc.setFillColor(c.r,c.g,c.b); doc.roundedRect(x+0.5,y+9,cw-1.5,3.5,1.5,1.5,"F");
+        doc.rect(x+0.5,y+10.5,cw-1.5,2,"F");
+        doc.setTextColor(c.r,c.g,c.b);
+        doc.setFontSize(14); doc.setFont("helvetica","bold");
+        doc.text(c.val, x+(cw/2)-0.5, y+22, { align:"center" });
         doc.setFontSize(5.2); doc.setFont("helvetica","normal");
-        doc.text(c.label, x+cw/2-0.5, y+18, { align:"center" });
+        doc.text(c.label, x+(cw/2)-0.5, y+27.5, { align:"center" });
       });
     };
 
-    // PAGE 1 - FACILITY STATUS
+    // ── PAGE 1 ─────────────────────────────────────────────
     drawHeader("IT Facilities RAG Report","Daily Status Monitoring — All Sites");
-    drawLegend(47);
-    drawSummaryCards(63);
+    drawLegend(49);
+    drawSummary(63);
     drawFooter();
 
     const facRows = FACILITIES.map((f,idx) => {
@@ -513,44 +492,49 @@ export default function Dashboard() {
       const ov = calcOverall(s);
       const bw = bwCompare(s.bandwidth, s.requiredBandwidth);
       return {
-        data:[String(idx+1), f.name, f.cat, iL[s.internet], bL[s.bio], pL[s.printing], oL[ov], s.bandwidth?s.bandwidth+" Mbps":"—", s.requiredBandwidth?s.requiredBandwidth+" Mbps":"—", bw?bw.label:"—", s.issue||"—"],
+        data:[String(idx+1),f.name,f.cat,iL[s.internet],bL[s.bio],pL[s.printing],oL[ov],
+              s.bandwidth?s.bandwidth+" Mbps":"—",s.requiredBandwidth?s.requiredBandwidth+" Mbps":"—",
+              bw?bw.label:"—",s.issue||"—"],
         internet:s.internet, bio:s.bio, printing:s.printing, overall:ov, bw, cat:f.cat,
       };
     });
 
     autoTable(doc, {
-      startY: 87,
+      startY: 99,
       showHead: "everyPage",
       tableWidth: TW,
       margin: { left: ML, right: MR },
-      head:[["#","Facility Name","Category","Internet","Biometric","Printing","Overall Status","Current BW","Required BW","BW Status","Reported Issue"]],
+      head:[["#","Facility Name","Category","Internet","Biometric","Printing","Overall","Cur BW","Req BW","BW Status","Issue / Notes"]],
       body: facRows.map(r=>r.data),
-      styles:{ fontSize:7, cellPadding:{top:3,bottom:3,left:2.5,right:2.5}, font:"helvetica", lineColor:[218,225,237], lineWidth:0.3, textColor:[25,35,55], valign:"middle", overflow:"linebreak", minCellHeight:8 },
-      headStyles:{ fillColor:[18,35,65], textColor:[255,255,255], fontStyle:"bold", fontSize:7, halign:"center", cellPadding:{top:4,bottom:4,left:2.5,right:2.5}, lineColor:[180,145,50], lineWidth:0.5, minCellHeight:9 },
-      alternateRowStyles:{ fillColor:[248,250,253] },
+      styles:{ fontSize:7, cellPadding:{top:3,bottom:3,left:2.5,right:2.5}, font:"helvetica", lineColor:[215,222,235], lineWidth:0.3, textColor:[22,32,52], valign:"middle", overflow:"linebreak", minCellHeight:8.5 },
+      headStyles:{ fillColor:[22,42,76], textColor:[255,255,255], fontStyle:"bold", fontSize:7, halign:"center", cellPadding:{top:4,bottom:4,left:2.5,right:2.5}, lineColor:[192,152,55], lineWidth:0.5, minCellHeight:9 },
+      alternateRowStyles:{ fillColor:[247,249,253] },
       pageBreak:"auto", rowPageBreak:"avoid",
       columnStyles:{
-        0:{cellWidth:6,halign:"center",textColor:[170,178,192],fontStyle:"bold"},
-        1:{cellWidth:30,fontStyle:"bold",textColor:[10,30,65]},
-        2:{cellWidth:14,halign:"center"},
+        0:{cellWidth:6,halign:"center",textColor:[165,175,192],fontStyle:"bold"},
+        1:{cellWidth:30,fontStyle:"bold",textColor:[12,28,62]},
+        2:{cellWidth:13,halign:"center"},
         3:{cellWidth:20,halign:"center"},
         4:{cellWidth:20,halign:"center"},
         5:{cellWidth:16,halign:"center"},
-        6:{cellWidth:20,halign:"center",fontStyle:"bold"},
-        7:{cellWidth:14,halign:"center"},
-        8:{cellWidth:14,halign:"center"},
-        9:{cellWidth:14,halign:"center",fontStyle:"bold"},
-        10:{cellWidth:17},
+        6:{cellWidth:19,halign:"center",fontStyle:"bold"},
+        7:{cellWidth:13,halign:"center"},
+        8:{cellWidth:13,halign:"center"},
+        9:{cellWidth:13,halign:"center",fontStyle:"bold"},
+        10:{cellWidth:19},
       },
       didParseCell:(data:any)=>{
         if(data.section!=="body") return;
         const row=facRows[data.row.index]; if(!row) return;
         const si:Record<number,RAGStatus>={3:row.internet,4:row.bio,5:row.printing,6:row.overall};
         const s=si[data.column.index];
-        if(s){data.cell.styles.fillColor=STATUS_FILLS[s];data.cell.styles.textColor=STATUS_TEXTS[s];data.cell.styles.fontStyle="bold";}
-        if(data.column.index===2){const cc:Record<string,[number,number,number]>={Projects:[59,91,219],Imarat:[12,122,109],Graana:[124,58,237],Agency21:[192,86,33]};if(cc[row.cat]){data.cell.styles.textColor=cc[row.cat];data.cell.styles.fontStyle="bold";}}
+        if(s){data.cell.styles.fillColor=SF[s];data.cell.styles.textColor=ST[s];data.cell.styles.fontStyle="bold";}
+        if(data.column.index===2){
+          const cc:Record<string,[number,number,number]>={Projects:[59,91,219],Imarat:[12,122,109],Graana:[124,58,237],Agency21:[192,86,33]};
+          if(cc[row.cat]){data.cell.styles.textColor=cc[row.cat];data.cell.styles.fontStyle="bold";}
+        }
         if(data.column.index===7&&row.data[7]!=="—"){data.cell.styles.fillColor=[219,234,254];data.cell.styles.textColor=[30,64,175];data.cell.styles.fontStyle="bold";}
-        if(data.column.index===8&&row.data[8]!=="—"){data.cell.styles.fillColor=[235,235,255];data.cell.styles.textColor=[80,60,180];data.cell.styles.fontStyle="bold";}
+        if(data.column.index===8&&row.data[8]!=="—"){data.cell.styles.fillColor=[232,232,255];data.cell.styles.textColor=[80,55,180];data.cell.styles.fontStyle="bold";}
         if(data.column.index===9&&row.bw){
           if(row.bw.label.includes("OK"))  {data.cell.styles.fillColor=[198,239,206];data.cell.styles.textColor=[15,90,40];data.cell.styles.fontStyle="bold";}
           if(row.bw.label.includes("LOW")) {data.cell.styles.fillColor=[255,235,156];data.cell.styles.textColor=[120,70,0];data.cell.styles.fontStyle="bold";}
@@ -563,48 +547,48 @@ export default function Dashboard() {
       },
     });
 
-    // PAGE 2 - ACTIVITY LOG
+    // ── PAGE 2: ACTIVITY LOG ───────────────────────────────
     if(filteredLog.length>0){
       doc.addPage();
-      const rangeLabel=logFrom||logTo?`${logFrom?logFrom.replace("T"," "):"Start"} to ${logTo?logTo.replace("T"," "):"Now"}`:"All Time";
-      drawHeader("Activity Log",`Change History — ${rangeLabel}`);
+      const rl=logFrom||logTo?`${logFrom?logFrom.replace("T"," "):"Start"} to ${logTo?logTo.replace("T"," "):"Now"}`:"All Time";
+      drawHeader("Activity Log",`Change History — ${rl}`);
       drawFooter();
 
-      // Type summary pills
-      const typePills=[
-        {type:"STATUS",    fill:[219,234,254] as [number,number,number],text:[15,40,75]  as [number,number,number]},
-        {type:"ISSUE",     fill:[255,199,206] as [number,number,number],text:[155,20,20] as [number,number,number]},
-        {type:"BANDWIDTH", fill:[198,239,206] as [number,number,number],text:[15,90,40]  as [number,number,number]},
-        {type:"TICKET",    fill:[255,235,156] as [number,number,number],text:[120,70,0]  as [number,number,number]},
-        {type:"NOTES",     fill:[240,242,246] as [number,number,number],text:[80,90,110] as [number,number,number]},
-      ];
-      let px=ML;
-      typePills.forEach(p=>{
-        const cnt=filteredLog.filter(l=>l.type.toUpperCase()===p.type).length;
-        doc.setFillColor(...p.fill);doc.roundedRect(px,47,30,8,1.5,1.5,"F");
-        doc.setTextColor(...p.text);doc.setFontSize(6.5);doc.setFont("helvetica","bold");
-        doc.text(`${p.type}: ${cnt}`,px+15,52.5,{align:"center"});
-        px+=33;
+      const tmap:Record<string,{r:number;g:number;b:number;tr:number;tg:number;tb:number}> = {
+        STATUS:    {r:219,g:234,b:254,tr:22,tg:42,tb:130},
+        ISSUE:     {r:255,g:199,b:206,tr:155,tg:20,tb:20},
+        BANDWIDTH: {r:198,g:239,b:206,tr:15,tg:90,tb:40},
+        TICKET:    {r:255,g:235,b:156,tr:120,tg:70,tb:0},
+        NOTES:     {r:240,g:242,b:246,tr:80,tg:90,tb:110},
+      };
+      let px=ML; const types=Object.keys(tmap);
+      types.forEach(tp=>{
+        const cnt=filteredLog.filter(l=>l.type.toUpperCase()===tp).length;
+        const s=tmap[tp];
+        doc.setFillColor(s.r,s.g,s.b);doc.roundedRect(px,49,28,8,1.5,1.5,"F");
+        doc.setTextColor(s.tr,s.tg,s.tb);doc.setFontSize(6.3);doc.setFont("helvetica","bold");
+        doc.text(`${tp}: ${cnt}`,px+14,54.5,{align:"center"});
+        px+=31;
       });
-      doc.setFontSize(7);doc.setFont("helvetica","normal");doc.setTextColor(100,110,130);
-      doc.text(`Total entries: ${filteredLog.length}`,px+2,52.5);
+      doc.setFontSize(7);doc.setFont("helvetica","normal");doc.setTextColor(100,112,135);
+      doc.text(`${filteredLog.length} total entries`,px+2,54.5);
 
       const lRows=filteredLog.map(l=>[l.ts,l.facility,l.field,l.oldVal,l.newVal,l.type.toUpperCase()]);
       autoTable(doc,{
-        startY:59,showHead:"everyPage",tableWidth:TW,margin:{left:ML,right:MR},
-        head:[["Timestamp","Facility / Office","Field Changed","Previous Value","New Value","Type"]],
+        startY:61,showHead:"everyPage",tableWidth:TW,margin:{left:ML,right:MR},
+        head:[["Timestamp","Facility / Office","Field Changed","Previous Value","Updated Value","Type"]],
         body:lRows,
-        styles:{fontSize:7,cellPadding:{top:2.5,bottom:2.5,left:2.5,right:2.5},font:"helvetica",lineColor:[218,225,237],lineWidth:0.3,textColor:[25,35,55],overflow:"linebreak",minCellHeight:8},
-        headStyles:{fillColor:[18,35,65],textColor:[255,255,255],fontStyle:"bold",fontSize:7,halign:"center",cellPadding:{top:4,bottom:4,left:2.5,right:2.5},lineColor:[180,145,50],lineWidth:0.5},
-        alternateRowStyles:{fillColor:[248,250,253]},
+        styles:{fontSize:7,cellPadding:{top:3,bottom:3,left:2.5,right:2.5},font:"helvetica",lineColor:[215,222,235],lineWidth:0.3,textColor:[22,32,52],overflow:"linebreak",minCellHeight:8.5},
+        headStyles:{fillColor:[22,42,76],textColor:[255,255,255],fontStyle:"bold",fontSize:7,halign:"center",cellPadding:{top:4,bottom:4,left:2.5,right:2.5},lineColor:[192,152,55],lineWidth:0.5},
+        alternateRowStyles:{fillColor:[247,249,253]},
         rowPageBreak:"avoid",
         columnStyles:{
-          0:{cellWidth:36},
-          1:{cellWidth:34,fontStyle:"bold",textColor:[10,30,65]},
+          0:{cellWidth:34},
+          1:{cellWidth:32,fontStyle:"bold",textColor:[12,28,62]},
           2:{cellWidth:26},
-          3:{cellWidth:30},
-          4:{cellWidth:30,fontStyle:"bold"},
-          5:{cellWidth:21,halign:"center",fontStyle:"bold"},
+          3:{cellWidth:28},
+          4:{cellWidth:28,fontStyle:"bold"},
+          5:{cellWidth:24,halign:"center",fontStyle:"bold"},
         },
         didParseCell:(data:any)=>{
           if(data.section==="body"){
@@ -621,52 +605,49 @@ export default function Dashboard() {
               else if(v.includes("Down")||v.includes("Critical")){data.cell.styles.textColor=[155,20,20];}
             }
             if(data.column.index===5){
-              const t=lRows[data.row.index][5];
-              if(t==="STATUS")    {data.cell.styles.fillColor=[219,234,254];data.cell.styles.textColor=[15,40,75];}
-              if(t==="ISSUE")     {data.cell.styles.fillColor=[255,199,206];data.cell.styles.textColor=[155,20,20];}
-              if(t==="TICKET")    {data.cell.styles.fillColor=[255,235,156];data.cell.styles.textColor=[120,70,0];}
-              if(t==="BANDWIDTH") {data.cell.styles.fillColor=[198,239,206];data.cell.styles.textColor=[15,90,40];}
-              if(t==="NOTES")     {data.cell.styles.fillColor=[240,242,246];data.cell.styles.textColor=[80,90,110];}
+              const t=lRows[data.row.index][5]; const s=tmap[t];
+              if(s){data.cell.styles.fillColor=[s.r,s.g,s.b];data.cell.styles.textColor=[s.tr,s.tg,s.tb];}
             }
           }
         },
-        didDrawPage:(data:any)=>{try{drawFooter();if(data.pageNumber>1)drawHeader("Activity Log",`Change History — ${rangeLabel} (Continued)`);}catch(e){}},
+        didDrawPage:(data:any)=>{try{drawFooter();if(data.pageNumber>1)drawHeader("Activity Log",`${rl} (Continued)`);}catch(e){}},
       });
     }
 
-    // PAGE 3 - TICKETS
+    // ── PAGE 3: TICKETS ────────────────────────────────────
     if(tickets.length>0){
       doc.addPage();
-      drawHeader("IT Support Tickets","Helpdesk Issue Tracking — All Reported Incidents");
+      drawHeader("IT Support Tickets","Helpdesk Issue Tracking");
       drawFooter();
-      const tPills=[
-        {label:`Total: ${tickets.length}`,         fill:[232,238,252] as [number,number,number],text:[18,35,65]  as [number,number,number]},
-        {label:`Open: ${tCounts.open}`,             fill:[255,199,206] as [number,number,number],text:[155,20,20] as [number,number,number]},
-        {label:`In Progress: ${tCounts.inprogress}`,fill:[255,235,156] as [number,number,number],text:[120,70,0]  as [number,number,number]},
-        {label:`Pending: ${tCounts.pending}`,       fill:[219,234,254] as [number,number,number],text:[30,64,175] as [number,number,number]},
-        {label:`Resolved: ${tCounts.resolved}`,     fill:[198,239,206] as [number,number,number],text:[15,90,40]  as [number,number,number]},
+      const tpills=[
+        {label:`Total: ${tickets.length}`,           r:22,g:42,b:76,   bg:[232,237,250] as [number,number,number]},
+        {label:`Open: ${tCounts.open}`,               r:155,g:20,b:20,  bg:[255,199,206] as [number,number,number]},
+        {label:`In Progress: ${tCounts.inprogress}`,  r:120,g:70,b:0,   bg:[255,235,156] as [number,number,number]},
+        {label:`Pending: ${tCounts.pending}`,         r:30,g:64,b:175,  bg:[219,234,254] as [number,number,number]},
+        {label:`Resolved: ${tCounts.resolved}`,       r:15,g:90,b:40,   bg:[198,239,206] as [number,number,number]},
       ];
       let tpx=ML;
-      tPills.forEach(p=>{
-        doc.setFillColor(...p.fill);doc.roundedRect(tpx,47,34,8,1.5,1.5,"F");
-        doc.setTextColor(...p.text);doc.setFontSize(6.5);doc.setFont("helvetica","bold");
-        doc.text(p.label,tpx+17,52.5,{align:"center"});
+      tpills.forEach(p=>{
+        const[br,bg2,bb]=p.bg;
+        doc.setFillColor(br,bg2,bb);doc.roundedRect(tpx,49,34,9,1.5,1.5,"F");
+        doc.setTextColor(p.r,p.g,p.b);doc.setFontSize(6.5);doc.setFont("helvetica","bold");
+        doc.text(p.label,tpx+17,55,{align:"center"});
         tpx+=37;
       });
       const tRows=tickets.map(t=>[
-        t.id, t.office, t.medium||"—", t.description, t.reportedBy,
+        t.id,t.office,t.medium||"—",t.description,t.reportedBy,
         t.assignedTo||"Unassigned",
         t.status==="open"?"Open":t.status==="inprogress"?"In Progress":t.status==="pending"?"Pending":"Resolved",
-        t.resolvedBy||"—", t.ts, t.resolvedTs||"—",
+        t.resolvedBy||"—",t.ts,t.resolvedTs||"—",
       ]);
       autoTable(doc,{
-        startY:59,showHead:"everyPage",tableWidth:TW,margin:{left:ML,right:MR},
-        head:[["Ticket ID","Office","Via","Issue Description","Reported By","Assigned To","Status","Resolved By","Opened At","Resolved At"]],
+        startY:62,showHead:"everyPage",tableWidth:TW,margin:{left:ML,right:MR},
+        head:[["Ticket ID","Office","Via","Issue Description","Reported By","Assigned To","Status","Resolved By","Opened At","Closed At"]],
         body:tRows,
-        styles:{fontSize:7,cellPadding:{top:2.5,bottom:2.5,left:2.5,right:2.5},font:"helvetica",lineColor:[218,225,237],lineWidth:0.3,textColor:[25,35,55],overflow:"linebreak",minCellHeight:8},
-        headStyles:{fillColor:[18,35,65],textColor:[255,255,255],fontStyle:"bold",fontSize:7,halign:"center",cellPadding:{top:4,bottom:4,left:2.5,right:2.5},lineColor:[180,145,50],lineWidth:0.5},
-        alternateRowStyles:{fillColor:[248,250,253]},rowPageBreak:"avoid",
-        columnStyles:{0:{cellWidth:20,fontStyle:"bold",textColor:[18,35,65]},1:{cellWidth:22},2:{cellWidth:14,halign:"center"},3:{cellWidth:38},4:{cellWidth:18},5:{cellWidth:20},6:{cellWidth:18,halign:"center",fontStyle:"bold"},7:{cellWidth:16},8:{cellWidth:20,halign:"center"},9:{cellWidth:20,halign:"center"}},
+        styles:{fontSize:7,cellPadding:{top:3,bottom:3,left:2.5,right:2.5},font:"helvetica",lineColor:[215,222,235],lineWidth:0.3,textColor:[22,32,52],overflow:"linebreak",minCellHeight:8.5},
+        headStyles:{fillColor:[22,42,76],textColor:[255,255,255],fontStyle:"bold",fontSize:7,halign:"center",cellPadding:{top:4,bottom:4,left:2.5,right:2.5},lineColor:[192,152,55],lineWidth:0.5},
+        alternateRowStyles:{fillColor:[247,249,253]},rowPageBreak:"avoid",
+        columnStyles:{0:{cellWidth:19,fontStyle:"bold",textColor:[22,42,76]},1:{cellWidth:20},2:{cellWidth:14,halign:"center"},3:{cellWidth:38},4:{cellWidth:17},5:{cellWidth:19},6:{cellWidth:17,halign:"center",fontStyle:"bold"},7:{cellWidth:16},8:{cellWidth:18,halign:"center"},9:{cellWidth:18,halign:"center"}},
         didParseCell:(data:any)=>{
           if(data.section==="body"&&data.column.index===6){
             const st=tRows[data.row.index][6];
