@@ -270,7 +270,11 @@ export default function Dashboard() {
     const fsSub = supabase.channel("fs_ch2").on("postgres_changes", { event:"*", schema:"public", table:"facility_state" }, (payload: any) => {
       if (payload.new) { setState(prev => ({ ...prev, [payload.new.id]: { ...defaultState(), ...payload.new.data } })); setLastSync(nowTime()); }
     }).subscribe();
-    const tkSub = supabase.channel("tk_ch2").on("postgres_changes", { event:"*", schema:"public", table:"tickets" }, () => { loadTickets(); setLastSync(nowTime()); }).subscribe();
+    const tkSub = supabase.channel("tk_ch2")
+      .on("postgres_changes", { event:"INSERT", schema:"public", table:"tickets" }, () => { loadTickets(); setLastSync(nowTime()); })
+      .on("postgres_changes", { event:"UPDATE", schema:"public", table:"tickets" }, () => { loadTickets(); setLastSync(nowTime()); })
+      .on("postgres_changes", { event:"DELETE", schema:"public", table:"tickets" }, () => { loadTickets(); setLastSync(nowTime()); })
+      .subscribe();
     const stSub = supabase.channel("st_ch2").on("postgres_changes", { event:"*", schema:"public", table:"daily_stats" }, (payload: any) => {
       if (payload.new) { setStats(payload.new.data); setLastSync(nowTime()); }
     }).subscribe();
@@ -320,6 +324,7 @@ export default function Dashboard() {
   const addTicket = async () => {
     if (!newTicket.description) return;
     const t: Ticket = { id:imatTicketId(), office:newTicket.office||"Unknown / Remote Office", medium:newTicket.medium||"—", description:newTicket.description, reportedBy:newTicket.reportedBy||"Unknown", assignedTo:newTicket.assignedTo, resolvedBy:"", status:"open", ts:nowFull(), resolvedTs:"" };
+    setTickets(prev => [t, ...prev]);
     await supabase.from("tickets").upsert({ id: t.id, data: t, updated_at: new Date().toISOString() });
     await addLog({ facility: t.office, field:"Ticket Created", oldVal:"—", newVal:`${t.id}: ${t.description}`, type:"ticket" });
     setNewTicket({ office:"", description:"", reportedBy:"", assignedTo:"", medium:"" });
@@ -329,12 +334,15 @@ export default function Dashboard() {
     const ticket = tickets.find(t => t.id === id); if (!ticket) return;
     const updated = { ...ticket, [field]: val };
     if (field === "status" && val === "resolved") updated.resolvedTs = nowFull();
+    // Optimistic update - update UI immediately
+    setTickets(prev => prev.map(t => t.id === id ? updated : t));
     await supabase.from("tickets").upsert({ id, data: updated, updated_at: new Date().toISOString() });
     if (field === "status") await addLog({ facility: ticket.office, field:`Ticket ${id}`, oldVal: humanVal(ticket.status), newVal: humanVal(val), type:"ticket" });
     if (field === "assignedTo") await addLog({ facility: ticket.office, field:`Ticket ${id} Assigned`, oldVal: ticket.assignedTo||"—", newVal: val||"—", type:"ticket" });
   };
   const deleteTicket = async (id:string) => {
     const ticket = tickets.find(t => t.id === id);
+    setTickets(prev => prev.filter(t => t.id !== id));
     await supabase.from("tickets").delete().eq("id", id);
     if (ticket) await addLog({ facility: ticket.office, field:"Ticket Deleted", oldVal: id, newVal:"—", type:"ticket" });
   };
