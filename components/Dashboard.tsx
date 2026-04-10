@@ -63,6 +63,16 @@ interface FacilityState {
 type AppState = Record<string, FacilityState>;
 type FilterMode = "all" | "green" | "amber" | "red";
 
+interface ActivityLog {
+  id: string;
+  ts: string;
+  facility: string;
+  field: string;
+  oldVal: string;
+  newVal: string;
+  type: "status" | "issue" | "notes" | "bandwidth" | "ticket";
+}
+
 interface Ticket {
   id: string;
   office: string;
@@ -102,11 +112,11 @@ const PRINT_OPTS: { v: RAGStatus; l: string }[] = [
   { v: "na", l: "N/A" },
 ];
 
-const RAG: Record<RAGStatus, { bg: string; border: string; text: string; label: string; dot: string; pdf: [number,number,number] }> = {
-  green: { bg:"#edf7f0", border:"#a8d5b5", text:"#1a6b35", label:"Operational", dot:"#22c55e", pdf:[198,239,206] },
-  amber: { bg:"#fef8ec", border:"#f5d48a", text:"#7a5200", label:"Degraded",    dot:"#f59e0b", pdf:[255,235,156] },
-  red:   { bg:"#fdf0f0", border:"#f5b8b8", text:"#8b1c1c", label:"Critical",    dot:"#ef4444", pdf:[255,199,206] },
-  na:    { bg:"#f1f4f8", border:"#c8d0dc", text:"#6b7280", label:"N/A",         dot:"#9ca3af", pdf:[241,244,248] },
+const RAG: Record<RAGStatus, { bg: string; border: string; text: string; label: string; dot: string }> = {
+  green: { bg:"#edf7f0", border:"#a8d5b5", text:"#1a6b35", label:"Operational", dot:"#22c55e" },
+  amber: { bg:"#fef8ec", border:"#f5d48a", text:"#7a5200", label:"Degraded",    dot:"#f59e0b" },
+  red:   { bg:"#fdf0f0", border:"#f5b8b8", text:"#8b1c1c", label:"Critical",    dot:"#ef4444" },
+  na:    { bg:"#f1f4f8", border:"#c8d0dc", text:"#6b7280", label:"N/A",         dot:"#9ca3af" },
 };
 const CAT_COLORS: Record<string,string> = {
   Projects:"#3b5bdb", Imarat:"#0c7a6d", Graana:"#7c3aed", Agency21:"#c05621",
@@ -117,14 +127,21 @@ const TICKET_STATUS: Record<string,{ bg:string; text:string; lbl:string; border:
   resolved:   { bg:"#edf7f0", text:"#1a6b35", lbl:"Resolved",    border:"#a8d5b5" },
   pending:    { bg:"#f0f4ff", text:"#3b5bdb", lbl:"Pending",     border:"#b4c6fb" },
 };
+const LOG_TYPE_STYLE: Record<string,{ bg:string; text:string; border:string }> = {
+  status:    { bg:"#f0f4ff", text:"#1A3A5C", border:"#b4c6fb" },
+  issue:     { bg:"#fdf0f0", text:"#8b1c1c", border:"#f5b8b8" },
+  notes:     { bg:"#f8f9fb", text:"#4a5568", border:"#dde1e8" },
+  bandwidth: { bg:"#edf7f0", text:"#1a6b35", border:"#a8d5b5" },
+  ticket:    { bg:"#fef8ec", text:"#7a5200", border:"#f5d48a" },
+};
 
 function nowTime() {
   return new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", second:"2-digit" });
 }
 function nowFull() {
-  return new Date().toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
+  return new Date().toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit" });
 }
-function uid() { return "TKT-" + Math.random().toString(36).substr(2,6).toUpperCase(); }
+function uid() { return Math.random().toString(36).substr(2,9).toUpperCase(); }
 function calcOverall(s: FacilityState): RAGStatus {
   const vals = [s.internet, s.bio, s.printing];
   if (vals.includes("red")) return "red";
@@ -135,14 +152,18 @@ function calcOverall(s: FacilityState): RAGStatus {
 function defaultState(): FacilityState {
   return { internet:"green", bio:"green", printing:"green", bandwidth:"", requiredBandwidth:"", issue:"", notes:"", ts:nowTime() };
 }
-function bwCompare(cur: string, req: string): { pct: number; label: string; bg: string; border: string; color: string } | null {
+function bwCompare(cur: string, req: string): { label: string; bg: string; border: string; color: string } | null {
   const c = parseFloat(cur?.replace(/[^0-9.]/g,"") || "");
   const r = parseFloat(req?.replace(/[^0-9.]/g,"") || "");
   if (!c || !r) return null;
   const pct = Math.round((c/r)*100);
-  if (pct >= 100) return { pct, label:`${pct}% OK`,       bg:"#edf7f0", border:"#a8d5b5", color:"#1a6b35" };
-  if (pct >= 70)  return { pct, label:`${pct}% LOW`,      bg:"#fef8ec", border:"#f5d48a", color:"#7a5200" };
-  return             { pct, label:`${pct}% CRITICAL`, bg:"#fdf0f0", border:"#f5b8b8", color:"#8b1c1c" };
+  if (pct >= 100) return { label:`${pct}% OK`,       bg:"#edf7f0", border:"#a8d5b5", color:"#1a6b35" };
+  if (pct >= 70)  return { label:`${pct}% LOW`,      bg:"#fef8ec", border:"#f5d48a", color:"#7a5200" };
+  return             { label:`${pct}% CRITICAL`, bg:"#fdf0f0", border:"#f5b8b8", color:"#8b1c1c" };
+}
+function fieldLabel(field: string): string {
+  const m: Record<string,string> = { internet:"Internet", bio:"Biometric", printing:"Printing", bandwidth:"Current BW", requiredBandwidth:"Required BW", issue:"Reported Issue", notes:"Notes" };
+  return m[field] || field;
 }
 
 function Dot({ s }: { s: RAGStatus }) {
@@ -191,6 +212,10 @@ export default function Dashboard() {
   const [showTicketForm, setShowTicketForm] = useState(false);
   const [newTicket, setNewTicket] = useState({ office:"", description:"", reportedBy:"", assignedTo:"", medium:"" });
   const [stats, setStats] = useState<DailyStats>({ received:0, resolved:0, pending:0, inprogress:0 });
+  const [activityLog, setActivityLog] = useState<ActivityLog[]>([]);
+  const [showLog, setShowLog] = useState(false);
+  const [logFrom, setLogFrom] = useState("");
+  const [logTo, setLogTo] = useState("");
   const saveTimer = useRef<NodeJS.Timeout|null>(null);
 
   useEffect(() => {
@@ -199,14 +224,16 @@ export default function Dashboard() {
     const loadAll = async () => {
       setSyncing(true);
       try {
-        const [{ data: fsData }, { data: tkData }, { data: stData }] = await Promise.all([
+        const [{ data: fsData }, { data: tkData }, { data: stData }, { data: logData }] = await Promise.all([
           supabase.from("facility_state").select("*"),
           supabase.from("tickets").select("*"),
           supabase.from("daily_stats").select("*").eq("id","today").single(),
+          supabase.from("activity_log").select("*").order("ts", { ascending: false }).limit(500),
         ]);
         if (fsData) fsData.forEach((row: any) => { if (init[row.id]) init[row.id] = { ...defaultState(), ...row.data }; });
         if (tkData) setTickets(tkData.map((r: any) => r.data).sort((a: Ticket, b: Ticket) => b.ts.localeCompare(a.ts)));
         if (stData) setStats(stData.data);
+        if (logData) setActivityLog(logData.map((r: any) => r.data));
       } catch {}
       setState(init);
       setSyncing(false);
@@ -217,6 +244,7 @@ export default function Dashboard() {
     const fmt = () => new Date().toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
     setNow(fmt());
     const t = setInterval(() => setNow(fmt()), 60000);
+
     const fsSub = supabase.channel("fs_ch").on("postgres_changes", { event:"*", schema:"public", table:"facility_state" }, (payload: any) => {
       if (payload.new) { setState(prev => ({ ...prev, [payload.new.id]: { ...defaultState(), ...payload.new.data } })); setLastSync(nowTime()); }
     }).subscribe();
@@ -228,21 +256,37 @@ export default function Dashboard() {
     const stSub = supabase.channel("st_ch").on("postgres_changes", { event:"*", schema:"public", table:"daily_stats" }, (payload: any) => {
       if (payload.new) { setStats(payload.new.data); setLastSync(nowTime()); }
     }).subscribe();
-    return () => { clearInterval(t); supabase.removeChannel(fsSub); supabase.removeChannel(tkSub); supabase.removeChannel(stSub); };
+    const logSub = supabase.channel("log_ch").on("postgres_changes", { event:"*", schema:"public", table:"activity_log" }, async () => {
+      const { data } = await supabase.from("activity_log").select("*").order("ts", { ascending: false }).limit(500);
+      if (data) setActivityLog(data.map((r: any) => r.data));
+    }).subscribe();
+
+    return () => { clearInterval(t); supabase.removeChannel(fsSub); supabase.removeChannel(tkSub); supabase.removeChannel(stSub); supabase.removeChannel(logSub); };
   }, []);
 
-  const saveFacility = useCallback(async (name: string, data: FacilityState) => {
-    await supabase.from("facility_state").upsert({ id: name, data, updated_at: new Date().toISOString() });
-    setLastSync(nowTime());
+  const addLog = useCallback(async (entry: Omit<ActivityLog,"id"|"ts">) => {
+    const log: ActivityLog = { ...entry, id: uid(), ts: nowFull() };
+    await supabase.from("activity_log").upsert({ id: log.id, data: log, updated_at: new Date().toISOString() });
   }, []);
+
+  const saveFacility = useCallback(async (name: string, data: FacilityState, oldData: FacilityState, changedField: string) => {
+    await supabase.from("facility_state").upsert({ id: name, data, updated_at: new Date().toISOString() });
+    const oldVal = String((oldData as any)[changedField] || "");
+    const newVal = String((data as any)[changedField] || "");
+    if (oldVal !== newVal) {
+      const type: ActivityLog["type"] = ["internet","bio","printing"].includes(changedField) ? "status" : changedField === "issue" ? "issue" : changedField.includes("andwidth") ? "bandwidth" : "notes";
+      await addLog({ facility: name, field: fieldLabel(changedField), oldVal: oldVal||"—", newVal: newVal||"—", type });
+    }
+    setLastSync(nowTime());
+  }, [addLog]);
 
   const updateField = useCallback((name:string, field:keyof FacilityState, val:string) => {
     setState(prev => {
-      const updated = { ...prev[name], [field]: val, ts: nowTime() };
-      const newState = { ...prev, [name]: updated };
+      const oldData = prev[name] || defaultState();
+      const updated = { ...oldData, [field]: val, ts: nowTime() };
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => saveFacility(name, updated), 800);
-      return newState;
+      saveTimer.current = setTimeout(() => saveFacility(name, updated, oldData, field), 800);
+      return { ...prev, [name]: updated };
     });
   }, [saveFacility]);
 
@@ -259,8 +303,9 @@ export default function Dashboard() {
 
   const addTicket = async () => {
     if (!newTicket.description) return;
-    const t: Ticket = { id:uid(), office:newTicket.office||"Unknown / Remote Office", medium:newTicket.medium||"—", description:newTicket.description, reportedBy:newTicket.reportedBy||"Unknown", assignedTo:newTicket.assignedTo, resolvedBy:"", status:"open", ts:nowFull(), resolvedTs:"" };
+    const t: Ticket = { id:"TKT-"+uid(), office:newTicket.office||"Unknown / Remote Office", medium:newTicket.medium||"—", description:newTicket.description, reportedBy:newTicket.reportedBy||"Unknown", assignedTo:newTicket.assignedTo, resolvedBy:"", status:"open", ts:nowFull(), resolvedTs:"" };
     await supabase.from("tickets").upsert({ id: t.id, data: t, updated_at: new Date().toISOString() });
+    await addLog({ facility: t.office, field:"Ticket Created", oldVal:"—", newVal:`${t.id}: ${t.description}`, type:"ticket" });
     setNewTicket({ office:"", description:"", reportedBy:"", assignedTo:"", medium:"" });
     setShowTicketForm(false);
   };
@@ -269,8 +314,14 @@ export default function Dashboard() {
     const updated = { ...ticket, [field]: val };
     if (field === "status" && val === "resolved") updated.resolvedTs = nowFull();
     await supabase.from("tickets").upsert({ id, data: updated, updated_at: new Date().toISOString() });
+    if (field === "status") await addLog({ facility: ticket.office, field:`Ticket ${id} Status`, oldVal: ticket.status, newVal: val, type:"ticket" });
+    if (field === "assignedTo") await addLog({ facility: ticket.office, field:`Ticket ${id} Assigned`, oldVal: ticket.assignedTo||"—", newVal: val||"—", type:"ticket" });
   };
-  const deleteTicket = async (id:string) => { await supabase.from("tickets").delete().eq("id", id); };
+  const deleteTicket = async (id:string) => {
+    const ticket = tickets.find(t => t.id === id);
+    await supabase.from("tickets").delete().eq("id", id);
+    if (ticket) await addLog({ facility: ticket.office, field:"Ticket Deleted", oldVal: id, newVal:"—", type:"ticket" });
+  };
 
   const counts = { green:0, amber:0, red:0, na:0 };
   const iC = { green:0, amber:0, red:0 };
@@ -287,6 +338,14 @@ export default function Dashboard() {
   tickets.forEach(t => { tCounts[t.status]++; });
   const visible = filter === "all" ? FACILITIES : FACILITIES.filter(f => { const s = state[f.name]; return s && calcOverall(s) === filter; });
 
+  const filteredLog = activityLog.filter(l => {
+    if (!logFrom && !logTo) return true;
+    const lts = new Date(l.ts.split(", ").reverse().join(" ")).getTime();
+    const from = logFrom ? new Date(logFrom).getTime() : 0;
+    const to = logTo ? new Date(logTo+"T23:59:59").getTime() : Infinity;
+    return lts >= from && lts <= to;
+  });
+
   const exportPDF = () => {
     const d = new Date();
     const today = d.toLocaleDateString("en-GB", { day:"2-digit", month:"long", year:"numeric" });
@@ -294,7 +353,7 @@ export default function Dashboard() {
     const doc = new jsPDF({ orientation:"landscape", unit:"mm", format:"a4" });
     const W = doc.internal.pageSize.getWidth();
     const H = doc.internal.pageSize.getHeight();
-    const ML = 8; const TW = W - 16;
+    const ML = 8; const TW = W-16;
 
     const iL: Record<RAGStatus,string> = { green:"Working", amber:"Slow/Intermittent", red:"Down", na:"N/A" };
     const bL: Record<RAGStatus,string> = { green:"Working & Syncing", amber:"Delayed", red:"Not Working", na:"N/A" };
@@ -321,7 +380,6 @@ export default function Dashboard() {
       doc.text("Report Time: "+timeNow, W-10, 19, { align:"right" });
       doc.text("it.support@imarat.com.pk", W-10, 27, { align:"right" });
     };
-
     const drawFooter = () => {
       doc.setFillColor(15,40,75); doc.rect(0,H-9,W,9,"F");
       doc.setFillColor(201,163,66); doc.rect(0,H-9,W,0.7,"F");
@@ -329,12 +387,10 @@ export default function Dashboard() {
       doc.text("IMARAT GROUP  |  IT Facilities RAG Dashboard  |  Internal Use Only  |  Confidential", ML, H-3.5);
       doc.text(`Generated: ${today} at ${timeNow}`, W-ML, H-3.5, { align:"right" });
     };
-
     const drawSummary = () => {
       const sy = 43;
       doc.setFillColor(236,241,251); doc.rect(0,sy,W,33,"F");
-      doc.setDrawColor(200,210,230); doc.setLineWidth(0.2);
-      doc.line(0,sy,W,sy); doc.line(0,sy+33,W,sy+33);
+      doc.setDrawColor(200,210,230); doc.setLineWidth(0.2); doc.line(0,sy,W,sy); doc.line(0,sy+33,W,sy+33);
       const cards = [
         { label:"TOTAL FACILITIES",  val:String(FACILITIES.length), r:15,g:40,b:75,  light:[220,228,245] as [number,number,number] },
         { label:"FULLY OPERATIONAL", val:String(counts.green),       r:21,g:128,b:61, light:[198,239,206] as [number,number,number] },
@@ -344,16 +400,14 @@ export default function Dashboard() {
         { label:"RESOLVED TODAY",    val:String(stats.resolved),     r:4,g:120,b:87,  light:[187,247,208] as [number,number,number] },
         { label:"PENDING",           val:String(stats.pending),      r:120,g:53,b:15, light:[254,215,170] as [number,number,number] },
       ];
-      const cw = TW / cards.length;
+      const cw = TW/cards.length;
       cards.forEach((c,i) => {
         const x = ML+i*cw; const [lr,lg,lb] = c.light;
         doc.setFillColor(lr,lg,lb); doc.roundedRect(x+0.5,sy+2,cw-2,29,1.5,1.5,"F");
         doc.setFillColor(c.r,c.g,c.b); doc.rect(x+0.5,sy+2,3,29,"F");
         doc.setTextColor(c.r,c.g,c.b);
-        doc.setFontSize(13); doc.setFont("helvetica","bold");
-        doc.text(c.val, x+cw/2+1, sy+18, { align:"center" });
-        doc.setFontSize(5); doc.setFont("helvetica","bold");
-        doc.text(c.label, x+cw/2+1, sy+25, { align:"center" });
+        doc.setFontSize(13); doc.setFont("helvetica","bold"); doc.text(c.val, x+cw/2+1, sy+18, { align:"center" });
+        doc.setFontSize(5); doc.setFont("helvetica","bold"); doc.text(c.label, x+cw/2+1, sy+25, { align:"center" });
       });
     };
 
@@ -361,167 +415,130 @@ export default function Dashboard() {
     drawSummary();
     drawFooter();
 
-    // Build rows - keep facility name short to fit
     const rows = FACILITIES.map((f,idx) => {
       const s = state[f.name] ?? defaultState();
       const ov = calcOverall(s);
       const bw = bwCompare(s.bandwidth, s.requiredBandwidth);
-      return {
-        data: [String(idx+1), f.name, f.cat, iL[s.internet], bL[s.bio], pL[s.printing], oL[ov], s.bandwidth||"—", s.requiredBandwidth||"—", bw?bw.label:"—", s.issue||"—", s.notes||"—"],
-        internet: s.internet, bio: s.bio, printing: s.printing, overall: ov, bw, cat: f.cat,
-      };
+      return { data:[String(idx+1),f.name,f.cat,iL[s.internet],bL[s.bio],pL[s.printing],oL[ov],s.bandwidth||"—",s.requiredBandwidth||"—",bw?bw.label:"—",s.issue||"—",s.notes||"—"], internet:s.internet, bio:s.bio, printing:s.printing, overall:ov, bw, cat:f.cat };
     });
 
     autoTable(doc, {
-      startY: 80,
-      showHead: "everyPage",
-      tableWidth: TW,
-      margin: { left: ML, right: ML },
-      head: [["#","Facility Name","Cat","Internet","Biometric","Printing","Overall","Cur BW","Req BW","BW%","Issue / Outstanding","Notes"]],
-      body: rows.map(r => r.data),
-      styles: {
-        fontSize: 6.8,
-        cellPadding: { top:2.5, bottom:2.5, left:2, right:2 },
-        font: "helvetica",
-        lineColor: [215,222,232],
-        lineWidth: 0.25,
-        textColor: [25,35,55],
-        valign: "middle",
-        overflow: "linebreak",
-        minCellHeight: 7,
+      startY:80, showHead:"everyPage", tableWidth:TW, margin:{left:ML,right:ML},
+      head:[["#","Facility Name","Cat","Internet","Biometric","Printing","Overall","Cur BW","Req BW","BW%","Issue / Outstanding","Notes"]],
+      body:rows.map(r=>r.data),
+      styles:{ fontSize:6.8, cellPadding:{top:2.5,bottom:2.5,left:2,right:2}, font:"helvetica", lineColor:[215,222,232], lineWidth:0.25, textColor:[25,35,55], valign:"middle", overflow:"linebreak", minCellHeight:7 },
+      headStyles:{ fillColor:[15,40,75], textColor:[255,255,255], fontStyle:"bold", fontSize:7, halign:"center", valign:"middle", cellPadding:{top:3,bottom:3,left:2,right:2}, lineColor:[201,163,66], lineWidth:0.4, minCellHeight:8 },
+      alternateRowStyles:{ fillColor:[246,249,252] },
+      pageBreak:"auto", rowPageBreak:"avoid",
+      columnStyles:{
+        0:{cellWidth:5,halign:"center",textColor:[155,165,180],fontStyle:"bold"},
+        1:{cellWidth:32},2:{cellWidth:12,halign:"center"},
+        3:{cellWidth:19,halign:"center"},4:{cellWidth:21,halign:"center"},
+        5:{cellWidth:15,halign:"center"},6:{cellWidth:18,halign:"center",fontStyle:"bold"},
+        7:{cellWidth:13,halign:"center"},8:{cellWidth:13,halign:"center"},
+        9:{cellWidth:15,halign:"center",fontStyle:"bold"},
+        10:{cellWidth:52},11:{cellWidth:16},
       },
-      headStyles: {
-        fillColor: [15,40,75],
-        textColor: [255,255,255],
-        fontStyle: "bold",
-        fontSize: 7,
-        halign: "center",
-        valign: "middle",
-        cellPadding: { top:3, bottom:3, left:2, right:2 },
-        lineColor: [201,163,66],
-        lineWidth: 0.4,
-        minCellHeight: 8,
-      },
-      alternateRowStyles: { fillColor: [246,249,252] },
-      pageBreak: "auto",
-      rowPageBreak: "avoid",
-      // Total must equal TW=281: 5+32+12+19+20+15+18+13+13+15+70+16+... wait, use "auto" on last
-      columnStyles: {
-        0:  { cellWidth:5,  halign:"center", textColor:[155,165,180], fontStyle:"bold" },
-        1:  { cellWidth:32 },
-        2:  { cellWidth:12, halign:"center" },
-        3:  { cellWidth:19, halign:"center" },
-        4:  { cellWidth:21, halign:"center" },
-        5:  { cellWidth:15, halign:"center" },
-        6:  { cellWidth:18, halign:"center", fontStyle:"bold" },
-        7:  { cellWidth:13, halign:"center" },
-        8:  { cellWidth:13, halign:"center" },
-        9:  { cellWidth:15, halign:"center", fontStyle:"bold" },
-        10: { cellWidth:52 },
-        11: { cellWidth:16 },
-      },
-      didParseCell: (data: any) => {
-        if (data.section !== "body") return;
-        const row = rows[data.row.index];
-        if (!row) return;
-        const si: Record<number,RAGStatus> = { 3:row.internet, 4:row.bio, 5:row.printing, 6:row.overall };
-        const s = si[data.column.index];
-        if (s) {
-          const f: Record<RAGStatus,[number,number,number]> = { green:[198,239,206], amber:[255,235,156], red:[255,199,206], na:[240,242,246] };
-          const t: Record<RAGStatus,[number,number,number]> = { green:[15,90,40], amber:[120,70,0], red:[155,20,20], na:[120,130,145] };
-          data.cell.styles.fillColor = f[s]; data.cell.styles.textColor = t[s]; data.cell.styles.fontStyle = "bold";
+      didParseCell:(data:any)=>{
+        if(data.section!=="body") return;
+        const row=rows[data.row.index]; if(!row) return;
+        const si:Record<number,RAGStatus>={3:row.internet,4:row.bio,5:row.printing,6:row.overall};
+        const s=si[data.column.index];
+        if(s){
+          const f:Record<RAGStatus,[number,number,number]>={green:[198,239,206],amber:[255,235,156],red:[255,199,206],na:[240,242,246]};
+          const t:Record<RAGStatus,[number,number,number]>={green:[15,90,40],amber:[120,70,0],red:[155,20,20],na:[120,130,145]};
+          data.cell.styles.fillColor=f[s]; data.cell.styles.textColor=t[s]; data.cell.styles.fontStyle="bold";
         }
-        if (data.column.index === 2) {
-          const cc: Record<string,[number,number,number]> = { Projects:[59,91,219], Imarat:[12,122,109], Graana:[124,58,237], Agency21:[192,86,33] };
-          if (cc[row.cat]) { data.cell.styles.textColor = cc[row.cat]; data.cell.styles.fontStyle = "bold"; }
+        if(data.column.index===2){const cc:Record<string,[number,number,number]>={Projects:[59,91,219],Imarat:[12,122,109],Graana:[124,58,237],Agency21:[192,86,33]};if(cc[row.cat]){data.cell.styles.textColor=cc[row.cat];data.cell.styles.fontStyle="bold";}}
+        if(data.column.index===7&&row.data[7]!=="—"){data.cell.styles.fillColor=[219,234,254];data.cell.styles.textColor=[30,64,175];data.cell.styles.fontStyle="bold";}
+        if(data.column.index===8&&row.data[8]!=="—"){data.cell.styles.fillColor=[235,235,255];data.cell.styles.textColor=[80,60,180];data.cell.styles.fontStyle="bold";}
+        if(data.column.index===9&&row.bw){
+          if(row.bw.label.includes("OK")){data.cell.styles.fillColor=[198,239,206];data.cell.styles.textColor=[15,90,40];data.cell.styles.fontStyle="bold";}
+          if(row.bw.label.includes("LOW")){data.cell.styles.fillColor=[255,235,156];data.cell.styles.textColor=[120,70,0];data.cell.styles.fontStyle="bold";}
+          if(row.bw.label.includes("CRIT")){data.cell.styles.fillColor=[255,199,206];data.cell.styles.textColor=[155,20,20];data.cell.styles.fontStyle="bold";}
         }
-        if (data.column.index === 7 && row.data[7]!=="—") { data.cell.styles.fillColor=[219,234,254]; data.cell.styles.textColor=[30,64,175]; data.cell.styles.fontStyle="bold"; }
-        if (data.column.index === 8 && row.data[8]!=="—") { data.cell.styles.fillColor=[235,235,255]; data.cell.styles.textColor=[80,60,180]; data.cell.styles.fontStyle="bold"; }
-        if (data.column.index === 9 && row.bw) {
-          if (row.bw.label.includes("OK"))   { data.cell.styles.fillColor=[198,239,206]; data.cell.styles.textColor=[15,90,40];  data.cell.styles.fontStyle="bold"; }
-          if (row.bw.label.includes("LOW"))  { data.cell.styles.fillColor=[255,235,156]; data.cell.styles.textColor=[120,70,0];  data.cell.styles.fontStyle="bold"; }
-          if (row.bw.label.includes("CRIT")) { data.cell.styles.fillColor=[255,199,206]; data.cell.styles.textColor=[155,20,20]; data.cell.styles.fontStyle="bold"; }
-        }
-        if (data.column.index === 10 && row.data[10]!=="—") { data.cell.styles.textColor=[155,20,20]; }
+        if(data.column.index===10&&row.data[10]!=="—"){data.cell.styles.textColor=[155,20,20];}
       },
-      didDrawPage: (data: any) => {
-        try {
-          drawFooter();
-          if (data.pageNumber > 1) drawHeader("IT Facilities RAG Dashboard","Daily Facility Monitoring Report — All Sites");
-        } catch(e) {}
-      },
+      didDrawPage:(data:any)=>{ try{drawFooter();if(data.pageNumber>1)drawHeader("IT Facilities RAG Dashboard","Daily Facility Monitoring Report — All Sites");}catch(e){} },
     });
 
-    if (tickets.length > 0) {
+    // ACTIVITY LOG PAGE
+    if(filteredLog.length>0){
+      doc.addPage();
+      const rangeLabel = logFrom||logTo ? `${logFrom||"All"} → ${logTo||"Now"}` : "All Time";
+      drawHeader("Activity Log",`Change History — ${rangeLabel}`);
+      drawFooter();
+      const lRows=filteredLog.map(l=>[l.ts,l.facility,l.field,l.oldVal,l.newVal,l.type.toUpperCase()]);
+      autoTable(doc,{
+        startY:44,showHead:"everyPage",tableWidth:TW,margin:{left:ML,right:ML},
+        head:[["Timestamp","Facility","Field Changed","Previous Value","New Value","Type"]],
+        body:lRows,
+        styles:{fontSize:7,cellPadding:{top:2.5,bottom:2.5,left:2,right:2},font:"helvetica",lineColor:[215,222,232],lineWidth:0.25,textColor:[25,35,55],overflow:"linebreak",minCellHeight:7},
+        headStyles:{fillColor:[15,40,75],textColor:[255,255,255],fontStyle:"bold",fontSize:7,halign:"center",cellPadding:{top:3,bottom:3,left:2,right:2},lineColor:[201,163,66],lineWidth:0.4},
+        alternateRowStyles:{fillColor:[246,249,252]},
+        rowPageBreak:"avoid",
+        columnStyles:{0:{cellWidth:38},1:{cellWidth:38,fontStyle:"bold",textColor:[15,40,75]},2:{cellWidth:28},3:{cellWidth:46},4:{cellWidth:46},5:{cellWidth:24,halign:"center",fontStyle:"bold"}},
+        didParseCell:(data:any)=>{
+          if(data.section==="body"&&data.column.index===5){
+            const t=lRows[data.row.index][5];
+            if(t==="STATUS")  {data.cell.styles.fillColor=[219,234,254];data.cell.styles.textColor=[15,40,75];}
+            if(t==="ISSUE")   {data.cell.styles.fillColor=[255,199,206];data.cell.styles.textColor=[155,20,20];}
+            if(t==="TICKET")  {data.cell.styles.fillColor=[255,235,156];data.cell.styles.textColor=[120,70,0];}
+            if(t==="BANDWIDTH"){data.cell.styles.fillColor=[198,239,206];data.cell.styles.textColor=[15,90,40];}
+          }
+        },
+        didDrawPage:(data:any)=>{ try{drawFooter();if(data.pageNumber>1)drawHeader("Activity Log",`Change History — ${rangeLabel}`);}catch(e){} },
+      });
+    }
+
+    if(tickets.length>0){
       doc.addPage();
       drawHeader("IT Support Tickets","Helpdesk Issue Tracking — All Reported Incidents");
       drawFooter();
-      const tsy = 43;
-      doc.setFillColor(236,241,251); doc.rect(0,tsy,W,20,"F");
-      doc.setDrawColor(200,210,230); doc.setLineWidth(0.2); doc.line(0,tsy,W,tsy); doc.line(0,tsy+20,W,tsy+20);
-      const tCards = [
-        { label:"TOTAL",       val:String(tickets.length),     r:15,g:40,b:75,  light:[220,228,245] as [number,number,number] },
-        { label:"OPEN",        val:String(tCounts.open),       r:185,g:28,b:28, light:[255,199,206] as [number,number,number] },
-        { label:"IN PROGRESS", val:String(tCounts.inprogress), r:161,g:98,b:7,  light:[255,235,156] as [number,number,number] },
-        { label:"PENDING",     val:String(tCounts.pending),    r:30,g:64,b:175, light:[219,234,254] as [number,number,number] },
-        { label:"RESOLVED",    val:String(tCounts.resolved),   r:21,g:128,b:61, light:[198,239,206] as [number,number,number] },
+      const tsy=43;
+      doc.setFillColor(236,241,251);doc.rect(0,tsy,W,20,"F");
+      doc.setDrawColor(200,210,230);doc.setLineWidth(0.2);doc.line(0,tsy,W,tsy);doc.line(0,tsy+20,W,tsy+20);
+      const tCards=[
+        {label:"TOTAL",val:String(tickets.length),r:15,g:40,b:75,light:[220,228,245] as [number,number,number]},
+        {label:"OPEN",val:String(tCounts.open),r:185,g:28,b:28,light:[255,199,206] as [number,number,number]},
+        {label:"IN PROGRESS",val:String(tCounts.inprogress),r:161,g:98,b:7,light:[255,235,156] as [number,number,number]},
+        {label:"PENDING",val:String(tCounts.pending),r:30,g:64,b:175,light:[219,234,254] as [number,number,number]},
+        {label:"RESOLVED",val:String(tCounts.resolved),r:21,g:128,b:61,light:[198,239,206] as [number,number,number]},
       ];
-      const tcw = TW/tCards.length;
-      tCards.forEach((c,i) => {
-        const x = ML+i*tcw; const [lr,lg,lb] = c.light;
-        doc.setFillColor(lr,lg,lb); doc.roundedRect(x+0.5,tsy+1,tcw-2,18,1.5,1.5,"F");
-        doc.setFillColor(c.r,c.g,c.b); doc.rect(x+0.5,tsy+1,3,18,"F");
+      const tcw=TW/tCards.length;
+      tCards.forEach((c,i)=>{
+        const x=ML+i*tcw;const[lr,lg,lb]=c.light;
+        doc.setFillColor(lr,lg,lb);doc.roundedRect(x+0.5,tsy+1,tcw-2,18,1.5,1.5,"F");
+        doc.setFillColor(c.r,c.g,c.b);doc.rect(x+0.5,tsy+1,3,18,"F");
         doc.setTextColor(c.r,c.g,c.b);
-        doc.setFontSize(11); doc.setFont("helvetica","bold"); doc.text(c.val, x+tcw/2+1, tsy+12, { align:"center" });
-        doc.setFontSize(5); doc.setFont("helvetica","bold"); doc.text(c.label, x+tcw/2+1, tsy+17, { align:"center" });
+        doc.setFontSize(11);doc.setFont("helvetica","bold");doc.text(c.val,x+tcw/2+1,tsy+12,{align:"center"});
+        doc.setFontSize(5);doc.setFont("helvetica","bold");doc.text(c.label,x+tcw/2+1,tsy+17,{align:"center"});
       });
-      const tRows = tickets.map(t => [t.id, t.office, t.medium||"—", t.description, t.reportedBy, t.assignedTo||"Unassigned", TICKET_STATUS[t.status].lbl, t.resolvedBy||"—", t.ts, t.resolvedTs||"—"]);
-      autoTable(doc, {
-        startY: tsy+24, showHead:"everyPage", tableWidth:TW, margin:{ left:ML, right:ML },
-        head: [["Ticket ID","Office / Location","Medium","Issue Description","Reported By","Assigned To","Status","Resolved By","Reported At","Resolved At"]],
-        body: tRows,
-        styles: { fontSize:7, cellPadding:{top:2.5,bottom:2.5,left:2,right:2}, font:"helvetica", lineColor:[215,222,232], lineWidth:0.25, textColor:[25,35,55], overflow:"linebreak", minCellHeight:7 },
-        headStyles: { fillColor:[15,40,75], textColor:[255,255,255], fontStyle:"bold", fontSize:7, halign:"center", cellPadding:{top:3,bottom:3,left:2,right:2}, lineColor:[201,163,66], lineWidth:0.4 },
-        alternateRowStyles: { fillColor:[246,249,252] },
-        rowPageBreak: "avoid",
-        columnStyles: {
-          0:{ cellWidth:20, fontStyle:"bold", textColor:[15,40,75] },
-          1:{ cellWidth:30 },
-          2:{ cellWidth:18, halign:"center" },
-          3:{ cellWidth:60 },
-          4:{ cellWidth:22 },
-          5:{ cellWidth:24 },
-          6:{ cellWidth:20, halign:"center", fontStyle:"bold" },
-          7:{ cellWidth:22 },
-          8:{ cellWidth:32, halign:"center" },
-          9:{ cellWidth:32, halign:"center" },
+      const tRows=tickets.map(t=>[t.id,t.office,t.medium||"—",t.description,t.reportedBy,t.assignedTo||"Unassigned",TICKET_STATUS[t.status].lbl,t.resolvedBy||"—",t.ts,t.resolvedTs||"—"]);
+      autoTable(doc,{
+        startY:tsy+24,showHead:"everyPage",tableWidth:TW,margin:{left:ML,right:ML},
+        head:[["Ticket ID","Office / Location","Medium","Issue Description","Reported By","Assigned To","Status","Resolved By","Reported At","Resolved At"]],
+        body:tRows,
+        styles:{fontSize:7,cellPadding:{top:2.5,bottom:2.5,left:2,right:2},font:"helvetica",lineColor:[215,222,232],lineWidth:0.25,textColor:[25,35,55],overflow:"linebreak",minCellHeight:7},
+        headStyles:{fillColor:[15,40,75],textColor:[255,255,255],fontStyle:"bold",fontSize:7,halign:"center",cellPadding:{top:3,bottom:3,left:2,right:2},lineColor:[201,163,66],lineWidth:0.4},
+        alternateRowStyles:{fillColor:[246,249,252]},rowPageBreak:"avoid",
+        columnStyles:{0:{cellWidth:20,fontStyle:"bold",textColor:[15,40,75]},1:{cellWidth:30},2:{cellWidth:18,halign:"center"},3:{cellWidth:60},4:{cellWidth:22},5:{cellWidth:24},6:{cellWidth:20,halign:"center",fontStyle:"bold"},7:{cellWidth:22},8:{cellWidth:32,halign:"center"},9:{cellWidth:32,halign:"center"}},
+        didParseCell:(data:any)=>{
+          if(data.section==="body"&&data.column.index===6){const st=tRows[data.row.index][6];if(st==="Open"){data.cell.styles.fillColor=[255,199,206];data.cell.styles.textColor=[155,20,20];data.cell.styles.fontStyle="bold";}if(st==="In Progress"){data.cell.styles.fillColor=[255,235,156];data.cell.styles.textColor=[120,70,0];data.cell.styles.fontStyle="bold";}if(st==="Resolved"){data.cell.styles.fillColor=[198,239,206];data.cell.styles.textColor=[15,90,40];data.cell.styles.fontStyle="bold";}if(st==="Pending"){data.cell.styles.fillColor=[219,234,254];data.cell.styles.textColor=[30,64,175];data.cell.styles.fontStyle="bold";}}
+          if(data.section==="body"&&data.column.index===2){const mc:Record<string,[number,number,number]>={"Email":[30,64,175],"Helpdesk Ticket":[124,58,237],"Whatsapp":[21,128,61],"In Person":[161,98,7]};if(mc[tRows[data.row.index][2]]){data.cell.styles.textColor=mc[tRows[data.row.index][2]];data.cell.styles.fontStyle="bold";}}
         },
-        didParseCell: (data: any) => {
-          if (data.section==="body" && data.column.index===6) {
-            const st = tRows[data.row.index][6];
-            if (st==="Open")        { data.cell.styles.fillColor=[255,199,206]; data.cell.styles.textColor=[155,20,20];  data.cell.styles.fontStyle="bold"; }
-            if (st==="In Progress") { data.cell.styles.fillColor=[255,235,156]; data.cell.styles.textColor=[120,70,0];   data.cell.styles.fontStyle="bold"; }
-            if (st==="Resolved")    { data.cell.styles.fillColor=[198,239,206]; data.cell.styles.textColor=[15,90,40];   data.cell.styles.fontStyle="bold"; }
-            if (st==="Pending")     { data.cell.styles.fillColor=[219,234,254]; data.cell.styles.textColor=[30,64,175];  data.cell.styles.fontStyle="bold"; }
-          }
-          if (data.section==="body" && data.column.index===2) {
-            const mc: Record<string,[number,number,number]> = { "Email":[30,64,175],"Helpdesk Ticket":[124,58,237],"Whatsapp":[21,128,61],"In Person":[161,98,7] };
-            if (mc[tRows[data.row.index][2]]) { data.cell.styles.textColor=mc[tRows[data.row.index][2]]; data.cell.styles.fontStyle="bold"; }
-          }
-        },
-        didDrawPage: (data: any) => {
-          try { drawFooter(); if (data.pageNumber>1) drawHeader("IT Support Tickets","Helpdesk Issue Tracking — All Reported Incidents"); } catch(e) {}
-        },
+        didDrawPage:(data:any)=>{ try{drawFooter();if(data.pageNumber>1)drawHeader("IT Support Tickets","Helpdesk Issue Tracking — All Reported Incidents");}catch(e){} },
       });
     }
     doc.save(`Imarat_RAG_${d.toISOString().slice(0,10)}.pdf`);
   };
+
   if (!mounted) return (
     <div style={{ minHeight:"100vh", background:"#eef1f7", display:"flex", alignItems:"center", justifyContent:"center" }}>
       <div style={{ textAlign:"center" }}>
         <div style={{ width:48, height:48, border:"4px solid #1A3A5C", borderTopColor:"transparent", borderRadius:"50%", animation:"spin 1s linear infinite", margin:"0 auto 16px" }} />
         <div style={{ color:"#1A3A5C", fontWeight:600, fontSize:14 }}>Connecting to server...</div>
-        <div style={{ color:"#8a94a6", fontSize:12, marginTop:4 }}>Loading latest data from all users</div>
+        <div style={{ color:"#8a94a6", fontSize:12, marginTop:4 }}>Loading latest data</div>
         <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
       </div>
     </div>
@@ -545,7 +562,7 @@ export default function Dashboard() {
         <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:12 }}>
           <div style={{ display:"flex", alignItems:"center", gap:6 }}>
             <span style={{ width:8, height:8, borderRadius:"50%", background:syncing?"#f59e0b":"#22c55e", display:"inline-block" }} />
-            <span style={{ fontSize:10, color:"#94B8D4" }}>{syncing ? "Syncing..." : `Live — Last sync: ${lastSync}`}</span>
+            <span style={{ fontSize:10, color:"#94B8D4" }}>{syncing?"Syncing...":`Live — Last sync: ${lastSync}`}</span>
           </div>
           <div style={{ fontSize:11, color:"#94B8D4" }}>{now}</div>
         </div>
@@ -556,7 +573,7 @@ export default function Dashboard() {
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
             <div>
               <div style={{ fontSize:13, fontWeight:600, color:"#1a1f2e" }}>Today's Query Summary</div>
-              <div style={{ fontSize:10, color:"#8a94a6", marginTop:2 }}>Shared across all users in real-time — use + / - to update</div>
+              <div style={{ fontSize:10, color:"#8a94a6", marginTop:2 }}>Shared across all users in real-time</div>
             </div>
             <button onClick={resetStats} style={{ padding:"4px 12px", background:"#f1f4f8", border:"1px solid #dde1e8", borderRadius:4, fontSize:11, color:"#6b7280", cursor:"pointer" }}>Reset Day</button>
           </div>
@@ -591,22 +608,14 @@ export default function Dashboard() {
           ].map(panel => (
             <div key={panel.title} style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, padding:"14px 16px" }}>
               <div style={{ fontSize:12, fontWeight:600, color:"#1a1f2e", marginBottom:10 }}>{panel.title}</div>
-              {panel.rows.map((r: {l:string;s:RAGStatus;c?:number}) => (
+              {panel.rows.map((r:{l:string;s:RAGStatus;c?:number}) => (
                 <div key={r.l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"5px 0", borderBottom:"1px solid #f5f5f5" }}>
                   <div style={{ display:"flex", alignItems:"center", gap:7, fontSize:11, color:"#1a1f2e" }}><Dot s={r.s} />{r.l}</div>
-                  {r.c !== undefined
-                    ? <span style={{ fontSize:12, fontWeight:700, color:RAG[r.s].text }}>{r.c}/{FACILITIES.length}</span>
-                    : <span style={{ background:RAG[r.s].bg, color:RAG[r.s].text, border:`1px solid ${RAG[r.s].border}`, padding:"1px 7px", borderRadius:3, fontSize:10, fontWeight:600 }}>
-                        {r.s==="green"?"OK":r.s==="amber"?"WARN":"DOWN"}
-                      </span>
-                  }
+                  {r.c!==undefined ? <span style={{ fontSize:12, fontWeight:700, color:RAG[r.s].text }}>{r.c}/{FACILITIES.length}</span>
+                    : <span style={{ background:RAG[r.s].bg, color:RAG[r.s].text, border:`1px solid ${RAG[r.s].border}`, padding:"1px 7px", borderRadius:3, fontSize:10, fontWeight:600 }}>{r.s==="green"?"OK":r.s==="amber"?"WARN":"DOWN"}</span>}
                 </div>
               ))}
-              {panel.title==="Overall RAG" && (
-                <div style={{ marginTop:8, paddingTop:6, borderTop:"1px solid #f0f2f5", fontSize:10, color:"#8a94a6" }}>
-                  <span style={{ color:"#1A3A5C", fontWeight:600 }}>it.support@imarat.com.pk</span>
-                </div>
-              )}
+              {panel.title==="Overall RAG"&&(<div style={{ marginTop:8, paddingTop:6, borderTop:"1px solid #f0f2f5", fontSize:10, color:"#8a94a6" }}><span style={{ color:"#1A3A5C", fontWeight:600 }}>it.support@imarat.com.pk</span></div>)}
             </div>
           ))}
         </div>
@@ -615,10 +624,7 @@ export default function Dashboard() {
           <div style={{ padding:"12px 16px", borderBottom:"1px solid #e2e6ed", display:"flex", alignItems:"center", gap:8 }}>
             <div style={{ fontSize:13, fontWeight:600, color:"#1a1f2e" }}>RAG Status of All Facilities</div>
             <div style={{ marginLeft:"auto", display:"flex", gap:8 }}>
-              <button onClick={() => setFilter(fOpts[(fOpts.indexOf(filter)+1)%fOpts.length])}
-                style={{ padding:"5px 12px", background:"#f1f4f8", border:"1px solid #dde1e8", borderRadius:4, fontSize:11, color:"#4a5568", cursor:"pointer" }}>
-                {fLabels[filter]}
-              </button>
+              <button onClick={()=>setFilter(fOpts[(fOpts.indexOf(filter)+1)%fOpts.length])} style={{ padding:"5px 12px", background:"#f1f4f8", border:"1px solid #dde1e8", borderRadius:4, fontSize:11, color:"#4a5568", cursor:"pointer" }}>{fLabels[filter]}</button>
               <button onClick={exportPDF} style={{ padding:"5px 14px", background:"#1A3A5C", border:"none", borderRadius:4, fontSize:11, color:"#fff", cursor:"pointer", fontWeight:600 }}>EXPORT PDF</button>
             </div>
           </div>
@@ -626,16 +632,16 @@ export default function Dashboard() {
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
               <thead>
                 <tr style={{ background:"#f8f9fb" }}>
-                  {["#","FACILITY","CATEGORY","INTERNET","BIOMETRIC","PRINTING","OVERALL","CURRENT BW","REQUIRED BW","BW STATUS","REPORTED ISSUE","NOTES","UPDATED"].map(h => (
+                  {["#","FACILITY","CATEGORY","INTERNET","BIOMETRIC","PRINTING","OVERALL","CURRENT BW","REQUIRED BW","BW STATUS","REPORTED ISSUE","NOTES","UPDATED"].map(h=>(
                     <th key={h} style={{ textAlign:"left", padding:"9px 10px", color:"#8a94a6", fontWeight:600, fontSize:10, letterSpacing:".3px", borderBottom:"2px solid #e2e6ed", whiteSpace:"nowrap" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {visible.map((f,i) => {
-                  const s = state[f.name] ?? defaultState();
-                  const ov = calcOverall(s);
-                  const bw = bwCompare(s.bandwidth, s.requiredBandwidth);
+                {visible.map((f,i)=>{
+                  const s=state[f.name]??defaultState();
+                  const ov=calcOverall(s);
+                  const bw=bwCompare(s.bandwidth,s.requiredBandwidth);
                   return (
                     <tr key={f.name} style={{ borderBottom:"1px solid #f0f2f5", background:i%2===0?"#fff":"#fafbfc" }}>
                       <td style={{ padding:"7px 10px", color:"#c0c8d6", fontSize:11, fontWeight:600 }}>{i+1}</td>
@@ -647,19 +653,17 @@ export default function Dashboard() {
                       <td style={{ padding:"7px 10px" }}><Badge s={ov} /></td>
                       <td style={{ padding:"7px 10px" }}>
                         <input defaultValue={s.bandwidth} onBlur={e=>updateField(f.name,"bandwidth",e.target.value)} placeholder="e.g. 50"
-                          style={{ background:"#f0f4ff", border:"1px solid #b4c6fb", borderRadius:3, padding:"3px 7px", color:"#1A3A5C", fontSize:11, width:70, fontWeight:500 }} />
-                        <span style={{ fontSize:10, color:"#8a94a6", marginLeft:3 }}>Mbps</span>
+                          style={{ background:"#f0f4ff", border:"1px solid #b4c6fb", borderRadius:3, padding:"3px 7px", color:"#1A3A5C", fontSize:11, width:65, fontWeight:500 }} />
+                        <span style={{ fontSize:10, color:"#8a94a6", marginLeft:2 }}>Mbps</span>
                       </td>
                       <td style={{ padding:"7px 10px" }}>
                         <input defaultValue={s.requiredBandwidth} onBlur={e=>updateField(f.name,"requiredBandwidth",e.target.value)} placeholder="e.g. 100"
-                          style={{ background:"#f8f9fb", border:"1px solid #dde1e8", borderRadius:3, padding:"3px 7px", color:"#4a5568", fontSize:11, width:70 }} />
-                        <span style={{ fontSize:10, color:"#8a94a6", marginLeft:3 }}>Mbps</span>
+                          style={{ background:"#f8f9fb", border:"1px solid #dde1e8", borderRadius:3, padding:"3px 7px", color:"#4a5568", fontSize:11, width:65 }} />
+                        <span style={{ fontSize:10, color:"#8a94a6", marginLeft:2 }}>Mbps</span>
                       </td>
                       <td style={{ padding:"7px 10px" }}>
-                        {bw
-                          ? <span style={{ background:bw.bg, border:`1px solid ${bw.border}`, color:bw.color, padding:"2px 8px", borderRadius:3, fontSize:10, fontWeight:700, whiteSpace:"nowrap" as const }}>{bw.label}</span>
-                          : <span style={{ color:"#c0c8d6", fontSize:11 }}>—</span>
-                        }
+                        {bw ? <span style={{ background:bw.bg, border:`1px solid ${bw.border}`, color:bw.color, padding:"2px 8px", borderRadius:3, fontSize:10, fontWeight:700, whiteSpace:"nowrap" as const }}>{bw.label}</span>
+                             : <span style={{ color:"#c0c8d6", fontSize:11 }}>—</span>}
                       </td>
                       <td style={{ padding:"7px 10px" }}>
                         <input defaultValue={s.issue} onBlur={e=>updateField(f.name,"issue",e.target.value)} placeholder="Reported issue..."
@@ -678,6 +682,64 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Activity Log */}
+        <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, overflow:"hidden", marginBottom:16 }}>
+          <div style={{ padding:"12px 16px", borderBottom:"1px solid #e2e6ed", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+            <div>
+              <div style={{ fontSize:13, fontWeight:600, color:"#1a1f2e" }}>Activity Log</div>
+              <div style={{ fontSize:10, color:"#8a94a6", marginTop:2 }}>Every change is automatically recorded with timestamp</div>
+            </div>
+            <div style={{ marginLeft:"auto", display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+              <div style={{ fontSize:10, color:"#6b7280" }}>From:</div>
+              <input type="date" value={logFrom} onChange={e=>setLogFrom(e.target.value)}
+                style={{ padding:"4px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:11, color:"#1a1f2e" }} />
+              <div style={{ fontSize:10, color:"#6b7280" }}>To:</div>
+              <input type="date" value={logTo} onChange={e=>setLogTo(e.target.value)}
+                style={{ padding:"4px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:11, color:"#1a1f2e" }} />
+              <button onClick={()=>{setLogFrom("");setLogTo("");}} style={{ padding:"4px 10px", background:"#f1f4f8", border:"1px solid #dde1e8", borderRadius:4, fontSize:11, color:"#6b7280", cursor:"pointer" }}>Clear</button>
+              <span style={{ background:"#f0f4ff", border:"1px solid #b4c6fb", color:"#1A3A5C", padding:"3px 10px", borderRadius:4, fontSize:11, fontWeight:600 }}>{filteredLog.length} entries</span>
+              <button onClick={()=>setShowLog(v=>!v)} style={{ padding:"5px 12px", background:"#1A3A5C", border:"none", borderRadius:4, fontSize:11, color:"#fff", cursor:"pointer", fontWeight:600 }}>
+                {showLog ? "Hide Log" : "Show Log"}
+              </button>
+            </div>
+          </div>
+          {showLog && (
+            filteredLog.length === 0 ? (
+              <div style={{ padding:"24px", textAlign:"center", color:"#8a94a6", fontSize:13 }}>No activity recorded yet. Changes will appear here automatically.</div>
+            ) : (
+              <div style={{ overflowX:"auto", maxHeight:400, overflowY:"auto" }}>
+                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+                  <thead style={{ position:"sticky", top:0 }}>
+                    <tr style={{ background:"#f8f9fb" }}>
+                      {["TIMESTAMP","FACILITY","FIELD CHANGED","PREVIOUS VALUE","NEW VALUE","TYPE"].map(h=>(
+                        <th key={h} style={{ textAlign:"left", padding:"9px 10px", color:"#8a94a6", fontWeight:600, fontSize:10, borderBottom:"2px solid #e2e6ed", whiteSpace:"nowrap" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredLog.map((l,i)=>{
+                      const ts=LOG_TYPE_STYLE[l.type]||LOG_TYPE_STYLE.notes;
+                      return (
+                        <tr key={l.id} style={{ borderBottom:"1px solid #f0f2f5", background:i%2===0?"#fff":"#fafbfc" }}>
+                          <td style={{ padding:"7px 10px", fontFamily:"monospace", fontSize:10, color:"#8a94a6", whiteSpace:"nowrap" }}>{l.ts}</td>
+                          <td style={{ padding:"7px 10px", fontWeight:600, color:"#1A3A5C", whiteSpace:"nowrap" }}>{l.facility}</td>
+                          <td style={{ padding:"7px 10px", color:"#4a5568" }}>{l.field}</td>
+                          <td style={{ padding:"7px 10px", color:"#8b1c1c", fontSize:11 }}>{l.oldVal}</td>
+                          <td style={{ padding:"7px 10px", color:"#1a6b35", fontSize:11, fontWeight:600 }}>{l.newVal}</td>
+                          <td style={{ padding:"7px 10px" }}>
+                            <span style={{ background:ts.bg, border:`1px solid ${ts.border}`, color:ts.text, padding:"2px 8px", borderRadius:3, fontSize:10, fontWeight:600, textTransform:"uppercase" as const }}>{l.type}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )
+          )}
+        </div>
+
+        {/* Tickets */}
         <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, overflow:"hidden" }}>
           <div style={{ padding:"12px 16px", borderBottom:"1px solid #e2e6ed", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
             <div>
@@ -690,99 +752,71 @@ export default function Dashboard() {
                 { lbl:`In Progress: ${tCounts.inprogress}`, bg:TICKET_STATUS.inprogress.bg, text:TICKET_STATUS.inprogress.text, border:TICKET_STATUS.inprogress.border },
                 { lbl:`Pending: ${tCounts.pending}`, bg:TICKET_STATUS.pending.bg, text:TICKET_STATUS.pending.text, border:TICKET_STATUS.pending.border },
                 { lbl:`Resolved: ${tCounts.resolved}`, bg:TICKET_STATUS.resolved.bg, text:TICKET_STATUS.resolved.text, border:TICKET_STATUS.resolved.border },
-              ].map(b => (
-                <span key={b.lbl} style={{ background:b.bg, color:b.text, border:`1px solid ${b.border}`, padding:"3px 10px", borderRadius:4, fontSize:11, fontWeight:600 }}>{b.lbl}</span>
-              ))}
-              <button onClick={() => setShowTicketForm(v => !v)}
-                style={{ padding:"5px 14px", background:"#1A3A5C", border:"none", borderRadius:4, fontSize:11, color:"#fff", cursor:"pointer", fontWeight:600 }}>
-                + New Ticket
-              </button>
+              ].map(b=>(<span key={b.lbl} style={{ background:b.bg, color:b.text, border:`1px solid ${b.border}`, padding:"3px 10px", borderRadius:4, fontSize:11, fontWeight:600 }}>{b.lbl}</span>))}
+              <button onClick={()=>setShowTicketForm(v=>!v)} style={{ padding:"5px 14px", background:"#1A3A5C", border:"none", borderRadius:4, fontSize:11, color:"#fff", cursor:"pointer", fontWeight:600 }}>+ New Ticket</button>
             </div>
           </div>
 
-          {showTicketForm && (
+          {showTicketForm&&(
             <div style={{ padding:"16px", background:"#f8f9fb", borderBottom:"1px solid #e2e6ed", display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:10 }}>
-              <div>
-                <div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>OFFICE / LOCATION</div>
-                <input value={newTicket.office} onChange={e=>setNewTicket(p=>({...p,office:e.target.value}))} placeholder="Office name or Unknown / Remote"
-                  style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} />
-              </div>
-              <div>
-                <div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>MEDIUM</div>
-                <select value={newTicket.medium} onChange={e=>setNewTicket(p=>({...p,medium:e.target.value}))}
-                  style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff", cursor:"pointer" }}>
+              <div><div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>OFFICE / LOCATION</div>
+                <input value={newTicket.office} onChange={e=>setNewTicket(p=>({...p,office:e.target.value}))} placeholder="Office name or Unknown / Remote" style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} /></div>
+              <div><div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>MEDIUM</div>
+                <select value={newTicket.medium} onChange={e=>setNewTicket(p=>({...p,medium:e.target.value}))} style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff", cursor:"pointer" }}>
                   <option value="">— Select Medium —</option>
                   <option value="Email">Email</option>
                   <option value="Helpdesk Ticket">Helpdesk Ticket</option>
                   <option value="Whatsapp">Whatsapp</option>
                   <option value="In Person">In Person</option>
-                </select>
-              </div>
-              <div style={{ gridColumn:"span 2" }}>
-                <div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>ISSUE DESCRIPTION</div>
-                <input value={newTicket.description} onChange={e=>setNewTicket(p=>({...p,description:e.target.value}))} placeholder="Describe the issue..."
-                  style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} />
-              </div>
-              <div>
-                <div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>REPORTED BY</div>
-                <input value={newTicket.reportedBy} onChange={e=>setNewTicket(p=>({...p,reportedBy:e.target.value}))} placeholder="Name or Unknown"
-                  style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} />
-              </div>
-              <div>
-                <div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>ASSIGN TO TEAM MEMBER</div>
-                <select value={newTicket.assignedTo} onChange={e=>setNewTicket(p=>({...p,assignedTo:e.target.value}))}
-                  style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff", cursor:"pointer" }}>
+                </select></div>
+              <div style={{ gridColumn:"span 2" }}><div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>ISSUE DESCRIPTION</div>
+                <input value={newTicket.description} onChange={e=>setNewTicket(p=>({...p,description:e.target.value}))} placeholder="Describe the issue..." style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} /></div>
+              <div><div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>REPORTED BY</div>
+                <input value={newTicket.reportedBy} onChange={e=>setNewTicket(p=>({...p,reportedBy:e.target.value}))} placeholder="Name or Unknown" style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} /></div>
+              <div><div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>ASSIGN TO TEAM MEMBER</div>
+                <select value={newTicket.assignedTo} onChange={e=>setNewTicket(p=>({...p,assignedTo:e.target.value}))} style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff", cursor:"pointer" }}>
                   {TEAM.map(m=><option key={m} value={m.startsWith("—")?"":m}>{m}</option>)}
-                </select>
-              </div>
+                </select></div>
               <div style={{ display:"flex", alignItems:"flex-end", gap:8, gridColumn:"span 2" }}>
                 <button onClick={addTicket} style={{ padding:"6px 18px", background:"#1A3A5C", border:"none", borderRadius:4, fontSize:12, color:"#fff", cursor:"pointer", fontWeight:600 }}>Add Ticket</button>
-                <button onClick={() => setShowTicketForm(false)} style={{ padding:"6px 14px", background:"#f1f4f8", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#4a5568", cursor:"pointer" }}>Cancel</button>
+                <button onClick={()=>setShowTicketForm(false)} style={{ padding:"6px 14px", background:"#f1f4f8", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#4a5568", cursor:"pointer" }}>Cancel</button>
               </div>
             </div>
           )}
 
-          {tickets.length === 0 ? (
+          {tickets.length===0 ? (
             <div style={{ padding:"32px", textAlign:"center", color:"#8a94a6", fontSize:13 }}>No tickets yet. Click "+ New Ticket" to log an issue.</div>
           ) : (
             <div style={{ overflowX:"auto" }}>
               <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
                 <thead>
                   <tr style={{ background:"#f8f9fb" }}>
-                    {["TICKET ID","OFFICE / LOCATION","MEDIUM","ISSUE DESCRIPTION","REPORTED BY","ASSIGNED TO TEAM MEMBER","STATUS","RESOLVED BY","REPORTED AT","RESOLVED AT",""].map(h => (
+                    {["TICKET ID","OFFICE / LOCATION","MEDIUM","ISSUE DESCRIPTION","REPORTED BY","ASSIGNED TO TEAM MEMBER","STATUS","RESOLVED BY","REPORTED AT","RESOLVED AT",""].map(h=>(
                       <th key={h} style={{ textAlign:"left", padding:"9px 10px", color:"#8a94a6", fontWeight:600, fontSize:10, borderBottom:"2px solid #e2e6ed", whiteSpace:"nowrap" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {tickets.map((t,i) => (
+                  {tickets.map((t,i)=>(
                     <tr key={t.id} style={{ borderBottom:"1px solid #f0f2f5", background:i%2===0?"#fff":"#fafbfc" }}>
                       <td style={{ padding:"7px 10px", fontFamily:"monospace", fontSize:11, fontWeight:600, color:"#1A3A5C" }}>{t.id}</td>
                       <td style={{ padding:"7px 10px", fontWeight:600, color:"#1a1f2e", whiteSpace:"nowrap" }}>{t.office}</td>
-                      <td style={{ padding:"7px 10px" }}>
-                        <span style={{ background:"#f0f4ff", border:"1px solid #b4c6fb", color:"#1A3A5C", padding:"2px 8px", borderRadius:3, fontSize:10, fontWeight:600, whiteSpace:"nowrap" as const }}>{t.medium||"—"}</span>
-                      </td>
+                      <td style={{ padding:"7px 10px" }}><span style={{ background:"#f0f4ff", border:"1px solid #b4c6fb", color:"#1A3A5C", padding:"2px 8px", borderRadius:3, fontSize:10, fontWeight:600, whiteSpace:"nowrap" as const }}>{t.medium||"—"}</span></td>
                       <td style={{ padding:"7px 10px", color:"#4a5568", maxWidth:200 }}>{t.description}</td>
                       <td style={{ padding:"7px 10px", color:"#4a5568", whiteSpace:"nowrap" }}>{t.reportedBy}</td>
                       <td style={{ padding:"7px 10px" }}>
-                        <select value={t.assignedTo} onChange={e=>updateTicket(t.id,"assignedTo",e.target.value)}
-                          style={{ border:"1px solid #dde1e8", borderRadius:3, padding:"3px 6px", fontSize:11, color:"#1a1f2e", background:"#fff", cursor:"pointer" }}>
+                        <select value={t.assignedTo} onChange={e=>updateTicket(t.id,"assignedTo",e.target.value)} style={{ border:"1px solid #dde1e8", borderRadius:3, padding:"3px 6px", fontSize:11, color:"#1a1f2e", background:"#fff", cursor:"pointer" }}>
                           {TEAM.map(m=><option key={m} value={m.startsWith("—")?"":m}>{m}</option>)}
                         </select>
                       </td>
                       <td style={{ padding:"7px 10px" }}>
-                        <select value={t.status} onChange={e=>updateTicket(t.id,"status",e.target.value)}
-                          style={{ background:TICKET_STATUS[t.status].bg, color:TICKET_STATUS[t.status].text, border:`1px solid ${TICKET_STATUS[t.status].border}`, borderRadius:3, padding:"3px 8px", fontSize:11, fontWeight:600, cursor:"pointer" }}>
-                          <option value="open">Open</option>
-                          <option value="inprogress">In Progress</option>
-                          <option value="pending">Pending</option>
-                          <option value="resolved">Resolved</option>
+                        <select value={t.status} onChange={e=>updateTicket(t.id,"status",e.target.value)} style={{ background:TICKET_STATUS[t.status].bg, color:TICKET_STATUS[t.status].text, border:`1px solid ${TICKET_STATUS[t.status].border}`, borderRadius:3, padding:"3px 8px", fontSize:11, fontWeight:600, cursor:"pointer" }}>
+                          <option value="open">Open</option><option value="inprogress">In Progress</option><option value="pending">Pending</option><option value="resolved">Resolved</option>
                         </select>
                       </td>
                       <td style={{ padding:"7px 10px" }}>
-                        {t.status === "resolved" ? (
-                          <select value={t.resolvedBy} onChange={e=>updateTicket(t.id,"resolvedBy",e.target.value)}
-                            style={{ border:"1px solid #a8d5b5", borderRadius:3, padding:"3px 6px", fontSize:11, color:"#1a6b35", background:"#edf7f0", cursor:"pointer" }}>
+                        {t.status==="resolved" ? (
+                          <select value={t.resolvedBy} onChange={e=>updateTicket(t.id,"resolvedBy",e.target.value)} style={{ border:"1px solid #a8d5b5", borderRadius:3, padding:"3px 6px", fontSize:11, color:"#1a6b35", background:"#edf7f0", cursor:"pointer" }}>
                             {TEAM.map(m=><option key={m} value={m.startsWith("—")?"":m}>{m}</option>)}
                           </select>
                         ) : <span style={{ color:"#c0c8d6", fontSize:11 }}>—</span>}
