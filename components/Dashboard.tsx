@@ -305,6 +305,8 @@ export default function Dashboard() {
 
   const addLog = useCallback(async (entry: Omit<ActivityLog,"id"|"ts">) => {
     const log: ActivityLog = { ...entry, id: uid(), ts: nowFull() };
+    // Update local state immediately so feed shows instantly
+    setActivityLog(prev => [log, ...prev].slice(0, 500));
     await supabase.from("activity_log").upsert({ id: log.id, data: log, updated_at: new Date().toISOString() });
   }, []);
 
@@ -461,6 +463,16 @@ export default function Dashboard() {
     const iL: Record<RAGStatus,string> = { green:"Working", amber:"Slow/Intermittent", red:"Down", na:"N/A" };
     const bL: Record<RAGStatus,string> = { green:"Syncing OK", amber:"Delayed", red:"Not Working", na:"N/A" };
     const pL: Record<RAGStatus,string> = { green:"Working", amber:"Partial", red:"Not Working", na:"N/A" };
+
+    const statusLog = activityLog.filter(l => l.type === "status").filter(l => {
+      if (!logFrom && !logTo) return true;
+      try {
+        const lts = new Date(l.ts).getTime();
+        const from = logFrom ? new Date(logFrom).getTime() : 0;
+        const to = logTo ? new Date(logTo).getTime() : Infinity;
+        return lts >= from && lts <= to;
+      } catch { return true; }
+    });
 
     const drawHeader = (title: string, sub: string) => {
       pg++;
@@ -626,6 +638,88 @@ export default function Dashboard() {
         }catch(e){}
       },
     });
+
+    // ── PAGE: RAG STATUS CHANGE LOG ──────────────────────
+    if (statusLog.length > 0) {
+      doc.addPage();
+      const rl = logFrom||logTo ? `${logFrom?logFrom.replace("T"," "):"Start"} to ${logTo?logTo.replace("T"," "):"Now"}` : "All Time";
+      drawHeader("RAG Status Change Log", `Internet / Biometric / Printing Changes  —  ${rl}`);
+      drawFooter();
+
+      // Summary pills
+      const fields = ["Internet","Biometric","Printing"];
+      let bx = PAD;
+      fields.forEach(fld => {
+        const cnt = statusLog.filter(l => l.field === fld).length;
+        const redCnt = statusLog.filter(l => l.field === fld && l.newVal.includes("Down")).length;
+        const fill = fld==="Internet"?[215,228,255]as[number,number,number]:fld==="Biometric"?[225,215,255]as[number,number,number]:[215,245,225]as[number,number,number];
+        const text = fld==="Internet"?[25,60,170]as[number,number,number]:fld==="Biometric"?[100,40,200]as[number,number,number]:[10,100,50]as[number,number,number];
+        doc.setFillColor(...fill); doc.roundedRect(bx,26,45,12,1.5,1.5,"F");
+        doc.setFont("helvetica","bold"); doc.setFontSize(7.5); doc.setTextColor(...text);
+        doc.text(`${fld}: ${cnt} changes`, bx+22.5, 31, { align:"center" });
+        doc.setFontSize(6); doc.setFont("helvetica","normal");
+        doc.text(`${redCnt} critical`, bx+22.5, 35.5, { align:"center" });
+        bx += 48;
+      });
+      const totalRed = statusLog.filter(l=>l.newVal.includes("Down")||l.newVal.includes("Critical")).length;
+      const totalAmber = statusLog.filter(l=>l.newVal.includes("Slow")||l.newVal.includes("Degraded")).length;
+      const totalGreen = statusLog.filter(l=>l.newVal.includes("Working")||l.newVal.includes("OK")||l.newVal.includes("Sync")).length;
+      doc.setFillColor(...C.rF); doc.roundedRect(bx,26,35,12,1.5,1.5,"F");
+      doc.setFont("helvetica","bold"); doc.setFontSize(7); doc.setTextColor(...C.rT);
+      doc.text(`Critical: ${totalRed}`, bx+17.5, 33, { align:"center" });
+      bx += 38;
+      doc.setFillColor(...C.aF); doc.roundedRect(bx,26,35,12,1.5,1.5,"F");
+      doc.setTextColor(...C.aT);
+      doc.text(`Degraded: ${totalAmber}`, bx+17.5, 33, { align:"center" });
+      bx += 38;
+      doc.setFillColor(...C.gF); doc.roundedRect(bx,26,35,12,1.5,1.5,"F");
+      doc.setTextColor(...C.gT);
+      doc.text(`Recovered: ${totalGreen}`, bx+17.5, 33, { align:"center" });
+
+      const lRows = statusLog.map(l => [l.ts, l.facility, l.field, l.oldVal, l.newVal]);
+      autoTable(doc, {
+        startY: 42,
+        showHead: "everyPage",
+        tableWidth: TW,
+        margin: { left:PAD, right:PAD },
+        head: [["Timestamp", "Facility", "Field", "Previous Status", "New Status"]],
+        body: lRows,
+        styles: { fontSize:7.5, cellPadding:{top:3,bottom:3,left:3,right:3}, font:"helvetica", lineColor:[210,218,232], lineWidth:0.25, textColor:C.ink, overflow:"linebreak", minCellHeight:8 },
+        headStyles: { fillColor:C.navy, textColor:C.white, fontStyle:"bold", fontSize:7.5, halign:"center", cellPadding:{top:3.5,bottom:3.5,left:3,right:3}, lineColor:C.gold, lineWidth:0.4 },
+        alternateRowStyles: { fillColor:[247,249,253] },
+        rowPageBreak: "avoid",
+        columnStyles: {
+          0: { cellWidth:38 },
+          1: { cellWidth:50, fontStyle:"bold", textColor:C.navy },
+          2: { cellWidth:22, halign:"center" },
+          3: { cellWidth:70 },
+          4: { cellWidth:70, fontStyle:"bold" },
+        },
+        didParseCell: (data:any) => {
+          if (data.section === "body") {
+            const v = lRows[data.row.index][data.column.index === 3 ? 3 : 4];
+            if (data.column.index === 3 || data.column.index === 4) {
+              const val = lRows[data.row.index][data.column.index];
+              const isR = val.includes("Down")||val.includes("Critical");
+              const isA = val.includes("Slow")||val.includes("Degraded");
+              const isG = val.includes("Working")||val.includes("OK")||val.includes("Sync");
+              if (isR) { data.cell.styles.fillColor=C.rF; data.cell.styles.textColor=C.rT; data.cell.styles.fontStyle="bold"; }
+              else if (isA) { data.cell.styles.fillColor=C.aF; data.cell.styles.textColor=C.aT; data.cell.styles.fontStyle="bold"; }
+              else if (isG) { data.cell.styles.fillColor=C.gF; data.cell.styles.textColor=C.gT; data.cell.styles.fontStyle="bold"; }
+            }
+            if (data.column.index === 2) {
+              const fld = lRows[data.row.index][2];
+              if(fld==="Internet")  { data.cell.styles.fillColor=[215,228,255]; data.cell.styles.textColor=[25,60,170]; data.cell.styles.fontStyle="bold"; }
+              if(fld==="Biometric") { data.cell.styles.fillColor=[225,215,255]; data.cell.styles.textColor=[100,40,200]; data.cell.styles.fontStyle="bold"; }
+              if(fld==="Printing")  { data.cell.styles.fillColor=[215,245,225]; data.cell.styles.textColor=[10,100,50];  data.cell.styles.fontStyle="bold"; }
+            }
+          }
+        },
+        didDrawPage: (data:any) => {
+          try { drawFooter(); if(data.pageNumber>1) drawHeader("RAG Status Change Log",`${rl} — Continued`); } catch(e) {}
+        },
+      });
+    }
 
     // ── PAGE: TICKETS ONLY ───────────────────────────────
     if(tickets.length>0){
