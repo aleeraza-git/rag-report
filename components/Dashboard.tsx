@@ -300,14 +300,14 @@ export default function Dashboard() {
     const oL: Record<RAGStatus,string> = { green:"Operational", amber:"Degraded", red:"Critical", na:"N/A" };
 
     const drawHeader = (title: string, subtitle: string) => {
-      doc.setFillColor(15,40,75); doc.rect(0,0,W,34,"F");
-      doc.setFillColor(201,163,66); doc.rect(0,34,W,1.5,"F");
+      doc.setFillColor(15,40,75); doc.rect(0,0,W,36,"F");
+      doc.setFillColor(201,163,66); doc.rect(0,36,W,1.5,"F");
       doc.setTextColor(255,255,255); doc.setFontSize(20); doc.setFont("helvetica","bold");
       doc.text("IMARAT", 10, 13);
       doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(201,163,66);
       doc.text("GROUP", 10, 20);
-      doc.setTextColor(180,200,225); doc.text("Information Technology Department", 10, 28);
-      doc.setDrawColor(201,163,66); doc.setLineWidth(0.5); doc.line(55,8,55,30);
+      doc.setTextColor(180,200,225); doc.text("Information Technology Department", 10, 30);
+      doc.setDrawColor(201,163,66); doc.setLineWidth(0.5); doc.line(55,8,55,32);
       doc.setTextColor(255,255,255); doc.setFontSize(13); doc.setFont("helvetica","bold");
       doc.text(title, 60, 13);
       doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(180,200,225);
@@ -326,7 +326,7 @@ export default function Dashboard() {
       doc.text(`Generated: ${today} at ${timeNow}`, W-10, H-4, { align:"right" });
     };
     const drawSummary = () => {
-      const sy = 40;
+      const sy = 42;
       doc.setFillColor(235,240,250); doc.rect(0,sy,W,34,"F");
       doc.setDrawColor(200,210,230); doc.setLineWidth(0.3);
       doc.line(0,sy,W,sy); doc.line(0,sy+34,W,sy+34);
@@ -362,8 +362,8 @@ export default function Dashboard() {
     });
 
     autoTable(doc, {
-      startY: 80, showHead: "everyPage", margin: { left:8, right:8 },
-      head: [["#","Facility","Category","Internet","Biometric","Printing","Overall","Current BW","Required BW","BW Status","Issue","Notes"]],
+      startY: 84, showHead: "everyPage", tableWidth: 281, margin: { left:8, right:8 },
+      head: [["#","Facility","Category","Internet","Biometric","Printing","Overall","Cur BW","Req BW","BW%","Issue","Notes"]],
       body: rows,
       styles: { fontSize:7, cellPadding:{ top:2.5,bottom:2.5,left:2.5,right:2.5 }, font:"helvetica", lineColor:[210,218,230], lineWidth:0.3, textColor:[30,40,60], overflow:"linebreak" },
       headStyles: { fillColor:[15,40,75], textColor:[255,255,255], fontStyle:"bold", fontSize:7, cellPadding:{ top:3.5,bottom:3.5,left:2.5,right:2.5 }, lineColor:[201,163,66], lineWidth:0.5, halign:"center" },
@@ -371,17 +371,17 @@ export default function Dashboard() {
       rowPageBreak: "avoid",
       columnStyles: {
         0:{ cellWidth:5,  halign:"center", textColor:[150,160,180], fontStyle:"bold" },
-        1:{ cellWidth:24, fontStyle:"bold", textColor:[15,40,75] },
-        2:{ cellWidth:12, halign:"center", fontStyle:"bold" },
-        3:{ cellWidth:16, halign:"center" },
-        4:{ cellWidth:18, halign:"center" },
-        5:{ cellWidth:14, halign:"center" },
-        6:{ cellWidth:16, halign:"center", fontStyle:"bold" },
-        7:{ cellWidth:13, halign:"center" },
-        8:{ cellWidth:13, halign:"center" },
+        1:{ cellWidth:38, fontStyle:"bold", textColor:[15,40,75] },
+        2:{ cellWidth:14, halign:"center", fontStyle:"bold" },
+        3:{ cellWidth:22, halign:"center" },
+        4:{ cellWidth:24, halign:"center" },
+        5:{ cellWidth:18, halign:"center" },
+        6:{ cellWidth:20, halign:"center", fontStyle:"bold" },
+        7:{ cellWidth:14, halign:"center" },
+        8:{ cellWidth:14, halign:"center" },
         9:{ cellWidth:16, halign:"center", fontStyle:"bold" },
-        10:{ cellWidth:25 },
-        11:{ cellWidth:19 },
+        10:{ cellWidth:38 },
+        11:{ cellWidth:18 },
       },
       didParseCell: (data: any) => {
         if (data.section === "body") {
