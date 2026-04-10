@@ -378,7 +378,7 @@ export default function Dashboard() {
 
     autoTable(doc, {
       startY: 74,
-      margin: { left:10, right:10 },
+      margin: { left:10, right:10, top:75 },
       head: [["#","Facility Name","Category","Internet","Biometric","Printing","Overall Status","Bandwidth","Reported Issue","Notes"]],
       body: rows,
       styles: {
@@ -458,10 +458,12 @@ export default function Dashboard() {
           }
         }
       },
-      didDrawPage: () => {
-        drawHeader("IT Facilities RAG Dashboard","Daily Facility Monitoring Report — All Sites");
-        drawFooter();
-      },
+      didDrawPage: (data) => {
+          if (data.pageNumber > 1) {
+            drawHeader("IT Facilities RAG Dashboard","Daily Facility Monitoring Report — All Sites");
+            drawFooter();
+          }
+        },
     });
 
     if (tickets.length > 0) {
@@ -552,9 +554,11 @@ export default function Dashboard() {
             }
           }
         },
-        didDrawPage: () => {
-          drawHeader("IT Support Tickets","Helpdesk Issue Tracking — All Reported Incidents");
-          drawFooter();
+        didDrawPage: (data) => {
+          if (data.pageNumber > 1) {
+            drawHeader("IT Support Tickets","Helpdesk Issue Tracking — All Reported Incidents");
+            drawFooter();
+          }
         },
       });
     }
