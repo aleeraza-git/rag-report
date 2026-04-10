@@ -305,7 +305,13 @@ export default function Dashboard() {
       const oldData = prev[name] || defaultState();
       const updated = { ...oldData, [field]: val, ts: nowTime() };
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => saveFacility(name, updated, oldData, field), 800);
+      // For status fields (dropdowns) save immediately, not debounced
+      const isStatus = ["internet","bio","printing"].includes(field as string);
+      if (isStatus) {
+        saveFacility(name, updated, oldData, field as string);
+      } else {
+        saveTimer.current = setTimeout(() => saveFacility(name, updated, oldData, field as string), 800);
+      }
       return { ...prev, [name]: updated };
     });
   }, [saveFacility]);
