@@ -141,7 +141,12 @@ function nowTime() {
 function nowFull() {
   return new Date().toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit" });
 }
-function uid() { return Math.random().toString(36).substr(2,9).toUpperCase(); }
+function imatTicketId() {
+  const num = Math.floor(1000 + Math.random() * 9000);
+  const alpha = Math.random().toString(36).substr(2, 3).toUpperCase();
+  return `IM-${num}-${alpha}`;
+}
+function uid() { return Math.random().toString(36).substr(2, 9).toUpperCase(); }
 function calcOverall(s: FacilityState): RAGStatus {
   const vals = [s.internet, s.bio, s.printing];
   if (vals.includes("red")) return "red";
@@ -165,18 +170,12 @@ function fieldLabel(f: string): string {
   const m: Record<string,string> = { internet:"Internet", bio:"Biometric", printing:"Printing", bandwidth:"Current BW", requiredBandwidth:"Required BW", issue:"Reported Issue", notes:"Notes" };
   return m[f] || f;
 }
-function humanVal(field: string, val: string): string {
-  if (!val || val === "—") return "—";
-  const statusMap: Record<string,string> = {
-    green: "Working / OK",
-    amber: "Slow / Degraded",
-    red:   "Down / Critical",
-    na:    "N/A",
+function humanVal(val: string): string {
+  const m: Record<string,string> = {
+    green:"Working / OK", amber:"Slow / Degraded", red:"Down / Critical", na:"N/A",
+    open:"Open", inprogress:"In Progress", resolved:"Resolved", pending:"Pending",
   };
-  if (["internet","bio","printing","Internet","Biometric","Printing"].some(f => field.toLowerCase().includes(f.toLowerCase()))) {
-    return statusMap[val] || val;
-  }
-  return val;
+  return m[val.toLowerCase()] || val;
 }
 
 function Dot({ s }: { s: RAGStatus }) {
@@ -230,6 +229,16 @@ export default function Dashboard() {
   const [logTo, setLogTo] = useState("");
   const saveTimer = useRef<NodeJS.Timeout|null>(null);
 
+  const loadTickets = useCallback(async () => {
+    const { data } = await supabase.from("tickets").select("*");
+    if (data) setTickets(data.map((r: any) => r.data).sort((a: Ticket, b: Ticket) => b.ts.localeCompare(a.ts)));
+  }, []);
+
+  const loadLog = useCallback(async () => {
+    const { data } = await supabase.from("activity_log").select("*").order("updated_at", { ascending: false }).limit(500);
+    if (data) setActivityLog(data.map((r: any) => r.data));
+  }, []);
+
   useEffect(() => {
     const init: AppState = {};
     FACILITIES.forEach(f => { init[f.name] = defaultState(); });
@@ -253,28 +262,22 @@ export default function Dashboard() {
       setMounted(true);
     };
     loadAll();
+
     const fmt = () => new Date().toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
     setNow(fmt());
-    const t = setInterval(() => setNow(fmt()), 60000);
+    const t = setInterval(() => setNow(fmt()), 30000);
 
-    const fsSub = supabase.channel("fs_ch").on("postgres_changes", { event:"*", schema:"public", table:"facility_state" }, (payload: any) => {
+    const fsSub = supabase.channel("fs_ch2").on("postgres_changes", { event:"*", schema:"public", table:"facility_state" }, (payload: any) => {
       if (payload.new) { setState(prev => ({ ...prev, [payload.new.id]: { ...defaultState(), ...payload.new.data } })); setLastSync(nowTime()); }
     }).subscribe();
-    const tkSub = supabase.channel("tk_ch").on("postgres_changes", { event:"*", schema:"public", table:"tickets" }, async () => {
-      const { data } = await supabase.from("tickets").select("*");
-      if (data) setTickets(data.map((r: any) => r.data).sort((a: Ticket, b: Ticket) => b.ts.localeCompare(a.ts)));
-      setLastSync(nowTime());
-    }).subscribe();
-    const stSub = supabase.channel("st_ch").on("postgres_changes", { event:"*", schema:"public", table:"daily_stats" }, (payload: any) => {
+    const tkSub = supabase.channel("tk_ch2").on("postgres_changes", { event:"*", schema:"public", table:"tickets" }, () => { loadTickets(); setLastSync(nowTime()); }).subscribe();
+    const stSub = supabase.channel("st_ch2").on("postgres_changes", { event:"*", schema:"public", table:"daily_stats" }, (payload: any) => {
       if (payload.new) { setStats(payload.new.data); setLastSync(nowTime()); }
     }).subscribe();
-    const logSub = supabase.channel("log_ch").on("postgres_changes", { event:"*", schema:"public", table:"activity_log" }, async () => {
-      const { data } = await supabase.from("activity_log").select("*").order("updated_at", { ascending: false }).limit(500);
-      if (data) setActivityLog(data.map((r: any) => r.data));
-    }).subscribe();
+    const logSub = supabase.channel("log_ch2").on("postgres_changes", { event:"*", schema:"public", table:"activity_log" }, () => { loadLog(); }).subscribe();
 
     return () => { clearInterval(t); supabase.removeChannel(fsSub); supabase.removeChannel(tkSub); supabase.removeChannel(stSub); supabase.removeChannel(logSub); };
-  }, []);
+  }, [loadTickets, loadLog]);
 
   const addLog = useCallback(async (entry: Omit<ActivityLog,"id"|"ts">) => {
     const log: ActivityLog = { ...entry, id: uid(), ts: nowFull() };
@@ -288,7 +291,7 @@ export default function Dashboard() {
     if (oldVal !== newVal) {
       const type: ActivityLog["type"] = ["internet","bio","printing"].includes(changedField) ? "status" : changedField === "issue" ? "issue" : changedField.includes("andwidth") ? "bandwidth" : "notes";
       const fl = fieldLabel(changedField);
-      await addLog({ facility: name, field: fl, oldVal: humanVal(fl, oldVal)||"—", newVal: humanVal(fl, newVal)||"—", type });
+      await addLog({ facility: name, field: fl, oldVal: humanVal(oldVal)||"—", newVal: humanVal(newVal)||"—", type });
     }
     setLastSync(nowTime());
   }, [addLog]);
@@ -316,7 +319,7 @@ export default function Dashboard() {
 
   const addTicket = async () => {
     if (!newTicket.description) return;
-    const t: Ticket = { id:"TKT-"+uid(), office:newTicket.office||"Unknown / Remote Office", medium:newTicket.medium||"—", description:newTicket.description, reportedBy:newTicket.reportedBy||"Unknown", assignedTo:newTicket.assignedTo, resolvedBy:"", status:"open", ts:nowFull(), resolvedTs:"" };
+    const t: Ticket = { id:imatTicketId(), office:newTicket.office||"Unknown / Remote Office", medium:newTicket.medium||"—", description:newTicket.description, reportedBy:newTicket.reportedBy||"Unknown", assignedTo:newTicket.assignedTo, resolvedBy:"", status:"open", ts:nowFull(), resolvedTs:"" };
     await supabase.from("tickets").upsert({ id: t.id, data: t, updated_at: new Date().toISOString() });
     await addLog({ facility: t.office, field:"Ticket Created", oldVal:"—", newVal:`${t.id}: ${t.description}`, type:"ticket" });
     setNewTicket({ office:"", description:"", reportedBy:"", assignedTo:"", medium:"" });
@@ -327,7 +330,7 @@ export default function Dashboard() {
     const updated = { ...ticket, [field]: val };
     if (field === "status" && val === "resolved") updated.resolvedTs = nowFull();
     await supabase.from("tickets").upsert({ id, data: updated, updated_at: new Date().toISOString() });
-    if (field === "status") await addLog({ facility: ticket.office, field:`Ticket ${id} Status`, oldVal: ticket.status, newVal: val, type:"ticket" });
+    if (field === "status") await addLog({ facility: ticket.office, field:`Ticket ${id}`, oldVal: humanVal(ticket.status), newVal: humanVal(val), type:"ticket" });
     if (field === "assignedTo") await addLog({ facility: ticket.office, field:`Ticket ${id} Assigned`, oldVal: ticket.assignedTo||"—", newVal: val||"—", type:"ticket" });
   };
   const deleteTicket = async (id:string) => {
@@ -366,155 +369,128 @@ export default function Dashboard() {
     const dateStr = d.toLocaleDateString("en-GB", { day:"2-digit", month:"long", year:"numeric" });
     const timeStr = d.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", second:"2-digit" });
     const doc = new jsPDF({ orientation:"landscape", unit:"mm", format:"a4" });
-    const PW = doc.internal.pageSize.getWidth();   // 297
-    const PH = doc.internal.pageSize.getHeight();  // 210
+    const PW = doc.internal.pageSize.getWidth();
+    const PH = doc.internal.pageSize.getHeight();
     const PAD = 10;
-    const TW = PW - PAD*2;
-    let pageN = 0;
+    const TW = PW - PAD * 2;
+    let pg = 0;
 
     const C = {
-      navy:   [10, 30, 60]   as [number,number,number],
-      gold:   [185,145, 45]  as [number,number,number],
-      white:  [255,255,255]  as [number,number,number],
-      light:  [248,249,252]  as [number,number,number],
-      border: [210,218,232]  as [number,number,number],
-      ink:    [20, 30, 50]   as [number,number,number],
-      muted:  [110,122,142]  as [number,number,number],
-      gF:     [198,239,206]  as [number,number,number],
-      gT:     [14, 85, 38]   as [number,number,number],
-      aF:     [255,235,156]  as [number,number,number],
-      aT:     [115, 65,  0]  as [number,number,number],
-      rF:     [255,199,206]  as [number,number,number],
-      rT:     [148, 18, 18]  as [number,number,number],
-      nF:     [238,240,245]  as [number,number,number],
-      nT:     [105,115,132]  as [number,number,number],
+      navy:  [10,30,60]   as [number,number,number],
+      gold:  [185,145,45] as [number,number,number],
+      white: [255,255,255]as [number,number,number],
+      muted: [110,122,142]as [number,number,number],
+      ink:   [20,30,50]   as [number,number,number],
+      gF:[198,239,206]as[number,number,number], gT:[14,85,38]as[number,number,number],
+      aF:[255,235,156]as[number,number,number], aT:[115,65,0]as[number,number,number],
+      rF:[255,199,206]as[number,number,number], rT:[148,18,18]as[number,number,number],
+      nF:[238,240,245]as[number,number,number], nT:[105,115,132]as[number,number,number],
     };
 
-    const ragFill = (s: RAGStatus) => s==="green"?C.gF:s==="amber"?C.aF:s==="red"?C.rF:C.nF;
-    const ragText = (s: RAGStatus) => s==="green"?C.gT:s==="amber"?C.aT:s==="red"?C.rT:C.nT;
+    const ragF = (s:RAGStatus) => s==="green"?C.gF:s==="amber"?C.aF:s==="red"?C.rF:C.nF;
+    const ragT = (s:RAGStatus) => s==="green"?C.gT:s==="amber"?C.aT:s==="red"?C.rT:C.nT;
+    const ragLabel = (s:RAGStatus) => s==="green"?"Operational":s==="amber"?"Degraded":s==="red"?"Critical":"N/A";
 
-    const iL: Record<RAGStatus,string> = { green:"Working", amber:"Slow / Intermittent", red:"Down", na:"N/A" };
-    const bL: Record<RAGStatus,string> = { green:"Working & Syncing", amber:"Delayed", red:"Not Working", na:"N/A" };
+    const iL: Record<RAGStatus,string> = { green:"Working", amber:"Slow/Intermittent", red:"Down", na:"N/A" };
+    const bL: Record<RAGStatus,string> = { green:"Syncing OK", amber:"Delayed", red:"Not Working", na:"N/A" };
     const pL: Record<RAGStatus,string> = { green:"Working", amber:"Partial", red:"Not Working", na:"N/A" };
-    const oL: Record<RAGStatus,string> = { green:"Operational", amber:"Degraded", red:"Critical", na:"N/A" };
 
-    // ── HEADER ──────────────────────────────────────────────
-    const header = (title: string, sub: string) => {
-      pageN++;
-      // Navy background
-      doc.setFillColor(...C.navy); doc.rect(0, 0, PW, 22, "F");
-      // Gold left stripe
-      doc.setFillColor(...C.gold); doc.rect(0, 0, 4, 22, "F");
-      // Gold bottom line
-      doc.setFillColor(...C.gold); doc.rect(0, 22, PW, 0.8, "F");
-
-      // IMARAT GROUP text
-      doc.setFont("helvetica","bold"); doc.setFontSize(16);
-      doc.setTextColor(...C.white);
-      doc.text("IMARAT GROUP", PAD+2, 10);
-      doc.setFont("helvetica","normal"); doc.setFontSize(7);
-      doc.setTextColor(175, 190, 215);
-      doc.text("Group of Companies  |  Information Technology Department", PAD+2, 15);
-      doc.text("it.support@imarat.com.pk", PAD+2, 19);
-
+    const drawHeader = (title: string, sub: string) => {
+      pg++;
+      doc.setFillColor(...C.navy); doc.rect(0,0,PW,22,"F");
+      doc.setFillColor(...C.gold); doc.rect(0,22,PW,1,"F");
+      doc.setFillColor(...C.gold); doc.rect(0,0,3,22,"F");
+      // Company
+      doc.setFont("helvetica","bold"); doc.setFontSize(15); doc.setTextColor(...C.white);
+      doc.text("IMARAT GROUP", PAD+2, 9);
+      doc.setFont("helvetica","normal"); doc.setFontSize(6.5); doc.setTextColor(175,192,218);
+      doc.text("Group of Companies  |  Information Technology Department", PAD+2, 14);
+      doc.text("it.support@imarat.com.pk", PAD+2, 18);
       // Divider
-      doc.setDrawColor(185,145,45); doc.setLineWidth(0.3);
-      doc.line(100, 4, 100, 19);
-
-      // Report title
-      doc.setFont("helvetica","bold"); doc.setFontSize(12);
-      doc.setTextColor(...C.white);
-      doc.text(title, 105, 10);
-      doc.setFont("helvetica","normal"); doc.setFontSize(7.5);
-      doc.setTextColor(175, 190, 215);
-      doc.text(sub, 105, 16);
-
-      // Date / page - right side
-      doc.setFont("helvetica","bold"); doc.setFontSize(8);
-      doc.setTextColor(...C.gold);
+      doc.setDrawColor(...C.gold); doc.setLineWidth(0.3); doc.line(95,3,95,20);
+      // Title
+      doc.setFont("helvetica","bold"); doc.setFontSize(11); doc.setTextColor(...C.white);
+      doc.text(title, 99, 10);
+      doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(175,192,218);
+      doc.text(sub, 99, 16);
+      // Right
+      doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...C.gold);
       doc.text(dateStr, PW-PAD, 9, { align:"right" });
-      doc.setFont("helvetica","normal"); doc.setFontSize(7);
-      doc.setTextColor(175, 190, 215);
+      doc.setFont("helvetica","normal"); doc.setFontSize(6.5); doc.setTextColor(175,192,218);
       doc.text(timeStr, PW-PAD, 14, { align:"right" });
-      doc.text("Page "+pageN, PW-PAD, 19, { align:"right" });
+      doc.text("Page "+pg, PW-PAD, 19, { align:"right" });
     };
 
-    // ── FOOTER ──────────────────────────────────────────────
-    const footer = () => {
-      doc.setFillColor(...C.gold); doc.rect(0, PH-7, PW, 0.6, "F");
-      doc.setFillColor(...C.navy); doc.rect(0, PH-6.4, PW, 6.4, "F");
-      doc.setFont("helvetica","normal"); doc.setFontSize(6.5);
-      doc.setTextColor(160, 175, 200);
-      doc.text("IMARAT Group of Companies  |  IT Facilities RAG Dashboard  |  Confidential  |  Internal Use Only", PAD, PH-2);
-      doc.text(`${dateStr}  |  ${timeStr}`, PW-PAD, PH-2, { align:"right" });
+    const drawFooter = () => {
+      doc.setFillColor(...C.gold); doc.rect(0,PH-7,PW,0.5,"F");
+      doc.setFillColor(...C.navy); doc.rect(0,PH-6.5,PW,6.5,"F");
+      doc.setFont("helvetica","normal"); doc.setFontSize(6); doc.setTextColor(160,175,205);
+      doc.text("IMARAT Group of Companies  |  IT Facilities RAG Dashboard  |  Confidential  |  Internal Use Only", PAD, PH-2.5);
+      doc.text(`${dateStr}  |  ${timeStr}`, PW-PAD, PH-2.5, { align:"right" });
     };
 
-    // ── STAT PILLS ROW ──────────────────────────────────────
-    const statRow = (y: number) => {
-      const pills = [
-        { label:"Total Facilities",  val:String(FACILITIES.length), fill:C.light,  text:C.navy,  border:C.border },
-        { label:"Fully Operational", val:String(counts.green),       fill:C.gF,    text:C.gT,    border:[160,215,170] as [number,number,number] },
-        { label:"Warning Sites",     val:String(counts.amber),       fill:C.aF,    text:C.aT,    border:[215,195,100] as [number,number,number] },
-        { label:"Critical Sites",    val:String(counts.red),         fill:C.rF,    text:C.rT,    border:[215,155,165] as [number,number,number] },
-        { label:"Queries Today",     val:String(stats.received),     fill:[215,230,255] as [number,number,number], text:C.navy, border:[165,195,240] as [number,number,number] },
-        { label:"Resolved Today",    val:String(stats.resolved),     fill:[185,245,210] as [number,number,number], text:[5,100,60] as [number,number,number], border:[135,210,170] as [number,number,number] },
-        { label:"Pending",           val:String(stats.pending),      fill:[255,220,175] as [number,number,number], text:[120,55,8] as [number,number,number], border:[210,170,110] as [number,number,number] },
+    const drawSummaryBar = (y: number) => {
+      const items = [
+        { label:"Total Facilities",  val:String(FACILITIES.length), f:[228,234,248]as[number,number,number], t:C.navy },
+        { label:"Fully Operational", val:String(counts.green),       f:C.gF, t:C.gT },
+        { label:"Warning Sites",     val:String(counts.amber),       f:C.aF, t:C.aT },
+        { label:"Critical Sites",    val:String(counts.red),         f:C.rF, t:C.rT },
+        { label:"Queries Today",     val:String(stats.received),     f:[215,228,255]as[number,number,number], t:[25,58,168]as[number,number,number] },
+        { label:"Resolved Today",    val:String(stats.resolved),     f:[183,243,205]as[number,number,number], t:[5,98,58]as[number,number,number] },
+        { label:"Pending",           val:String(stats.pending),      f:[253,213,168]as[number,number,number], t:[118,52,8]as[number,number,number] },
       ];
-      const pw2 = TW / pills.length;
-      pills.forEach((p,i) => {
-        const x = PAD + i*pw2;
-        doc.setFillColor(...p.fill); doc.roundedRect(x+0.5, y, pw2-1, 16, 1.5, 1.5, "F");
-        doc.setDrawColor(...p.border); doc.setLineWidth(0.3); doc.roundedRect(x+0.5, y, pw2-1, 16, 1.5, 1.5, "S");
-        // top accent bar
-        doc.setFillColor(...p.text); doc.roundedRect(x+0.5, y, pw2-1, 2.5, 1.5, 1.5, "F"); doc.rect(x+0.5, y+1, pw2-1, 1.5, "F");
-        doc.setFont("helvetica","bold"); doc.setFontSize(14); doc.setTextColor(...p.text);
-        doc.text(p.val, x+pw2/2, y+10.5, { align:"center" });
-        doc.setFont("helvetica","normal"); doc.setFontSize(5.5);
-        doc.text(p.label, x+pw2/2, y+14.5, { align:"center" });
+      const cw = TW / items.length;
+      items.forEach((item, i) => {
+        const x = PAD + i*cw;
+        doc.setFillColor(...item.f); doc.roundedRect(x+0.5,y,cw-1,18,1.5,1.5,"F");
+        doc.setFillColor(...item.t); doc.roundedRect(x+0.5,y,cw-1,2.5,1.5,1.5,"F"); doc.rect(x+0.5,y+1.2,cw-1,1.3,"F");
+        doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(...item.t);
+        doc.text(item.val, x+cw/2, y+12, { align:"center" });
+        doc.setFont("helvetica","normal"); doc.setFontSize(5.2);
+        doc.text(item.label, x+cw/2, y+16.5, { align:"center" });
       });
     };
 
-    // ── STATUS LEGEND ───────────────────────────────────────
-    const legend = (y: number) => {
-      doc.setFillColor(244, 246, 250); doc.roundedRect(PAD, y, TW, 9, 1.5, 1.5, "F");
-      doc.setDrawColor(...C.border); doc.setLineWidth(0.25); doc.roundedRect(PAD, y, TW, 9, 1.5, 1.5, "S");
+    const drawLegend = (y: number) => {
+      doc.setFillColor(245,247,251); doc.roundedRect(PAD,y,TW,9,1.5,1.5,"F");
+      doc.setDrawColor(208,216,230); doc.setLineWidth(0.2); doc.roundedRect(PAD,y,TW,9,1.5,1.5,"S");
       doc.setFont("helvetica","bold"); doc.setFontSize(6.5); doc.setTextColor(...C.muted);
-      doc.text("STATUS GUIDE:", PAD+2.5, y+6);
+      doc.text("STATUS GUIDE:", PAD+2.5, y+6.2);
       const items = [
-        { t:"Operational / Working",  f:C.gF, c:C.gT },
-        { t:"Warning / Degraded",     f:C.aF, c:C.aT },
-        { t:"Critical / Down",        f:C.rF, c:C.rT },
-        { t:"Not Applicable (N/A)",   f:C.nF, c:C.nT },
+        { label:"Operational / Working", f:C.gF, t:C.gT },
+        { label:"Warning / Degraded",    f:C.aF, t:C.aT },
+        { label:"Critical / Down",       f:C.rF, t:C.rT },
+        { label:"Not Applicable (N/A)",  f:C.nF, t:C.nT },
       ];
-      let lx = PAD + 33;
-      items.forEach(item => {
-        doc.setFillColor(...item.f); doc.roundedRect(lx, y+1, 40, 7, 1, 1, "F");
-        doc.setFillColor(...item.c); doc.circle(lx+3.5, y+5, 1.6, "F");
-        doc.setTextColor(...item.c); doc.setFont("helvetica","bold"); doc.setFontSize(6.2);
-        doc.text(item.t, lx+7.5, y+6);
+      let lx = PAD+34;
+      items.forEach(it => {
+        doc.setFillColor(...it.f); doc.roundedRect(lx,y+1,40,7,1,1,"F");
+        doc.setFillColor(...it.t); doc.circle(lx+3.5,y+5,1.6,"F");
+        doc.setTextColor(...it.t); doc.setFont("helvetica","bold"); doc.setFontSize(6.2);
+        doc.text(it.label, lx+7.5, y+6.2);
         lx += 43;
       });
     };
 
-    // ═══════════════════════════════════════════════════════
-    // PAGE 1 — FACILITY STATUS TABLE
-    // ═══════════════════════════════════════════════════════
-    header("IT Facilities RAG Dashboard", "Daily Monitoring Report  —  All Sites  —  "+dateStr);
-    statRow(26);
-    legend(46);
-    footer();
+    // ── PAGE 1: FACILITY STATUS ──────────────────────────
+    drawHeader("IT Facilities RAG Dashboard","Daily Monitoring Report  —  All "+FACILITIES.length+" Sites  —  "+dateStr);
+    drawSummaryBar(26);
+    drawLegend(47);
+    drawFooter();
 
     const facRows = FACILITIES.map((f,i) => {
       const s = state[f.name] ?? defaultState();
       const ov = calcOverall(s);
       const bw = bwCompare(s.bandwidth, s.requiredBandwidth);
       return {
-        d: [String(i+1), f.name, f.cat,
-            iL[s.internet], bL[s.bio], pL[s.printing], oL[ov],
-            s.bandwidth?s.bandwidth+" Mbps":"—",
-            s.requiredBandwidth?s.requiredBandwidth+" Mbps":"—",
-            bw?bw.label:"—",
-            s.issue||"—", s.notes||"—"],
+        d:[String(i+1), f.name, f.cat,
+           iL[s.internet], bL[s.bio], pL[s.printing], ragLabel(ov),
+           s.bandwidth?s.bandwidth+"Mbps":"—",
+           s.requiredBandwidth?s.requiredBandwidth+"Mbps":"—",
+           bw?bw.label:"—",
+           s.issue||"—",
+           s.notes||"—",
+           s.ts],
         internet:s.internet, bio:s.bio, printing:s.printing, overall:ov, bw, cat:f.cat,
       };
     });
@@ -524,54 +500,43 @@ export default function Dashboard() {
       showHead: "everyPage",
       tableWidth: TW,
       margin: { left:PAD, right:PAD },
-      head: [["#","Facility Name","Category","Internet","Biometric","Printing","Overall","Cur BW","Req BW","BW%","Issue","Notes"]],
-      body: facRows.map(r => r.d),
-      styles: {
-        fontSize: 7,
-        cellPadding: { top:2.8, bottom:2.8, left:2.5, right:2.5 },
-        font: "helvetica",
-        lineColor: C.border,
-        lineWidth: 0.25,
-        textColor: C.ink,
-        valign: "middle",
-        overflow: "linebreak",
-        minCellHeight: 8,
+      head:[["#","Facility Name","Cat","Internet","Biometric","Printing","Overall","Cur BW","Req BW","BW%","Issue","Notes","Updated"]],
+      body: facRows.map(r=>r.d),
+      styles:{
+        fontSize:6.8, cellPadding:{top:2.5,bottom:2.5,left:2,right:2},
+        font:"helvetica", lineColor:[210,218,232], lineWidth:0.25,
+        textColor:C.ink, valign:"middle", overflow:"linebreak", minCellHeight:7,
       },
-      headStyles: {
-        fillColor: C.navy,
-        textColor: C.white,
-        fontStyle: "bold",
-        fontSize: 7,
-        halign: "center",
-        cellPadding: { top:3.5, bottom:3.5, left:2.5, right:2.5 },
-        lineColor: C.gold,
-        lineWidth: 0.5,
-        minCellHeight: 9,
+      headStyles:{
+        fillColor:C.navy, textColor:C.white, fontStyle:"bold", fontSize:6.8,
+        halign:"center", valign:"middle",
+        cellPadding:{top:3,bottom:3,left:2,right:2},
+        lineColor:C.gold, lineWidth:0.4, minCellHeight:8,
       },
-      alternateRowStyles: { fillColor: [247,249,253] },
-      pageBreak: "auto",
-      rowPageBreak: "avoid",
-      columnStyles: {
-        0:  { cellWidth:6,  halign:"center", textColor:C.muted, fontStyle:"bold" },
-        1:  { cellWidth:30, fontStyle:"bold", textColor:C.navy },
-        2:  { cellWidth:13, halign:"center" },
-        3:  { cellWidth:20, halign:"center" },
-        4:  { cellWidth:20, halign:"center" },
-        5:  { cellWidth:15, halign:"center" },
-        6:  { cellWidth:18, halign:"center", fontStyle:"bold" },
-        7:  { cellWidth:13, halign:"center" },
-        8:  { cellWidth:13, halign:"center" },
-        9:  { cellWidth:14, halign:"center", fontStyle:"bold" },
-        10: { cellWidth:30 },
-        11: { cellWidth:21 },
+      alternateRowStyles:{ fillColor:[247,249,253] },
+      pageBreak:"auto", rowPageBreak:"avoid",
+      columnStyles:{
+        0:{cellWidth:5, halign:"center", textColor:C.muted, fontStyle:"bold"},
+        1:{cellWidth:28, fontStyle:"bold", textColor:C.navy},
+        2:{cellWidth:12, halign:"center"},
+        3:{cellWidth:19, halign:"center"},
+        4:{cellWidth:18, halign:"center"},
+        5:{cellWidth:15, halign:"center"},
+        6:{cellWidth:18, halign:"center", fontStyle:"bold"},
+        7:{cellWidth:12, halign:"center"},
+        8:{cellWidth:12, halign:"center"},
+        9:{cellWidth:14, halign:"center", fontStyle:"bold"},
+        10:{cellWidth:38},
+        11:{cellWidth:22},
+        12:{cellWidth:16, halign:"center", textColor:C.muted},
       },
-      didParseCell: (data:any) => {
-        if (data.section !== "body") return;
-        const row = facRows[data.row.index]; if (!row) return;
-        const si: Record<number,RAGStatus> = {3:row.internet,4:row.bio,5:row.printing,6:row.overall};
-        const s = si[data.column.index];
-        if (s) { data.cell.styles.fillColor=ragFill(s); data.cell.styles.textColor=ragText(s); data.cell.styles.fontStyle="bold"; }
-        if (data.column.index===2) {
+      didParseCell:(data:any)=>{
+        if(data.section!=="body") return;
+        const row=facRows[data.row.index]; if(!row) return;
+        const si:Record<number,RAGStatus>={3:row.internet,4:row.bio,5:row.printing,6:row.overall};
+        const s=si[data.column.index];
+        if(s){data.cell.styles.fillColor=ragF(s);data.cell.styles.textColor=ragT(s);data.cell.styles.fontStyle="bold";}
+        if(data.column.index===2){
           const cc:Record<string,[number,number,number]>={Projects:[55,88,215],Imarat:[10,118,105],Graana:[120,55,230],Agency21:[185,82,30]};
           if(cc[row.cat]){data.cell.styles.textColor=cc[row.cat];data.cell.styles.fontStyle="bold";}
         }
@@ -584,173 +549,82 @@ export default function Dashboard() {
         }
         if(data.column.index===10&&row.d[10]!=="—"){data.cell.styles.textColor=C.rT;}
       },
-      didDrawPage: (data:any) => {
-        try { footer(); if(data.pageNumber>1) header("IT Facilities RAG Dashboard","Daily Monitoring Report — Continued"); } catch(e){}
+      didDrawPage:(data:any)=>{
+        try{
+          drawFooter();
+          if(data.pageNumber>1){
+            drawHeader("IT Facilities RAG Dashboard","Daily Monitoring Report — Continued");
+            drawLegend(26);
+          }
+        }catch(e){}
       },
     });
 
-    // ═══════════════════════════════════════════════════════
-    // PAGE 2 — ACTIVITY LOG
-    // ═══════════════════════════════════════════════════════
-    if (filteredLog.length > 0) {
+    // ── PAGE: TICKETS ONLY ───────────────────────────────
+    if(tickets.length>0){
       doc.addPage();
-      const rl = logFrom||logTo ? `${logFrom?logFrom.replace("T"," "):"Start"} to ${logTo?logTo.replace("T"," "):"Now"}` : "Complete History";
-      header("Activity Log", rl === "Complete History" ? "All Recorded Changes" : "Filtered: "+rl);
-      footer();
+      drawHeader("IT Support Tickets","Helpdesk Issue Tracking  —  All Reported Incidents");
+      drawFooter();
 
-      // Type count badges
-      const typeInfo:{key:string;fill:[number,number,number];text:[number,number,number]}[] = [
-        {key:"STATUS",    fill:[215,230,255],text:[22,42,76]},
-        {key:"ISSUE",     fill:C.rF,         text:C.rT},
-        {key:"BANDWIDTH", fill:C.gF,         text:C.gT},
-        {key:"TICKET",    fill:C.aF,         text:C.aT},
-        {key:"NOTES",     fill:C.nF,         text:C.nT},
+      const tPills=[
+        {label:`Total: ${tickets.length}`,            f:[228,234,248]as[number,number,number], t:C.navy},
+        {label:`Open: ${tCounts.open}`,               f:C.rF, t:C.rT},
+        {label:`In Progress: ${tCounts.inprogress}`,  f:C.aF, t:C.aT},
+        {label:`Pending: ${tCounts.pending}`,         f:[215,230,255]as[number,number,number], t:[25,60,170]as[number,number,number]},
+        {label:`Resolved: ${tCounts.resolved}`,       f:C.gF, t:C.gT},
       ];
-      let bx = PAD;
-      typeInfo.forEach(ti => {
-        const cnt = filteredLog.filter(l=>l.type.toUpperCase()===ti.key).length;
-        doc.setFillColor(...ti.fill); doc.roundedRect(bx,27,29,8,1.5,1.5,"F");
-        doc.setFont("helvetica","bold"); doc.setFontSize(6.5); doc.setTextColor(...ti.text);
-        doc.text(`${ti.key}:  ${cnt}`, bx+14.5, 32.5, { align:"center" });
-        bx += 31;
-      });
-      doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(...C.muted);
-      doc.text(`${filteredLog.length} total entries recorded`, bx+2, 32.5);
-
-      const humanize = (v: string) => {
-        const m: Record<string,string> = {
-          green:"Working / OK", amber:"Slow / Degraded", red:"Down / Critical", na:"N/A",
-          open:"Open", inprogress:"In Progress", resolved:"Resolved", pending:"Pending",
-        };
-        return m[v.toLowerCase()] || v;
-      };
-      const lRows = filteredLog.map(l => [l.ts, l.facility, l.field, humanize(l.oldVal), humanize(l.newVal), l.type.toUpperCase()]);
-      autoTable(doc, {
-        startY: 39,
-        showHead: "everyPage",
-        tableWidth: TW,
-        margin: { left:PAD, right:PAD },
-        head: [["Date & Time","Facility / Office","Field Changed","Previous Value","Updated To","Change Type"]],
-        body: lRows,
-        styles: { fontSize:7, cellPadding:{top:2.8,bottom:2.8,left:2.5,right:2.5}, font:"helvetica", lineColor:C.border, lineWidth:0.25, textColor:C.ink, overflow:"linebreak", minCellHeight:8 },
-        headStyles: { fillColor:C.navy, textColor:C.white, fontStyle:"bold", fontSize:7, halign:"center", cellPadding:{top:3.5,bottom:3.5,left:2.5,right:2.5}, lineColor:C.gold, lineWidth:0.5 },
-        alternateRowStyles: { fillColor:[247,249,253] },
-        rowPageBreak: "avoid",
-        columnStyles: {
-          0: { cellWidth:38 },
-          1: { cellWidth:36, fontStyle:"bold", textColor:C.navy },
-          2: { cellWidth:28 },
-          3: { cellWidth:50 },
-          4: { cellWidth:50, fontStyle:"bold" },
-          5: { cellWidth:25, halign:"center", fontStyle:"bold" },
-        },
-        didParseCell: (data:any) => {
-          if (data.section === "body") {
-            const row = lRows[data.row.index];
-            if (data.column.index === 4) {
-              const v = row[4];
-              if(v.includes("Working")||v.includes("OK")||v.includes("Operational")){data.cell.styles.textColor=C.gT;data.cell.styles.fontStyle="bold";}
-              else if(v.includes("Slow")||v.includes("Degraded")||v.includes("LOW")){data.cell.styles.textColor=C.aT;data.cell.styles.fontStyle="bold";}
-              else if(v.includes("Down")||v.includes("Critical")||v.includes("CRIT")){data.cell.styles.textColor=C.rT;data.cell.styles.fontStyle="bold";}
-            }
-            if (data.column.index === 3) {
-              const v = row[3];
-              if(v.includes("Working")||v.includes("OK")){data.cell.styles.textColor=C.gT;}
-              else if(v.includes("Slow")||v.includes("Degraded")){data.cell.styles.textColor=C.aT;}
-              else if(v.includes("Down")||v.includes("Critical")){data.cell.styles.textColor=C.rT;}
-            }
-            if (data.column.index === 5) {
-              const ti = typeInfo.find(t=>t.key===row[5]);
-              if(ti){data.cell.styles.fillColor=ti.fill;data.cell.styles.textColor=ti.text;}
-            }
-          }
-        },
-        didDrawPage: (data:any) => {
-          try { footer(); if(data.pageNumber>1) header("Activity Log","Change History — Continued"); } catch(e){}
-        },
-      });
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // PAGE 3 — SUPPORT TICKETS
-    // ═══════════════════════════════════════════════════════
-    if (tickets.length > 0) {
-      doc.addPage();
-      header("IT Support Tickets", "Helpdesk Issue Tracking  —  All Reported Incidents");
-      footer();
-
-      const statusColors:{[k:string]:{fill:[number,number,number];text:[number,number,number]}} = {
-        "Open":        {fill:C.rF, text:C.rT},
-        "In Progress": {fill:C.aF, text:C.aT},
-        "Pending":     {fill:[215,230,255], text:[22,42,76]},
-        "Resolved":    {fill:C.gF, text:C.gT},
-      };
-      const tPills = [
-        {label:`Total  ${tickets.length}`,              fill:C.light, text:C.navy},
-        {label:`Open  ${tCounts.open}`,                 ...statusColors["Open"]},
-        {label:`In Progress  ${tCounts.inprogress}`,    ...statusColors["In Progress"]},
-        {label:`Pending  ${tCounts.pending}`,           ...statusColors["Pending"]},
-        {label:`Resolved  ${tCounts.resolved}`,         ...statusColors["Resolved"]},
-      ];
-      let tp = PAD;
-      tPills.forEach(p => {
-        doc.setFillColor(...p.fill); doc.roundedRect(tp,27,36,9,1.5,1.5,"F");
-        doc.setDrawColor(...C.border); doc.setLineWidth(0.2); doc.roundedRect(tp,27,36,9,1.5,1.5,"S");
-        doc.setFont("helvetica","bold"); doc.setFontSize(6.8); doc.setTextColor(...p.text);
-        doc.text(p.label, tp+18, 33, { align:"center" });
-        tp += 38;
+      let tpx=PAD;
+      tPills.forEach(p=>{
+        doc.setFillColor(...p.f);doc.roundedRect(tpx,26,36,9,1.5,1.5,"F");
+        doc.setDrawColor(205,212,228);doc.setLineWidth(0.2);doc.roundedRect(tpx,26,36,9,1.5,1.5,"S");
+        doc.setFont("helvetica","bold");doc.setFontSize(7);doc.setTextColor(...p.t);
+        doc.text(p.label,tpx+18,32,{align:"center"});
+        tpx+=38;
       });
 
-      const tRows = tickets.map(t => [
+      const tRows=tickets.map(t=>[
         t.id, t.office, t.medium||"—", t.description, t.reportedBy,
         t.assignedTo||"Unassigned",
         t.status==="open"?"Open":t.status==="inprogress"?"In Progress":t.status==="pending"?"Pending":"Resolved",
         t.resolvedBy||"—", t.ts, t.resolvedTs||"—",
       ]);
 
-      autoTable(doc, {
-        startY: 40,
-        showHead: "everyPage",
-        tableWidth: TW,
-        margin: { left:PAD, right:PAD },
-        head: [["Ticket ID","Office / Location","Medium","Issue Description","Reported By","Assigned To","Status","Resolved By","Opened At","Closed At"]],
-        body: tRows,
-        styles: { fontSize:7, cellPadding:{top:2.8,bottom:2.8,left:2.5,right:2.5}, font:"helvetica", lineColor:C.border, lineWidth:0.25, textColor:C.ink, overflow:"linebreak", minCellHeight:8 },
-        headStyles: { fillColor:C.navy, textColor:C.white, fontStyle:"bold", fontSize:7, halign:"center", cellPadding:{top:3.5,bottom:3.5,left:2.5,right:2.5}, lineColor:C.gold, lineWidth:0.5 },
-        alternateRowStyles: { fillColor:[247,249,253] },
-        rowPageBreak: "avoid",
-        columnStyles: {
-          0: { cellWidth:20, fontStyle:"bold", textColor:C.navy },
-          1: { cellWidth:26 },
-          2: { cellWidth:16, halign:"center" },
-          3: { cellWidth:46 },
-          4: { cellWidth:20 },
-          5: { cellWidth:22 },
-          6: { cellWidth:20, halign:"center", fontStyle:"bold" },
-          7: { cellWidth:18 },
-          8: { cellWidth:25, halign:"center" },
-          9: { cellWidth:25, halign:"center" },
+      autoTable(doc,{
+        startY:39,showHead:"everyPage",tableWidth:TW,margin:{left:PAD,right:PAD},
+        head:[["Ticket ID","Office / Location","Medium","Issue Description","Reported By","Assigned To","Status","Resolved By","Opened At","Closed At"]],
+        body:tRows,
+        styles:{fontSize:6.8,cellPadding:{top:2.5,bottom:2.5,left:2,right:2},font:"helvetica",lineColor:[210,218,232],lineWidth:0.25,textColor:C.ink,overflow:"linebreak",minCellHeight:7},
+        headStyles:{fillColor:C.navy,textColor:C.white,fontStyle:"bold",fontSize:6.8,halign:"center",cellPadding:{top:3,bottom:3,left:2,right:2},lineColor:C.gold,lineWidth:0.4},
+        alternateRowStyles:{fillColor:[247,249,253]},rowPageBreak:"avoid",
+        columnStyles:{
+          0:{cellWidth:22,fontStyle:"bold",textColor:C.navy},
+          1:{cellWidth:26},2:{cellWidth:16,halign:"center"},
+          3:{cellWidth:48},4:{cellWidth:18},5:{cellWidth:22},
+          6:{cellWidth:18,halign:"center",fontStyle:"bold"},
+          7:{cellWidth:18},8:{cellWidth:26,halign:"center"},9:{cellWidth:26,halign:"center"},
         },
-        didParseCell: (data:any) => {
-          if (data.section === "body") {
-            if (data.column.index === 6) {
-              const sc = statusColors[tRows[data.row.index][6]];
-              if(sc){data.cell.styles.fillColor=sc.fill;data.cell.styles.textColor=sc.text;data.cell.styles.fontStyle="bold";}
-            }
-            if (data.column.index === 2) {
-              const mc:Record<string,[number,number,number]>={"Email":[28,60,170],"Helpdesk Ticket":[118,55,225],"Whatsapp":[18,122,58],"In Person":[155,90,5]};
-              if(mc[tRows[data.row.index][2]]){data.cell.styles.textColor=mc[tRows[data.row.index][2]];data.cell.styles.fontStyle="bold";}
-            }
+        didParseCell:(data:any)=>{
+          if(data.section==="body"&&data.column.index===6){
+            const st=tRows[data.row.index][6];
+            if(st==="Open")       {data.cell.styles.fillColor=C.rF;data.cell.styles.textColor=C.rT;data.cell.styles.fontStyle="bold";}
+            if(st==="In Progress"){data.cell.styles.fillColor=C.aF;data.cell.styles.textColor=C.aT;data.cell.styles.fontStyle="bold";}
+            if(st==="Pending")    {data.cell.styles.fillColor=[215,230,255];data.cell.styles.textColor=[25,60,170];data.cell.styles.fontStyle="bold";}
+            if(st==="Resolved")   {data.cell.styles.fillColor=C.gF;data.cell.styles.textColor=C.gT;data.cell.styles.fontStyle="bold";}
+          }
+          if(data.section==="body"&&data.column.index===2){
+            const mc:Record<string,[number,number,number]>={"Email":[28,60,170],"Helpdesk Ticket":[118,55,225],"Whatsapp":[18,122,58],"In Person":[155,90,5]};
+            if(mc[tRows[data.row.index][2]]){data.cell.styles.textColor=mc[tRows[data.row.index][2]];data.cell.styles.fontStyle="bold";}
           }
         },
-        didDrawPage: (data:any) => {
-          try { footer(); if(data.pageNumber>1) header("IT Support Tickets","Helpdesk Tracking — Continued"); } catch(e){}
+        didDrawPage:(data:any)=>{
+          try{drawFooter();if(data.pageNumber>1)drawHeader("IT Support Tickets","Helpdesk Tracking — Continued");}catch(e){}
         },
       });
     }
 
     doc.save(`Imarat_RAG_${d.toISOString().slice(0,10)}.pdf`);
   };
+
   if (!mounted) return (
     <div style={{ minHeight:"100vh", background:"#eef1f7", display:"flex", alignItems:"center", justifyContent:"center" }}>
       <div style={{ textAlign:"center" }}>
@@ -767,8 +641,6 @@ export default function Dashboard() {
 
   return (
     <div style={{ minHeight:"100vh", background:"#eef1f7", fontFamily:"'Segoe UI',Arial,sans-serif" }}>
-
-      {/* Top Nav */}
       <div style={{ background:"#1A3A5C", padding:"0 24px", display:"flex", alignItems:"center", height:56 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <div style={{ width:32, height:32, background:"#2c5282", borderRadius:6, display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -790,17 +662,17 @@ export default function Dashboard() {
 
       <div style={{ padding:"16px 20px" }}>
 
-        {/* Live Activity Feed + PDF Export Controls */}
+        {/* Live Activity Feed */}
         <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, marginBottom:16, overflow:"hidden" }}>
           <div style={{ background:"#1A3A5C", padding:"10px 16px", display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
             <div style={{ color:"#fff", fontWeight:600, fontSize:13 }}>Live Activity Feed</div>
             <span style={{ background:"#22c55e", width:8, height:8, borderRadius:"50%", display:"inline-block", flexShrink:0 }} />
             <span style={{ color:"#94B8D4", fontSize:10 }}>{activityLog.length} changes recorded</span>
             <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-              <span style={{ fontSize:10, color:"#94B8D4" }}>PDF Export From:</span>
+              <span style={{ fontSize:10, color:"#94B8D4" }}>Export PDF from:</span>
               <input type="datetime-local" value={logFrom} onChange={e=>setLogFrom(e.target.value)}
                 style={{ padding:"3px 6px", border:"1px solid #2c5282", borderRadius:4, fontSize:11, color:"#1a1f2e", background:"#fff" }} />
-              <span style={{ fontSize:10, color:"#94B8D4" }}>To:</span>
+              <span style={{ fontSize:10, color:"#94B8D4" }}>to:</span>
               <input type="datetime-local" value={logTo} onChange={e=>setLogTo(e.target.value)}
                 style={{ padding:"3px 6px", border:"1px solid #2c5282", borderRadius:4, fontSize:11, color:"#1a1f2e", background:"#fff" }} />
               <button onClick={()=>{setLogFrom("");setLogTo("");}}
@@ -812,12 +684,10 @@ export default function Dashboard() {
             </div>
           </div>
           {activityLog.length === 0 ? (
-            <div style={{ padding:"12px 16px", color:"#8a94a6", fontSize:12, textAlign:"center" }}>
-              No activity yet — every change will appear here automatically in real-time
-            </div>
+            <div style={{ padding:"12px 16px", color:"#8a94a6", fontSize:12, textAlign:"center" }}>No activity yet — every change will appear here automatically</div>
           ) : (
             <div style={{ maxHeight:200, overflowY:"auto" }}>
-              {filteredLog.slice(0,100).map((l,i) => {
+              {activityLog.slice(0,100).map((l,i) => {
                 const ls = LOG_STYLE[l.type] || LOG_STYLE.notes;
                 return (
                   <div key={l.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"6px 16px", borderBottom:"1px solid #f5f5f5", background:i%2===0?"#fff":"#fafbfc" }}>
@@ -870,7 +740,7 @@ export default function Dashboard() {
         {/* Status Panels */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:12, marginBottom:16 }}>
           {[
-            { title:"Internet Status", rows:[{l:`${iC.green} Sites Stable`,s:"green" as RAGStatus},{l:`${iC.amber} Slow / Intermittent`,s:"amber" as RAGStatus},{l:`${iC.red} Sites Down`,s:"red" as RAGStatus}] },
+            { title:"Internet Status", rows:[{l:`${iC.green} Sites Stable`,s:"green" as RAGStatus},{l:`${iC.amber} Slow/Intermittent`,s:"amber" as RAGStatus},{l:`${iC.red} Sites Down`,s:"red" as RAGStatus}] },
             { title:"Biometric Status", rows:[{l:`${bC.green} Sites Working`,s:"green" as RAGStatus},{l:`${bC.amber} Sync Delays`,s:"amber" as RAGStatus},{l:`${bC.red} Offline`,s:"red" as RAGStatus}] },
             { title:"Printing Devices", rows:[{l:`${pC.green} Working`,s:"green" as RAGStatus},{l:`${pC.amber} Partially Working`,s:"amber" as RAGStatus},{l:`${pC.red} Not Working`,s:"red" as RAGStatus}] },
             { title:"Overall RAG", rows:[{l:"Operational",s:"green" as RAGStatus,c:counts.green},{l:"Degraded",s:"amber" as RAGStatus,c:counts.amber},{l:"Critical",s:"red" as RAGStatus,c:counts.red}] },
@@ -927,17 +797,17 @@ export default function Dashboard() {
                       <td style={{ padding:"7px 10px" }}><Badge s={ov} /></td>
                       <td style={{ padding:"7px 10px" }}>
                         <input defaultValue={s.bandwidth} onBlur={e=>updateField(f.name,"bandwidth",e.target.value)} placeholder="e.g. 50"
-                          style={{ background:"#f0f4ff", border:"1px solid #b4c6fb", borderRadius:3, padding:"3px 7px", color:"#1A3A5C", fontSize:11, width:65, fontWeight:500 }} />
+                          style={{ background:"#f0f4ff", border:"1px solid #b4c6fb", borderRadius:3, padding:"3px 7px", color:"#1A3A5C", fontSize:11, width:60, fontWeight:500 }} />
                         <span style={{ fontSize:10, color:"#8a94a6", marginLeft:2 }}>Mbps</span>
                       </td>
                       <td style={{ padding:"7px 10px" }}>
                         <input defaultValue={s.requiredBandwidth} onBlur={e=>updateField(f.name,"requiredBandwidth",e.target.value)} placeholder="e.g. 100"
-                          style={{ background:"#f8f9fb", border:"1px solid #dde1e8", borderRadius:3, padding:"3px 7px", color:"#4a5568", fontSize:11, width:65 }} />
+                          style={{ background:"#f8f9fb", border:"1px solid #dde1e8", borderRadius:3, padding:"3px 7px", color:"#4a5568", fontSize:11, width:60 }} />
                         <span style={{ fontSize:10, color:"#8a94a6", marginLeft:2 }}>Mbps</span>
                       </td>
                       <td style={{ padding:"7px 10px" }}>
-                        {bw ? <span style={{ background:bw.bg, border:`1px solid ${bw.border}`, color:bw.color, padding:"2px 8px", borderRadius:3, fontSize:10, fontWeight:700, whiteSpace:"nowrap" as const }}>{bw.label}</span>
-                             : <span style={{ color:"#c0c8d6", fontSize:11 }}>—</span>}
+                        {bw?<span style={{ background:bw.bg, border:`1px solid ${bw.border}`, color:bw.color, padding:"2px 8px", borderRadius:3, fontSize:10, fontWeight:700, whiteSpace:"nowrap" as const }}>{bw.label}</span>
+                           :<span style={{ color:"#c0c8d6", fontSize:11 }}>—</span>}
                       </td>
                       <td style={{ padding:"7px 10px" }}>
                         <input defaultValue={s.issue} onBlur={e=>updateField(f.name,"issue",e.target.value)} placeholder="Reported issue..."
@@ -977,12 +847,12 @@ export default function Dashboard() {
           {showTicketForm&&(
             <div style={{ padding:"16px", background:"#f8f9fb", borderBottom:"1px solid #e2e6ed", display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:10 }}>
               <div><div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>OFFICE / LOCATION</div>
-                <input value={newTicket.office} onChange={e=>setNewTicket(p=>({...p,office:e.target.value}))} placeholder="Office name or Unknown / Remote"
+                <input value={newTicket.office} onChange={e=>setNewTicket(p=>({...p,office:e.target.value}))} placeholder="Office name"
                   style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} /></div>
               <div><div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>MEDIUM</div>
                 <select value={newTicket.medium} onChange={e=>setNewTicket(p=>({...p,medium:e.target.value}))}
                   style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff", cursor:"pointer" }}>
-                  <option value="">— Select Medium —</option>
+                  <option value="">— Select —</option>
                   <option value="Email">Email</option>
                   <option value="Helpdesk Ticket">Helpdesk Ticket</option>
                   <option value="Whatsapp">Whatsapp</option>
@@ -992,9 +862,9 @@ export default function Dashboard() {
                 <input value={newTicket.description} onChange={e=>setNewTicket(p=>({...p,description:e.target.value}))} placeholder="Describe the issue..."
                   style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} /></div>
               <div><div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>REPORTED BY</div>
-                <input value={newTicket.reportedBy} onChange={e=>setNewTicket(p=>({...p,reportedBy:e.target.value}))} placeholder="Name or Unknown"
+                <input value={newTicket.reportedBy} onChange={e=>setNewTicket(p=>({...p,reportedBy:e.target.value}))} placeholder="Name"
                   style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} /></div>
-              <div><div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>ASSIGN TO TEAM MEMBER</div>
+              <div><div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>ASSIGN TO</div>
                 <select value={newTicket.assignedTo} onChange={e=>setNewTicket(p=>({...p,assignedTo:e.target.value}))}
                   style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff", cursor:"pointer" }}>
                   {TEAM.map(m=><option key={m} value={m.startsWith("—")?"":m}>{m}</option>)}
@@ -1006,14 +876,14 @@ export default function Dashboard() {
             </div>
           )}
 
-          {tickets.length===0 ? (
+          {tickets.length===0?(
             <div style={{ padding:"32px", textAlign:"center", color:"#8a94a6", fontSize:13 }}>No tickets yet. Click "+ New Ticket" to log an issue.</div>
-          ) : (
+          ):(
             <div style={{ overflowX:"auto" }}>
               <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
                 <thead>
                   <tr style={{ background:"#f8f9fb" }}>
-                    {["TICKET ID","OFFICE / LOCATION","MEDIUM","ISSUE DESCRIPTION","REPORTED BY","ASSIGNED TO TEAM MEMBER","STATUS","RESOLVED BY","REPORTED AT","RESOLVED AT",""].map(h=>(
+                    {["TICKET ID","OFFICE / LOCATION","MEDIUM","ISSUE DESCRIPTION","REPORTED BY","ASSIGNED TO","STATUS","RESOLVED BY","REPORTED AT","RESOLVED AT",""].map(h=>(
                       <th key={h} style={{ textAlign:"left", padding:"9px 10px", color:"#8a94a6", fontWeight:600, fontSize:10, borderBottom:"2px solid #e2e6ed", whiteSpace:"nowrap" }}>{h}</th>
                     ))}
                   </tr>
@@ -1042,12 +912,12 @@ export default function Dashboard() {
                         </select>
                       </td>
                       <td style={{ padding:"7px 10px" }}>
-                        {t.status==="resolved" ? (
+                        {t.status==="resolved"?(
                           <select value={t.resolvedBy} onChange={e=>updateTicket(t.id,"resolvedBy",e.target.value)}
                             style={{ border:"1px solid #a8d5b5", borderRadius:3, padding:"3px 6px", fontSize:11, color:"#1a6b35", background:"#edf7f0", cursor:"pointer" }}>
                             {TEAM.map(m=><option key={m} value={m.startsWith("—")?"":m}>{m}</option>)}
                           </select>
-                        ) : <span style={{ color:"#c0c8d6", fontSize:11 }}>—</span>}
+                        ):<span style={{ color:"#c0c8d6", fontSize:11 }}>—</span>}
                       </td>
                       <td style={{ padding:"7px 10px", fontFamily:"monospace", fontSize:10, color:"#8a94a6", whiteSpace:"nowrap" }}>{t.ts}</td>
                       <td style={{ padding:"7px 10px", fontFamily:"monospace", fontSize:10, color:t.resolvedTs?"#1a6b35":"#c0c8d6", whiteSpace:"nowrap" }}>{t.resolvedTs||"—"}</td>
@@ -1061,7 +931,6 @@ export default function Dashboard() {
             </div>
           )}
         </div>
-
       </div>
     </div>
   );
