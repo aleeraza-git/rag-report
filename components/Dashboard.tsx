@@ -440,26 +440,32 @@ export default function Dashboard() {
     const doc = new jsPDF({ orientation:"landscape", unit:"mm", format:"a4" });
     const PW = doc.internal.pageSize.getWidth();
     const PH = doc.internal.pageSize.getHeight();
-    const PAD = 10;
+    const PAD = 12;
     const TW = PW - PAD * 2;
     let pg = 0;
 
-    const C = {
-      navy:  [10,30,60]   as [number,number,number],
-      gold:  [185,145,45] as [number,number,number],
-      white: [255,255,255]as [number,number,number],
-      muted: [110,122,142]as [number,number,number],
-      ink:   [20,30,50]   as [number,number,number],
-      gF:[198,239,206]as[number,number,number], gT:[14,85,38]as[number,number,number],
-      aF:[255,235,156]as[number,number,number], aT:[115,65,0]as[number,number,number],
-      rF:[255,199,206]as[number,number,number], rT:[148,18,18]as[number,number,number],
-      nF:[238,240,245]as[number,number,number], nT:[105,115,132]as[number,number,number],
-    };
+    // ── COLOUR PALETTE ──────────────────────────────────
+    const navy:   [number,number,number] = [10, 22, 40];
+    const navyM:  [number,number,number] = [17, 34, 64];
+    const gold:   [number,number,number] = [201,168,76];
+    const goldL:  [number,number,number] = [245,230,175];
+    const white:  [number,number,number] = [255,255,255];
+    const ink:    [number,number,number] = [26, 32, 44];
+    const muted:  [number,number,number] = [113,128,150];
+    const pale:   [number,number,number] = [247,250,252];
+    const border: [number,number,number] = [226,232,240];
+    const gF:     [number,number,number] = [198,239,206];
+    const gT:     [number,number,number] = [14, 85, 38];
+    const aF:     [number,number,number] = [255,235,156];
+    const aT:     [number,number,number] = [115,65, 0];
+    const rF:     [number,number,number] = [255,199,206];
+    const rT:     [number,number,number] = [148,18, 18];
+    const nF:     [number,number,number] = [238,240,245];
+    const nT:     [number,number,number] = [105,115,132];
 
-    const ragF = (s:RAGStatus) => s==="green"?C.gF:s==="amber"?C.aF:s==="red"?C.rF:C.nF;
-    const ragT = (s:RAGStatus) => s==="green"?C.gT:s==="amber"?C.aT:s==="red"?C.rT:C.nT;
-    const ragLabel = (s:RAGStatus) => s==="green"?"Operational":s==="amber"?"Degraded":s==="red"?"Critical":"N/A";
-
+    const ragF = (s:RAGStatus) => s==="green"?gF:s==="amber"?aF:s==="red"?rF:nF;
+    const ragT = (s:RAGStatus) => s==="green"?gT:s==="amber"?aT:s==="red"?rT:nT;
+    const ragLbl = (s:RAGStatus) => s==="green"?"Operational":s==="amber"?"Degraded":s==="red"?"Critical":"N/A";
     const iL: Record<RAGStatus,string> = { green:"Working", amber:"Slow/Intermittent", red:"Down", na:"N/A" };
     const bL: Record<RAGStatus,string> = { green:"Syncing OK", amber:"Delayed", red:"Not Working", na:"N/A" };
     const pL: Record<RAGStatus,string> = { green:"Working", amber:"Partial", red:"Not Working", na:"N/A" };
@@ -474,245 +480,271 @@ export default function Dashboard() {
       } catch { return true; }
     });
 
+    // ── HEADER ──────────────────────────────────────────
     const drawHeader = (title: string, sub: string) => {
       pg++;
-      doc.setFillColor(...C.navy); doc.rect(0,0,PW,22,"F");
-      doc.setFillColor(...C.gold); doc.rect(0,22,PW,1,"F");
-      doc.setFillColor(...C.gold); doc.rect(0,0,3,22,"F");
-      // Company
-      doc.setFont("helvetica","bold"); doc.setFontSize(15); doc.setTextColor(...C.white);
-      doc.text("IMARAT GROUP", PAD+2, 9);
-      doc.setFont("helvetica","normal"); doc.setFontSize(6.5); doc.setTextColor(175,192,218);
-      doc.text("Group of Companies  |  Information Technology Department", PAD+2, 14);
-      doc.text("it.support@imarat.com.pk", PAD+2, 18);
-      // Divider
-      doc.setDrawColor(...C.gold); doc.setLineWidth(0.3); doc.line(95,3,95,20);
-      // Title
-      doc.setFont("helvetica","bold"); doc.setFontSize(11); doc.setTextColor(...C.white);
-      doc.text(title, 99, 10);
-      doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(175,192,218);
-      doc.text(sub, 99, 16);
-      // Right
-      doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...C.gold);
-      doc.text(dateStr, PW-PAD, 9, { align:"right" });
-      doc.setFont("helvetica","normal"); doc.setFontSize(6.5); doc.setTextColor(175,192,218);
-      doc.text(timeStr, PW-PAD, 14, { align:"right" });
-      doc.text("Page "+pg, PW-PAD, 19, { align:"right" });
+      // Full navy header
+      doc.setFillColor(...navy); doc.rect(0, 0, PW, 28, "F");
+      // Gold top stripe
+      doc.setFillColor(...gold); doc.rect(0, 0, PW, 2.5, "F");
+      // Gold bottom stripe
+      doc.setFillColor(...gold); doc.rect(0, 28, PW, 1, "F");
+      // Left section — company
+      doc.setFont("helvetica","bold"); doc.setFontSize(17);
+      doc.setTextColor(...white);
+      doc.text("IMARAT", PAD, 13);
+      doc.setFont("helvetica","normal"); doc.setFontSize(7);
+      doc.setTextColor(...gold);
+      doc.text("GROUP OF COMPANIES", PAD, 18.5);
+      doc.setTextColor(160,185,218); doc.setFontSize(6.5);
+      doc.text("Information Technology Department  ·  it.support@imarat.com.pk", PAD, 23.5);
+      // Vertical gold rule
+      doc.setDrawColor(...gold); doc.setLineWidth(0.4);
+      doc.line(PAD+88, 5, PAD+88, 24);
+      // Centre — report title
+      doc.setFont("helvetica","bold"); doc.setFontSize(12.5);
+      doc.setTextColor(...white);
+      doc.text(title, PAD+94, 13);
+      doc.setFont("helvetica","normal"); doc.setFontSize(7);
+      doc.setTextColor(160,185,218);
+      doc.text(sub, PAD+94, 19.5);
+      // Right — date / page
+      doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
+      doc.setTextColor(...gold);
+      doc.text(dateStr, PW-PAD, 11, { align:"right" });
+      doc.setFont("helvetica","normal"); doc.setFontSize(7);
+      doc.setTextColor(160,185,218);
+      doc.text(timeStr, PW-PAD, 17, { align:"right" });
+      doc.text(`Page ${pg}`, PW-PAD, 23, { align:"right" });
     };
 
+    // ── FOOTER ──────────────────────────────────────────
     const drawFooter = () => {
-      doc.setFillColor(...C.gold); doc.rect(0,PH-7,PW,0.5,"F");
-      doc.setFillColor(...C.navy); doc.rect(0,PH-6.5,PW,6.5,"F");
-      doc.setFont("helvetica","normal"); doc.setFontSize(6); doc.setTextColor(160,175,205);
-      doc.text("IMARAT Group of Companies  |  IT Facilities RAG Dashboard  |  Confidential  |  Internal Use Only", PAD, PH-2.5);
-      doc.text(`${dateStr}  |  ${timeStr}`, PW-PAD, PH-2.5, { align:"right" });
+      doc.setFillColor(...navy); doc.rect(0, PH-8, PW, 8, "F");
+      doc.setFillColor(...gold); doc.rect(0, PH-8, PW, 0.6, "F");
+      doc.setFont("helvetica","normal"); doc.setFontSize(6.5);
+      doc.setTextColor(100,125,165);
+      doc.text("IMARAT Group of Companies  ·  IT Facilities RAG Dashboard  ·  Confidential  ·  Internal Use Only", PAD, PH-3);
+      doc.text(`${dateStr}  ·  ${timeStr}`, PW-PAD, PH-3, { align:"right" });
     };
 
-    const drawSummaryBar = (y: number) => {
-      const items = [
-        { label:"Total Facilities",  val:String(FACILITIES.length), f:[228,234,248]as[number,number,number], t:C.navy },
-        { label:"Fully Operational", val:String(counts.green),       f:C.gF, t:C.gT },
-        { label:"Warning Sites",     val:String(counts.amber),       f:C.aF, t:C.aT },
-        { label:"Critical Sites",    val:String(counts.red),         f:C.rF, t:C.rT },
-        { label:"Queries Today",     val:String(stats.received),     f:[215,228,255]as[number,number,number], t:[25,58,168]as[number,number,number] },
-        { label:"Resolved Today",    val:String(stats.resolved),     f:[183,243,205]as[number,number,number], t:[5,98,58]as[number,number,number] },
-        { label:"Pending",           val:String(stats.pending),      f:[253,213,168]as[number,number,number], t:[118,52,8]as[number,number,number] },
+    // ── KPI CARDS ───────────────────────────────────────
+    const drawKPIs = (y: number) => {
+      const cards = [
+        { label:"TOTAL SITES",      val:String(FACILITIES.length), f:[228,235,252] as [number,number,number], t:navy,   accent:navyM },
+        { label:"OPERATIONAL",      val:String(counts.green),       f:gF,  t:gT,   accent:gT },
+        { label:"WARNING",          val:String(counts.amber),       f:aF,  t:aT,   accent:aT },
+        { label:"CRITICAL",         val:String(counts.red),         f:rF,  t:rT,   accent:rT },
+        { label:"QUERIES TODAY",    val:String(stats.received),     f:[215,230,255] as [number,number,number], t:[22,60,170] as [number,number,number], accent:[22,60,170] as [number,number,number] },
+        { label:"RESOLVED",         val:String(stats.resolved),     f:[185,245,205] as [number,number,number], t:[5,98,58] as [number,number,number],   accent:[5,98,58] as [number,number,number] },
+        { label:"PENDING",          val:String(stats.pending),      f:aF,  t:aT,   accent:aT },
       ];
-      const cw = TW / items.length;
-      items.forEach((item, i) => {
-        const x = PAD + i*cw;
-        doc.setFillColor(...item.f); doc.roundedRect(x+0.5,y,cw-1,18,1.5,1.5,"F");
-        doc.setFillColor(...item.t); doc.roundedRect(x+0.5,y,cw-1,2.5,1.5,1.5,"F"); doc.rect(x+0.5,y+1.2,cw-1,1.3,"F");
-        doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(...item.t);
-        doc.text(item.val, x+cw/2, y+12, { align:"center" });
-        doc.setFont("helvetica","normal"); doc.setFontSize(5.2);
-        doc.text(item.label, x+cw/2, y+16.5, { align:"center" });
+      const cw = TW / cards.length;
+      cards.forEach((c, i) => {
+        const x = PAD + i * cw;
+        doc.setFillColor(...c.f); doc.roundedRect(x+0.8, y, cw-1.8, 20, 2, 2, "F");
+        doc.setFillColor(...c.accent); doc.roundedRect(x+0.8, y, cw-1.8, 3, 2, 2, "F");
+        doc.rect(x+0.8, y+1.5, cw-1.8, 1.5, "F");
+        doc.setFont("helvetica","bold"); doc.setFontSize(14); doc.setTextColor(...c.t);
+        doc.text(c.val, x + cw/2, y + 13, { align:"center" });
+        doc.setFont("helvetica","normal"); doc.setFontSize(5.2); doc.setTextColor(...c.t);
+        doc.text(c.label, x + cw/2, y + 17.5, { align:"center" });
       });
     };
 
+    // ── STATUS LEGEND ───────────────────────────────────
     const drawLegend = (y: number) => {
-      doc.setFillColor(245,247,251); doc.roundedRect(PAD,y,TW,9,1.5,1.5,"F");
-      doc.setDrawColor(208,216,230); doc.setLineWidth(0.2); doc.roundedRect(PAD,y,TW,9,1.5,1.5,"S");
-      doc.setFont("helvetica","bold"); doc.setFontSize(6.5); doc.setTextColor(...C.muted);
-      doc.text("STATUS GUIDE:", PAD+2.5, y+6.2);
+      doc.setFillColor(...pale); doc.roundedRect(PAD, y, TW, 8.5, 1.5, 1.5, "F");
+      doc.setDrawColor(...border); doc.setLineWidth(0.2); doc.roundedRect(PAD, y, TW, 8.5, 1.5, 1.5, "S");
+      doc.setFont("helvetica","bold"); doc.setFontSize(6.2); doc.setTextColor(...muted);
+      doc.text("STATUS KEY:", PAD+3, y+5.8);
       const items = [
-        { label:"Operational / Working", f:C.gF, t:C.gT },
-        { label:"Warning / Degraded",    f:C.aF, t:C.aT },
-        { label:"Critical / Down",       f:C.rF, t:C.rT },
-        { label:"Not Applicable (N/A)",  f:C.nF, t:C.nT },
+        { label:"Operational / Working", f:gF, t:gT },
+        { label:"Warning / Degraded",    f:aF, t:aT },
+        { label:"Critical / Down",       f:rF, t:rT },
+        { label:"Not Applicable",        f:nF, t:nT },
       ];
-      let lx = PAD+34;
+      let lx = PAD+30;
       items.forEach(it => {
-        doc.setFillColor(...it.f); doc.roundedRect(lx,y+1,40,7,1,1,"F");
-        doc.setFillColor(...it.t); doc.circle(lx+3.5,y+5,1.6,"F");
+        doc.setFillColor(...it.f); doc.roundedRect(lx, y+1, 42, 6.5, 1, 1, "F");
+        doc.setFillColor(...it.t); doc.circle(lx+3.5, y+4.8, 1.5, "F");
         doc.setTextColor(...it.t); doc.setFont("helvetica","bold"); doc.setFontSize(6.2);
-        doc.text(it.label, lx+7.5, y+6.2);
-        lx += 43;
+        doc.text(it.label, lx+7.5, y+5.8);
+        lx += 45;
       });
     };
 
-    // ── PAGE 1: FACILITY STATUS ──────────────────────────
-    drawHeader("IT Facilities RAG Dashboard","Daily Monitoring Report  —  All "+FACILITIES.length+" Sites  —  "+dateStr);
-    drawSummaryBar(26);
-    drawLegend(47);
+    // ══════════════════════════════════════════════════════
+    // PAGE 1 — FACILITY STATUS TABLE
+    // ══════════════════════════════════════════════════════
+    drawHeader("IT Facilities RAG Dashboard", `Daily Monitoring Report  ·  All ${FACILITIES.length} Sites  ·  ${dateStr}`);
+    drawKPIs(32);
+    drawLegend(55);
     drawFooter();
 
-    const facRows = FACILITIES.map((f,i) => {
+    const facRows = FACILITIES.map((f, i) => {
       const s = state[f.name] ?? defaultState();
       const ov = calcOverall(s);
       const bw = bwCompare(s.bandwidth, s.requiredBandwidth);
       return {
-        d:[String(i+1), f.name, f.cat,
-           iL[s.internet], bL[s.bio], pL[s.printing], ragLabel(ov),
-           s.bandwidth?s.bandwidth+"Mbps":"—",
-           s.requiredBandwidth?s.requiredBandwidth+"Mbps":"—",
-           bw?bw.label:"—",
-           s.issue||"—",
-           s.notes||"—",
-           s.ts],
+        d: [String(i+1), f.name, f.cat,
+            iL[s.internet], bL[s.bio], pL[s.printing], ragLbl(ov),
+            s.bandwidth ? s.bandwidth+" Mbps" : "—",
+            s.requiredBandwidth ? s.requiredBandwidth+" Mbps" : "—",
+            bw ? bw.label : "—",
+            s.issue||"—", s.notes||"—", s.ts],
         internet:s.internet, bio:s.bio, printing:s.printing, overall:ov, bw, cat:f.cat,
       };
     });
 
     autoTable(doc, {
-      startY: 59,
+      startY: 67,
       showHead: "everyPage",
       tableWidth: TW,
       margin: { left:PAD, right:PAD },
-      head:[["#","Facility Name","Cat","Internet","Biometric","Printing","Overall","Cur BW","Req BW","BW%","Issue","Notes","Updated"]],
-      body: facRows.map(r=>r.d),
-      styles:{
-        fontSize:6.8, cellPadding:{top:2.5,bottom:2.5,left:2,right:2},
-        font:"helvetica", lineColor:[210,218,232], lineWidth:0.25,
-        textColor:C.ink, valign:"middle", overflow:"linebreak", minCellHeight:7,
+      head: [["#","Facility Name","Cat","Internet","Biometric","Printing","Overall","Cur BW","Req BW","BW%","Issue / Outstanding","Notes","Updated"]],
+      body: facRows.map(r => r.d),
+      styles: {
+        fontSize: 6.8,
+        cellPadding: { top:2.8, bottom:2.8, left:2.5, right:2.5 },
+        font: "helvetica",
+        lineColor: border,
+        lineWidth: 0.22,
+        textColor: ink,
+        valign: "middle",
+        overflow: "linebreak",
+        minCellHeight: 7.5,
       },
-      headStyles:{
-        fillColor:C.navy, textColor:C.white, fontStyle:"bold", fontSize:6.8,
-        halign:"center", valign:"middle",
-        cellPadding:{top:3,bottom:3,left:2,right:2},
-        lineColor:C.gold, lineWidth:0.4, minCellHeight:8,
+      headStyles: {
+        fillColor: navy,
+        textColor: white,
+        fontStyle: "bold",
+        fontSize: 6.8,
+        halign: "center",
+        valign: "middle",
+        cellPadding: { top:3.5, bottom:3.5, left:2.5, right:2.5 },
+        lineColor: gold,
+        lineWidth: 0.5,
+        minCellHeight: 9,
       },
-      alternateRowStyles:{ fillColor:[247,249,253] },
-      pageBreak:"auto", rowPageBreak:"avoid",
-      columnStyles:{
-        0:{cellWidth:5, halign:"center", textColor:C.muted, fontStyle:"bold"},
-        1:{cellWidth:28, fontStyle:"bold", textColor:C.navy},
-        2:{cellWidth:12, halign:"center"},
-        3:{cellWidth:19, halign:"center"},
-        4:{cellWidth:18, halign:"center"},
-        5:{cellWidth:15, halign:"center"},
-        6:{cellWidth:18, halign:"center", fontStyle:"bold"},
-        7:{cellWidth:12, halign:"center"},
-        8:{cellWidth:12, halign:"center"},
-        9:{cellWidth:14, halign:"center", fontStyle:"bold"},
-        10:{cellWidth:38},
-        11:{cellWidth:22},
-        12:{cellWidth:16, halign:"center", textColor:C.muted},
+      alternateRowStyles: { fillColor: [249,251,253] },
+      pageBreak: "auto",
+      rowPageBreak: "avoid",
+      columnStyles: {
+        0:  { cellWidth:5,  halign:"center", textColor:muted, fontStyle:"bold" },
+        1:  { cellWidth:30, fontStyle:"bold", textColor:navy },
+        2:  { cellWidth:12, halign:"center" },
+        3:  { cellWidth:19, halign:"center" },
+        4:  { cellWidth:19, halign:"center" },
+        5:  { cellWidth:15, halign:"center" },
+        6:  { cellWidth:18, halign:"center", fontStyle:"bold" },
+        7:  { cellWidth:13, halign:"center" },
+        8:  { cellWidth:13, halign:"center" },
+        9:  { cellWidth:14, halign:"center", fontStyle:"bold" },
+        10: { cellWidth:44 },
+        11: { cellWidth:20 },
+        12: { cellWidth:15, halign:"center", textColor:muted },
       },
-      didParseCell:(data:any)=>{
-        if(data.section!=="body") return;
-        const row=facRows[data.row.index]; if(!row) return;
-        const si:Record<number,RAGStatus>={3:row.internet,4:row.bio,5:row.printing,6:row.overall};
-        const s=si[data.column.index];
-        if(s){data.cell.styles.fillColor=ragF(s);data.cell.styles.textColor=ragT(s);data.cell.styles.fontStyle="bold";}
-        if(data.column.index===2){
-          const cc:Record<string,[number,number,number]>={Projects:[55,88,215],Imarat:[10,118,105],Graana:[120,55,230],Agency21:[185,82,30]};
-          if(cc[row.cat]){data.cell.styles.textColor=cc[row.cat];data.cell.styles.fontStyle="bold";}
+      didParseCell: (data:any) => {
+        if (data.section !== "body") return;
+        const row = facRows[data.row.index]; if (!row) return;
+        const si: Record<number,RAGStatus> = { 3:row.internet, 4:row.bio, 5:row.printing, 6:row.overall };
+        const s = si[data.column.index];
+        if (s) { data.cell.styles.fillColor=ragF(s); data.cell.styles.textColor=ragT(s); data.cell.styles.fontStyle="bold"; }
+        if (data.column.index === 2) {
+          const cc: Record<string,[number,number,number]> = { Projects:[55,88,215], Imarat:[10,118,105], Graana:[120,55,230], Agency21:[185,82,30] };
+          if (cc[row.cat]) { data.cell.styles.textColor=cc[row.cat]; data.cell.styles.fontStyle="bold"; }
         }
-        if(data.column.index===7&&row.d[7]!=="—"){data.cell.styles.fillColor=[215,230,255];data.cell.styles.textColor=[25,60,170];data.cell.styles.fontStyle="bold";}
-        if(data.column.index===8&&row.d[8]!=="—"){data.cell.styles.fillColor=[228,228,255];data.cell.styles.textColor=[75,55,175];data.cell.styles.fontStyle="bold";}
-        if(data.column.index===9&&row.bw){
-          if(row.bw.label.includes("OK"))  {data.cell.styles.fillColor=C.gF;data.cell.styles.textColor=C.gT;data.cell.styles.fontStyle="bold";}
-          if(row.bw.label.includes("LOW")) {data.cell.styles.fillColor=C.aF;data.cell.styles.textColor=C.aT;data.cell.styles.fontStyle="bold";}
-          if(row.bw.label.includes("CRIT")){data.cell.styles.fillColor=C.rF;data.cell.styles.textColor=C.rT;data.cell.styles.fontStyle="bold";}
+        if (data.column.index===7 && row.d[7]!=="—") { data.cell.styles.fillColor=[215,230,255]; data.cell.styles.textColor=[22,60,170]; data.cell.styles.fontStyle="bold"; }
+        if (data.column.index===8 && row.d[8]!=="—") { data.cell.styles.fillColor=[235,230,255]; data.cell.styles.textColor=[80,55,180]; data.cell.styles.fontStyle="bold"; }
+        if (data.column.index===9 && row.bw) {
+          if (row.bw.label.includes("OK"))   { data.cell.styles.fillColor=gF; data.cell.styles.textColor=gT; data.cell.styles.fontStyle="bold"; }
+          if (row.bw.label.includes("LOW"))  { data.cell.styles.fillColor=aF; data.cell.styles.textColor=aT; data.cell.styles.fontStyle="bold"; }
+          if (row.bw.label.includes("CRIT")) { data.cell.styles.fillColor=rF; data.cell.styles.textColor=rT; data.cell.styles.fontStyle="bold"; }
         }
-        if(data.column.index===10&&row.d[10]!=="—"){data.cell.styles.textColor=C.rT;}
+        if (data.column.index===10 && row.d[10]!=="—") { data.cell.styles.textColor=rT; }
       },
-      didDrawPage:(data:any)=>{
-        try{
+      didDrawPage: (data:any) => {
+        try {
           drawFooter();
-          if(data.pageNumber>1){
+          if (data.pageNumber > 1) {
             drawHeader("IT Facilities RAG Dashboard","Daily Monitoring Report — Continued");
-            drawLegend(26);
+            drawLegend(32);
           }
-        }catch(e){}
+        } catch(e) {}
       },
     });
 
-    // ── PAGE: RAG STATUS CHANGE LOG ──────────────────────
+    // ══════════════════════════════════════════════════════
+    // PAGE 2 — RAG STATUS CHANGE LOG
+    // ══════════════════════════════════════════════════════
     if (statusLog.length > 0) {
       doc.addPage();
-      const rl = logFrom||logTo ? `${logFrom?logFrom.replace("T"," "):"Start"} to ${logTo?logTo.replace("T"," "):"Now"}` : "All Time";
-      drawHeader("RAG Status Change Log", `Internet / Biometric / Printing Changes  —  ${rl}`);
+      const rl = logFrom||logTo
+        ? `${logFrom?logFrom.replace("T"," "):"Start"}  →  ${logTo?logTo.replace("T"," "):"Now"}`
+        : "All Time";
+      drawHeader("RAG Status Change Log", `Internet · Biometric · Printing  ·  ${rl}`);
       drawFooter();
 
-      // Summary pills
-      const fields = ["Internet","Biometric","Printing"];
-      let bx = PAD;
-      fields.forEach(fld => {
-        const cnt = statusLog.filter(l => l.field === fld).length;
-        const redCnt = statusLog.filter(l => l.field === fld && l.newVal.includes("Down")).length;
-        const fill = fld==="Internet"?[215,228,255]as[number,number,number]:fld==="Biometric"?[225,215,255]as[number,number,number]:[215,245,225]as[number,number,number];
-        const text = fld==="Internet"?[25,60,170]as[number,number,number]:fld==="Biometric"?[100,40,200]as[number,number,number]:[10,100,50]as[number,number,number];
-        doc.setFillColor(...fill); doc.roundedRect(bx,26,45,12,1.5,1.5,"F");
-        doc.setFont("helvetica","bold"); doc.setFontSize(7.5); doc.setTextColor(...text);
-        doc.text(`${fld}: ${cnt} changes`, bx+22.5, 31, { align:"center" });
-        doc.setFontSize(6); doc.setFont("helvetica","normal");
-        doc.text(`${redCnt} critical`, bx+22.5, 35.5, { align:"center" });
-        bx += 48;
-      });
-      const totalRed = statusLog.filter(l=>l.newVal.includes("Down")||l.newVal.includes("Critical")).length;
+      // Summary strip
+      const totalRed   = statusLog.filter(l=>l.newVal.includes("Down")||l.newVal.includes("Critical")).length;
       const totalAmber = statusLog.filter(l=>l.newVal.includes("Slow")||l.newVal.includes("Degraded")).length;
       const totalGreen = statusLog.filter(l=>l.newVal.includes("Working")||l.newVal.includes("OK")||l.newVal.includes("Sync")).length;
-      doc.setFillColor(...C.rF); doc.roundedRect(bx,26,35,12,1.5,1.5,"F");
-      doc.setFont("helvetica","bold"); doc.setFontSize(7); doc.setTextColor(...C.rT);
-      doc.text(`Critical: ${totalRed}`, bx+17.5, 33, { align:"center" });
-      bx += 38;
-      doc.setFillColor(...C.aF); doc.roundedRect(bx,26,35,12,1.5,1.5,"F");
-      doc.setTextColor(...C.aT);
-      doc.text(`Degraded: ${totalAmber}`, bx+17.5, 33, { align:"center" });
-      bx += 38;
-      doc.setFillColor(...C.gF); doc.roundedRect(bx,26,35,12,1.5,1.5,"F");
-      doc.setTextColor(...C.gT);
-      doc.text(`Recovered: ${totalGreen}`, bx+17.5, 33, { align:"center" });
+      const sumCards = [
+        { label:"Total Changes",  val:String(statusLog.length),  f:[228,235,252] as [number,number,number], t:navy },
+        { label:"Internet",       val:String(statusLog.filter(l=>l.field==="Internet").length),  f:[215,230,255] as [number,number,number], t:[22,60,170] as [number,number,number] },
+        { label:"Biometric",      val:String(statusLog.filter(l=>l.field==="Biometric").length), f:[235,225,255] as [number,number,number], t:[100,40,200] as [number,number,number] },
+        { label:"Printing",       val:String(statusLog.filter(l=>l.field==="Printing").length),  f:[215,245,225] as [number,number,number], t:[10,100,50] as [number,number,number] },
+        { label:"Went Critical",  val:String(totalRed),   f:rF, t:rT },
+        { label:"Went Degraded",  val:String(totalAmber), f:aF, t:aT },
+        { label:"Recovered",      val:String(totalGreen), f:gF, t:gT },
+      ];
+      const scw = TW / sumCards.length;
+      sumCards.forEach((c, i) => {
+        const x = PAD + i * scw;
+        doc.setFillColor(...c.f); doc.roundedRect(x+0.8, 32, scw-1.8, 16, 1.5, 1.5, "F");
+        doc.setFont("helvetica","bold"); doc.setFontSize(12); doc.setTextColor(...c.t);
+        doc.text(c.val, x+scw/2, 42, { align:"center" });
+        doc.setFont("helvetica","normal"); doc.setFontSize(5.2);
+        doc.text(c.label, x+scw/2, 46, { align:"center" });
+      });
 
       const lRows = statusLog.map(l => [l.ts, l.facility, l.field, l.oldVal, l.newVal]);
       autoTable(doc, {
-        startY: 42,
+        startY: 52,
         showHead: "everyPage",
         tableWidth: TW,
         margin: { left:PAD, right:PAD },
-        head: [["Timestamp", "Facility", "Field", "Previous Status", "New Status"]],
+        head: [["Timestamp", "Facility Name", "Field", "Previous Status", "New Status"]],
         body: lRows,
-        styles: { fontSize:7.5, cellPadding:{top:3,bottom:3,left:3,right:3}, font:"helvetica", lineColor:[210,218,232], lineWidth:0.25, textColor:C.ink, overflow:"linebreak", minCellHeight:8 },
-        headStyles: { fillColor:C.navy, textColor:C.white, fontStyle:"bold", fontSize:7.5, halign:"center", cellPadding:{top:3.5,bottom:3.5,left:3,right:3}, lineColor:C.gold, lineWidth:0.4 },
-        alternateRowStyles: { fillColor:[247,249,253] },
+        styles: { fontSize:7.5, cellPadding:{top:3,bottom:3,left:3,right:3}, font:"helvetica", lineColor:border, lineWidth:0.22, textColor:ink, overflow:"linebreak", minCellHeight:8.5 },
+        headStyles: { fillColor:navy, textColor:white, fontStyle:"bold", fontSize:7.5, halign:"center", cellPadding:{top:4,bottom:4,left:3,right:3}, lineColor:gold, lineWidth:0.5 },
+        alternateRowStyles: { fillColor:[249,251,253] },
         rowPageBreak: "avoid",
         columnStyles: {
-          0: { cellWidth:38 },
-          1: { cellWidth:50, fontStyle:"bold", textColor:C.navy },
-          2: { cellWidth:22, halign:"center" },
-          3: { cellWidth:70 },
-          4: { cellWidth:70, fontStyle:"bold" },
+          0: { cellWidth:40 },
+          1: { cellWidth:55, fontStyle:"bold", textColor:navy },
+          2: { cellWidth:22, halign:"center", fontStyle:"bold" },
+          3: { cellWidth:76 },
+          4: { cellWidth:76, fontStyle:"bold" },
         },
         didParseCell: (data:any) => {
-          if (data.section === "body") {
-            const v = lRows[data.row.index][data.column.index === 3 ? 3 : 4];
-            if (data.column.index === 3 || data.column.index === 4) {
-              const val = lRows[data.row.index][data.column.index];
-              const isR = val.includes("Down")||val.includes("Critical");
-              const isA = val.includes("Slow")||val.includes("Degraded");
-              const isG = val.includes("Working")||val.includes("OK")||val.includes("Sync");
-              if (isR) { data.cell.styles.fillColor=C.rF; data.cell.styles.textColor=C.rT; data.cell.styles.fontStyle="bold"; }
-              else if (isA) { data.cell.styles.fillColor=C.aF; data.cell.styles.textColor=C.aT; data.cell.styles.fontStyle="bold"; }
-              else if (isG) { data.cell.styles.fillColor=C.gF; data.cell.styles.textColor=C.gT; data.cell.styles.fontStyle="bold"; }
-            }
-            if (data.column.index === 2) {
-              const fld = lRows[data.row.index][2];
-              if(fld==="Internet")  { data.cell.styles.fillColor=[215,228,255]; data.cell.styles.textColor=[25,60,170]; data.cell.styles.fontStyle="bold"; }
-              if(fld==="Biometric") { data.cell.styles.fillColor=[225,215,255]; data.cell.styles.textColor=[100,40,200]; data.cell.styles.fontStyle="bold"; }
-              if(fld==="Printing")  { data.cell.styles.fillColor=[215,245,225]; data.cell.styles.textColor=[10,100,50];  data.cell.styles.fontStyle="bold"; }
-            }
+          if (data.section !== "body") return;
+          const row = lRows[data.row.index];
+          if (data.column.index === 2) {
+            const fld = row[2];
+            if (fld==="Internet")  { data.cell.styles.fillColor=[215,230,255]; data.cell.styles.textColor=[22,60,170];  }
+            if (fld==="Biometric") { data.cell.styles.fillColor=[235,225,255]; data.cell.styles.textColor=[100,40,200]; }
+            if (fld==="Printing")  { data.cell.styles.fillColor=[215,245,225]; data.cell.styles.textColor=[10,100,50];  }
+          }
+          if (data.column.index === 3 || data.column.index === 4) {
+            const v = row[data.column.index];
+            const isR = v.includes("Down")||v.includes("Critical");
+            const isA = v.includes("Slow")||v.includes("Degraded");
+            const isG = v.includes("Working")||v.includes("OK")||v.includes("Sync");
+            if (isR) { data.cell.styles.fillColor=rF; data.cell.styles.textColor=rT; data.cell.styles.fontStyle="bold"; }
+            else if (isA) { data.cell.styles.fillColor=aF; data.cell.styles.textColor=aT; data.cell.styles.fontStyle="bold"; }
+            else if (isG) { data.cell.styles.fillColor=gF; data.cell.styles.textColor=gT; data.cell.styles.fontStyle="bold"; }
           }
         },
         didDrawPage: (data:any) => {
@@ -721,71 +753,84 @@ export default function Dashboard() {
       });
     }
 
-    // ── PAGE: TICKETS ONLY ───────────────────────────────
-    if(tickets.length>0){
+    // ══════════════════════════════════════════════════════
+    // PAGE 3 — IT SUPPORT TICKETS
+    // ══════════════════════════════════════════════════════
+    if (tickets.length > 0) {
       doc.addPage();
-      drawHeader("IT Support Tickets","Helpdesk Issue Tracking  —  All Reported Incidents");
+      drawHeader("IT Support Tickets","Helpdesk Issue Tracking  ·  All Reported Incidents");
       drawFooter();
 
-      const tPills=[
-        {label:`Total: ${tickets.length}`,            f:[228,234,248]as[number,number,number], t:C.navy},
-        {label:`Open: ${tCounts.open}`,               f:C.rF, t:C.rT},
-        {label:`In Progress: ${tCounts.inprogress}`,  f:C.aF, t:C.aT},
-        {label:`Pending: ${tCounts.pending}`,         f:[215,230,255]as[number,number,number], t:[25,60,170]as[number,number,number]},
-        {label:`Resolved: ${tCounts.resolved}`,       f:C.gF, t:C.gT},
+      // Ticket summary strip
+      const tCards = [
+        { label:"TOTAL",       val:String(tickets.length),          f:[228,235,252] as [number,number,number], t:navy },
+        { label:"OPEN",        val:String(tCounts.open),            f:rF, t:rT },
+        { label:"IN PROGRESS", val:String(tCounts.inprogress),      f:aF, t:aT },
+        { label:"PENDING",     val:String(tCounts.pending),         f:[215,230,255] as [number,number,number], t:[22,60,170] as [number,number,number] },
+        { label:"RESOLVED",    val:String(tCounts.resolved),        f:gF, t:gT },
       ];
-      let tpx=PAD;
-      tPills.forEach(p=>{
-        doc.setFillColor(...p.f);doc.roundedRect(tpx,26,36,9,1.5,1.5,"F");
-        doc.setDrawColor(205,212,228);doc.setLineWidth(0.2);doc.roundedRect(tpx,26,36,9,1.5,1.5,"S");
-        doc.setFont("helvetica","bold");doc.setFontSize(7);doc.setTextColor(...p.t);
-        doc.text(p.label,tpx+18,32,{align:"center"});
-        tpx+=38;
+      const tcw = TW / tCards.length;
+      tCards.forEach((c, i) => {
+        const x = PAD + i * tcw;
+        doc.setFillColor(...c.f); doc.roundedRect(x+0.8, 32, tcw-1.8, 16, 1.5, 1.5, "F");
+        doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(...c.t);
+        doc.text(c.val, x+tcw/2, 42, { align:"center" });
+        doc.setFont("helvetica","normal"); doc.setFontSize(5.5);
+        doc.text(c.label, x+tcw/2, 46, { align:"center" });
       });
 
-      const tRows=tickets.map(t=>[
-        t.id, t.office, t.medium||"—", t.description, t.reportedBy,
-        t.assignedTo||"Unassigned",
+      const tRows = tickets.map(t => [
+        t.id, t.office, t.medium||"—", t.description,
+        t.reportedBy, t.assignedTo||"Unassigned",
         t.status==="open"?"Open":t.status==="inprogress"?"In Progress":t.status==="pending"?"Pending":"Resolved",
         t.resolvedBy||"—", t.ts, t.resolvedTs||"—",
       ]);
 
-      autoTable(doc,{
-        startY:39,showHead:"everyPage",tableWidth:TW,margin:{left:PAD,right:PAD},
-        head:[["Ticket ID","Office / Location","Medium","Issue Description","Reported By","Assigned To","Status","Resolved By","Opened At","Closed At"]],
-        body:tRows,
-        styles:{fontSize:6.8,cellPadding:{top:2.5,bottom:2.5,left:2,right:2},font:"helvetica",lineColor:[210,218,232],lineWidth:0.25,textColor:C.ink,overflow:"linebreak",minCellHeight:7},
-        headStyles:{fillColor:C.navy,textColor:C.white,fontStyle:"bold",fontSize:6.8,halign:"center",cellPadding:{top:3,bottom:3,left:2,right:2},lineColor:C.gold,lineWidth:0.4},
-        alternateRowStyles:{fillColor:[247,249,253]},rowPageBreak:"avoid",
-        columnStyles:{
-          0:{cellWidth:22,fontStyle:"bold",textColor:C.navy},
-          1:{cellWidth:26},2:{cellWidth:16,halign:"center"},
-          3:{cellWidth:48},4:{cellWidth:18},5:{cellWidth:22},
-          6:{cellWidth:18,halign:"center",fontStyle:"bold"},
-          7:{cellWidth:18},8:{cellWidth:26,halign:"center"},9:{cellWidth:26,halign:"center"},
+      autoTable(doc, {
+        startY: 52,
+        showHead: "everyPage",
+        tableWidth: TW,
+        margin: { left:PAD, right:PAD },
+        head: [["Ticket ID","Office / Location","Via","Issue Description","Reported By","Assigned To","Status","Resolved By","Opened At","Closed At"]],
+        body: tRows,
+        styles: { fontSize:7, cellPadding:{top:2.8,bottom:2.8,left:2.5,right:2.5}, font:"helvetica", lineColor:border, lineWidth:0.22, textColor:ink, overflow:"linebreak", minCellHeight:8 },
+        headStyles: { fillColor:navy, textColor:white, fontStyle:"bold", fontSize:7, halign:"center", cellPadding:{top:3.5,bottom:3.5,left:2.5,right:2.5}, lineColor:gold, lineWidth:0.5 },
+        alternateRowStyles: { fillColor:[249,251,253] },
+        rowPageBreak: "avoid",
+        columnStyles: {
+          0: { cellWidth:22, fontStyle:"bold", textColor:navy },
+          1: { cellWidth:26 },
+          2: { cellWidth:15, halign:"center" },
+          3: { cellWidth:52 },
+          4: { cellWidth:20 },
+          5: { cellWidth:22 },
+          6: { cellWidth:20, halign:"center", fontStyle:"bold" },
+          7: { cellWidth:18 },
+          8: { cellWidth:28, halign:"center" },
+          9: { cellWidth:28, halign:"center" },
         },
-        didParseCell:(data:any)=>{
-          if(data.section==="body"&&data.column.index===6){
-            const st=tRows[data.row.index][6];
-            if(st==="Open")       {data.cell.styles.fillColor=C.rF;data.cell.styles.textColor=C.rT;data.cell.styles.fontStyle="bold";}
-            if(st==="In Progress"){data.cell.styles.fillColor=C.aF;data.cell.styles.textColor=C.aT;data.cell.styles.fontStyle="bold";}
-            if(st==="Pending")    {data.cell.styles.fillColor=[215,230,255];data.cell.styles.textColor=[25,60,170];data.cell.styles.fontStyle="bold";}
-            if(st==="Resolved")   {data.cell.styles.fillColor=C.gF;data.cell.styles.textColor=C.gT;data.cell.styles.fontStyle="bold";}
+        didParseCell: (data:any) => {
+          if (data.section !== "body") return;
+          if (data.column.index === 6) {
+            const st = tRows[data.row.index][6];
+            if (st==="Open")        { data.cell.styles.fillColor=rF; data.cell.styles.textColor=rT; data.cell.styles.fontStyle="bold"; }
+            if (st==="In Progress") { data.cell.styles.fillColor=aF; data.cell.styles.textColor=aT; data.cell.styles.fontStyle="bold"; }
+            if (st==="Pending")     { data.cell.styles.fillColor=[215,230,255]; data.cell.styles.textColor=[22,60,170]; data.cell.styles.fontStyle="bold"; }
+            if (st==="Resolved")    { data.cell.styles.fillColor=gF; data.cell.styles.textColor=gT; data.cell.styles.fontStyle="bold"; }
           }
-          if(data.section==="body"&&data.column.index===2){
-            const mc:Record<string,[number,number,number]>={"Email":[28,60,170],"Helpdesk Ticket":[118,55,225],"Whatsapp":[18,122,58],"In Person":[155,90,5]};
-            if(mc[tRows[data.row.index][2]]){data.cell.styles.textColor=mc[tRows[data.row.index][2]];data.cell.styles.fontStyle="bold";}
+          if (data.column.index === 2) {
+            const mc: Record<string,[number,number,number]> = { "Email":[22,60,170], "Helpdesk Ticket":[118,55,225], "Whatsapp":[18,122,58], "In Person":[155,90,5] };
+            if (mc[tRows[data.row.index][2]]) { data.cell.styles.textColor=mc[tRows[data.row.index][2]]; data.cell.styles.fontStyle="bold"; }
           }
         },
-        didDrawPage:(data:any)=>{
-          try{drawFooter();if(data.pageNumber>1)drawHeader("IT Support Tickets","Helpdesk Tracking — Continued");}catch(e){}
+        didDrawPage: (data:any) => {
+          try { drawFooter(); if(data.pageNumber>1) drawHeader("IT Support Tickets","Helpdesk Tracking — Continued"); } catch(e) {}
         },
       });
     }
 
     doc.save(`Imarat_RAG_${d.toISOString().slice(0,10)}.pdf`);
   };
-
   if (!mounted) return (
     <div style={{ minHeight:"100vh", background:"#0A1628", display:"flex", alignItems:"center", justifyContent:"center" }}>
       <div style={{ textAlign:"center" }}>
