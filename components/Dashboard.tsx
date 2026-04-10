@@ -300,23 +300,23 @@ export default function Dashboard() {
     const oL: Record<RAGStatus,string> = { green:"Operational", amber:"Degraded", red:"Critical", na:"N/A" };
 
     const drawHeader = (title: string, subtitle: string) => {
-      doc.setFillColor(15,40,75); doc.rect(0,0,W,30,"F");
-      doc.setFillColor(201,163,66); doc.rect(0,30,W,1.5,"F");
+      doc.setFillColor(15,40,75); doc.rect(0,0,W,34,"F");
+      doc.setFillColor(201,163,66); doc.rect(0,34,W,1.5,"F");
       doc.setTextColor(255,255,255); doc.setFontSize(20); doc.setFont("helvetica","bold");
-      doc.text("IMARAT", 10, 14);
+      doc.text("IMARAT", 10, 13);
       doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(201,163,66);
       doc.text("GROUP", 10, 20);
-      doc.setTextColor(180,200,225); doc.text("Information Technology Department", 10, 26);
-      doc.setDrawColor(201,163,66); doc.setLineWidth(0.5); doc.line(55,8,55,26);
+      doc.setTextColor(180,200,225); doc.text("Information Technology Department", 10, 28);
+      doc.setDrawColor(201,163,66); doc.setLineWidth(0.5); doc.line(55,8,55,30);
       doc.setTextColor(255,255,255); doc.setFontSize(13); doc.setFont("helvetica","bold");
-      doc.text(title, 60, 14);
+      doc.text(title, 60, 13);
       doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(180,200,225);
       doc.text(subtitle, 60, 21);
       doc.setTextColor(201,163,66); doc.setFontSize(8); doc.setFont("helvetica","bold");
-      doc.text(today, W-10, 12, { align:"right" });
+      doc.text(today, W-10, 11, { align:"right" });
       doc.setTextColor(180,200,225); doc.setFontSize(7); doc.setFont("helvetica","normal");
       doc.text("Report Time: "+timeNow, W-10, 18, { align:"right" });
-      doc.text("it.support@imarat.com.pk", W-10, 24, { align:"right" });
+      doc.text("it.support@imarat.com.pk", W-10, 26, { align:"right" });
     };
     const drawFooter = () => {
       doc.setFillColor(15,40,75); doc.rect(0,H-10,W,10,"F");
@@ -326,7 +326,7 @@ export default function Dashboard() {
       doc.text(`Generated: ${today} at ${timeNow}`, W-10, H-4, { align:"right" });
     };
     const drawSummary = () => {
-      const sy = 36;
+      const sy = 40;
       doc.setFillColor(235,240,250); doc.rect(0,sy,W,34,"F");
       doc.setDrawColor(200,210,230); doc.setLineWidth(0.3);
       doc.line(0,sy,W,sy); doc.line(0,sy+34,W,sy+34);
@@ -362,7 +362,7 @@ export default function Dashboard() {
     });
 
     autoTable(doc, {
-      startY: 76, showHead: "everyPage", margin: { left:8, right:8 },
+      startY: 80, showHead: "everyPage", margin: { left:8, right:8 },
       head: [["#","Facility","Category","Internet","Biometric","Printing","Overall","Current BW","Required BW","BW Status","Issue","Notes"]],
       body: rows,
       styles: { fontSize:7, cellPadding:{ top:2.5,bottom:2.5,left:2.5,right:2.5 }, font:"helvetica", lineColor:[210,218,230], lineWidth:0.3, textColor:[30,40,60], overflow:"linebreak" },
@@ -370,18 +370,18 @@ export default function Dashboard() {
       alternateRowStyles: { fillColor:[245,248,252] },
       rowPageBreak: "avoid",
       columnStyles: {
-        0:{ cellWidth:6,  halign:"center", textColor:[150,160,180], fontStyle:"bold" },
-        1:{ cellWidth:26, fontStyle:"bold", textColor:[15,40,75] },
-        2:{ cellWidth:13, halign:"center", fontStyle:"bold" },
-        3:{ cellWidth:17, halign:"center" },
-        4:{ cellWidth:19, halign:"center" },
-        5:{ cellWidth:15, halign:"center" },
-        6:{ cellWidth:17, halign:"center", fontStyle:"bold" },
-        7:{ cellWidth:14, halign:"center" },
-        8:{ cellWidth:14, halign:"center" },
-        9:{ cellWidth:17, halign:"center", fontStyle:"bold" },
-        10:{ cellWidth:28 },
-        11:{ cellWidth:22 },
+        0:{ cellWidth:5,  halign:"center", textColor:[150,160,180], fontStyle:"bold" },
+        1:{ cellWidth:24, fontStyle:"bold", textColor:[15,40,75] },
+        2:{ cellWidth:12, halign:"center", fontStyle:"bold" },
+        3:{ cellWidth:16, halign:"center" },
+        4:{ cellWidth:18, halign:"center" },
+        5:{ cellWidth:14, halign:"center" },
+        6:{ cellWidth:16, halign:"center", fontStyle:"bold" },
+        7:{ cellWidth:13, halign:"center" },
+        8:{ cellWidth:13, halign:"center" },
+        9:{ cellWidth:16, halign:"center", fontStyle:"bold" },
+        10:{ cellWidth:25 },
+        11:{ cellWidth:19 },
       },
       didParseCell: (data: any) => {
         if (data.section === "body") {
