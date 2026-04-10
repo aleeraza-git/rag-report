@@ -368,7 +368,6 @@ export default function Dashboard() {
       styles: { fontSize:7, cellPadding:{ top:2.5,bottom:2.5,left:2.5,right:2.5 }, font:"helvetica", lineColor:[210,218,230], lineWidth:0.3, textColor:[30,40,60], overflow:"linebreak" },
       headStyles: { fillColor:[15,40,75], textColor:[255,255,255], fontStyle:"bold", fontSize:7, cellPadding:{ top:3.5,bottom:3.5,left:2.5,right:2.5 }, lineColor:[201,163,66], lineWidth:0.5, halign:"center" },
       alternateRowStyles: { fillColor:[245,248,252] },
-      rowPageBreak: "avoid",
       columnStyles: {
         0:{ cellWidth:5,  halign:"center", textColor:[150,160,180], fontStyle:"bold" },
         1:{ cellWidth:38, fontStyle:"bold", textColor:[15,40,75] },
@@ -417,8 +416,13 @@ export default function Dashboard() {
         }
       },
       didDrawPage: (data: any) => {
-        try { if (data.pageNumber > 1) { drawHeader("IT Facilities RAG Dashboard","Daily Facility Monitoring Report — All Sites"); drawFooter(); } } catch(e) {}
-      },
+          try {
+            drawFooter();
+            if (data.pageNumber > 1) {
+              drawHeader("IT Facilities RAG Dashboard","Daily Facility Monitoring Report — All Sites");
+            }
+          } catch(e) {}
+        },
     });
 
     if (tickets.length > 0) {
