@@ -241,6 +241,7 @@ export default function Dashboard() {
   const [showDowntime, setShowDowntime] = useState(false);
   const activeDowntime = useRef<Record<string,{field:string;startTs:string;startMs:number}>>({});
   const saveTimer = useRef<NodeJS.Timeout|null>(null);
+  const [clock, setClock] = useState("");
 
   const loadTickets = useCallback(async () => {
     const { data } = await supabase.from("tickets").select("*");
@@ -279,9 +280,11 @@ export default function Dashboard() {
     };
     loadAll();
 
-    const fmt = () => new Date().toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit" });
+    const fmt = () => new Date().toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
     setNow(fmt());
-    const t = setInterval(() => setNow(fmt()), 1000);
+    const clockTick = () => setClock(new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", second:"2-digit" }));
+    clockTick();
+    const t = setInterval(() => { setNow(fmt()); clockTick(); }, 1000);
 
     const fsSub = supabase.channel("fs_ch2").on("postgres_changes", { event:"*", schema:"public", table:"facility_state" }, (payload: any) => {
       if (payload.new) { setState(prev => ({ ...prev, [payload.new.id]: { ...defaultState(), ...payload.new.data } })); setLastSync(nowTime()); }
@@ -909,7 +912,7 @@ export default function Dashboard() {
           <div style={{ width:1, height:32, background:"rgba(201,168,76,0.3)", margin:"0 8px" }} />
           <div style={{ display:"flex", alignItems:"center", gap:6 }}>
             <span style={{ width:7, height:7, borderRadius:"50%", background:syncing?"#f59e0b":"#22c55e", display:"inline-block", animation:"pulse2 2s infinite" }} />
-            <span style={{ fontSize:11, color:"#718096" }}>{syncing ? "Syncing..." : `Live · ${lastSync}`}</span>
+            <span style={{ fontSize:11, color:"#718096" }}>{syncing ? "Syncing..." : `Live · ${clock}`}</span>
           </div>
         </div>
 
@@ -926,7 +929,7 @@ export default function Dashboard() {
             style={{ padding:"6px 16px", background:S.gold, border:"none", borderRadius:6, fontSize:12, color:"#fff", cursor:"pointer", fontWeight:700, letterSpacing:.3 }}>
             {logFrom||logTo ? "Export PDF (Filtered)" : "Export PDF"}
           </button>
-          <div style={{ marginLeft:8, fontSize:11, color:"#4A6FA5" }}>{now}</div>
+          <div style={{ marginLeft:8, fontSize:11, color:"#4A6FA5" }}>{clock}</div>
         </div>
       </nav>
 
