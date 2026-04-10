@@ -294,59 +294,66 @@ export default function Dashboard() {
     const doc = new jsPDF({ orientation:"landscape", unit:"mm", format:"a4" });
     const W = doc.internal.pageSize.getWidth();
     const H = doc.internal.pageSize.getHeight();
+    const ML = 8; const TW = W - 16;
+
     const iL: Record<RAGStatus,string> = { green:"Working", amber:"Slow/Intermittent", red:"Down", na:"N/A" };
     const bL: Record<RAGStatus,string> = { green:"Working & Syncing", amber:"Delayed", red:"Not Working", na:"N/A" };
     const pL: Record<RAGStatus,string> = { green:"Working", amber:"Partial", red:"Not Working", na:"N/A" };
     const oL: Record<RAGStatus,string> = { green:"Operational", amber:"Degraded", red:"Critical", na:"N/A" };
 
-    const drawHeader = (title: string, subtitle: string) => {
-      doc.setFillColor(15,40,75); doc.rect(0,0,W,36,"F");
-      doc.setFillColor(201,163,66); doc.rect(0,36,W,1.5,"F");
-      doc.setTextColor(255,255,255); doc.setFontSize(20); doc.setFont("helvetica","bold");
+    const drawHeader = (title: string, sub: string) => {
+      doc.setFillColor(15,40,75); doc.rect(0,0,W,38,"F");
+      doc.setFillColor(201,163,66); doc.rect(0,38,W,1.5,"F");
+      doc.setTextColor(255,255,255); doc.setFontSize(18); doc.setFont("helvetica","bold");
       doc.text("IMARAT", 10, 13);
-      doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(201,163,66);
+      doc.setFontSize(7.5); doc.setFont("helvetica","bold"); doc.setTextColor(201,163,66);
       doc.text("GROUP", 10, 20);
-      doc.setTextColor(180,200,225); doc.text("Information Technology Department", 10, 30);
-      doc.setDrawColor(201,163,66); doc.setLineWidth(0.5); doc.line(55,8,55,32);
-      doc.setTextColor(255,255,255); doc.setFontSize(13); doc.setFont("helvetica","bold");
-      doc.text(title, 60, 13);
-      doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(180,200,225);
-      doc.text(subtitle, 60, 21);
-      doc.setTextColor(201,163,66); doc.setFontSize(8); doc.setFont("helvetica","bold");
-      doc.text(today, W-10, 11, { align:"right" });
-      doc.setTextColor(180,200,225); doc.setFontSize(7); doc.setFont("helvetica","normal");
-      doc.text("Report Time: "+timeNow, W-10, 18, { align:"right" });
-      doc.text("it.support@imarat.com.pk", W-10, 26, { align:"right" });
+      doc.setFontSize(7); doc.setFont("helvetica","normal"); doc.setTextColor(160,185,215);
+      doc.text("Information Technology Department", 10, 28);
+      doc.setDrawColor(201,163,66); doc.setLineWidth(0.5); doc.line(53,6,53,34);
+      doc.setTextColor(255,255,255); doc.setFontSize(12); doc.setFont("helvetica","bold");
+      doc.text(title, 58, 14);
+      doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(160,185,215);
+      doc.text(sub, 58, 22);
+      doc.setFontSize(8); doc.setFont("helvetica","bold"); doc.setTextColor(201,163,66);
+      doc.text(today, W-10, 12, { align:"right" });
+      doc.setFontSize(7); doc.setFont("helvetica","normal"); doc.setTextColor(160,185,215);
+      doc.text("Report Time: "+timeNow, W-10, 19, { align:"right" });
+      doc.text("it.support@imarat.com.pk", W-10, 27, { align:"right" });
     };
+
     const drawFooter = () => {
-      doc.setFillColor(15,40,75); doc.rect(0,H-10,W,10,"F");
-      doc.setFillColor(201,163,66); doc.rect(0,H-10,W,0.8,"F");
-      doc.setTextColor(180,200,225); doc.setFontSize(6.5); doc.setFont("helvetica","normal");
-      doc.text("IMARAT GROUP  |  IT Facilities RAG Dashboard  |  Internal Use Only  |  Confidential", 10, H-4);
-      doc.text(`Generated: ${today} at ${timeNow}`, W-10, H-4, { align:"right" });
+      doc.setFillColor(15,40,75); doc.rect(0,H-9,W,9,"F");
+      doc.setFillColor(201,163,66); doc.rect(0,H-9,W,0.7,"F");
+      doc.setTextColor(160,185,215); doc.setFontSize(6.5); doc.setFont("helvetica","normal");
+      doc.text("IMARAT GROUP  |  IT Facilities RAG Dashboard  |  Internal Use Only  |  Confidential", ML, H-3.5);
+      doc.text(`Generated: ${today} at ${timeNow}`, W-ML, H-3.5, { align:"right" });
     };
+
     const drawSummary = () => {
-      const sy = 42;
-      doc.setFillColor(235,240,250); doc.rect(0,sy,W,34,"F");
-      doc.setDrawColor(200,210,230); doc.setLineWidth(0.3);
-      doc.line(0,sy,W,sy); doc.line(0,sy+34,W,sy+34);
+      const sy = 43;
+      doc.setFillColor(236,241,251); doc.rect(0,sy,W,33,"F");
+      doc.setDrawColor(200,210,230); doc.setLineWidth(0.2);
+      doc.line(0,sy,W,sy); doc.line(0,sy+33,W,sy+33);
       const cards = [
-        { label:"TOTAL FACILITIES", val:String(FACILITIES.length), r:15,g:40,b:75, light:[220,228,245] as [number,number,number] },
-        { label:"FULLY OPERATIONAL", val:String(counts.green), r:21,g:128,b:61, light:[198,239,206] as [number,number,number] },
-        { label:"WARNING / DEGRADED", val:String(counts.amber), r:161,g:98,b:7, light:[255,235,156] as [number,number,number] },
-        { label:"CRITICAL", val:String(counts.red), r:185,g:28,b:28, light:[255,199,206] as [number,number,number] },
-        { label:"QUERIES TODAY", val:String(stats.received), r:30,g:64,b:175, light:[219,234,254] as [number,number,number] },
-        { label:"RESOLVED TODAY", val:String(stats.resolved), r:4,g:120,b:87, light:[187,247,208] as [number,number,number] },
-        { label:"PENDING", val:String(stats.pending), r:120,g:53,b:15, light:[254,215,170] as [number,number,number] },
+        { label:"TOTAL FACILITIES",  val:String(FACILITIES.length), r:15,g:40,b:75,  light:[220,228,245] as [number,number,number] },
+        { label:"FULLY OPERATIONAL", val:String(counts.green),       r:21,g:128,b:61, light:[198,239,206] as [number,number,number] },
+        { label:"DEGRADED",          val:String(counts.amber),       r:161,g:98,b:7,  light:[255,235,156] as [number,number,number] },
+        { label:"CRITICAL",          val:String(counts.red),         r:185,g:28,b:28, light:[255,199,206] as [number,number,number] },
+        { label:"QUERIES TODAY",     val:String(stats.received),     r:30,g:64,b:175, light:[219,234,254] as [number,number,number] },
+        { label:"RESOLVED TODAY",    val:String(stats.resolved),     r:4,g:120,b:87,  light:[187,247,208] as [number,number,number] },
+        { label:"PENDING",           val:String(stats.pending),      r:120,g:53,b:15, light:[254,215,170] as [number,number,number] },
       ];
-      const cw = (W-20)/cards.length;
+      const cw = TW / cards.length;
       cards.forEach((c,i) => {
-        const x = 10+i*cw; const [lr,lg,lb] = c.light;
-        doc.setFillColor(lr,lg,lb); doc.roundedRect(x,sy+3,cw-3,28,2,2,"F");
-        doc.setFillColor(c.r,c.g,c.b); doc.rect(x,sy+3,2.5,28,"F");
+        const x = ML+i*cw; const [lr,lg,lb] = c.light;
+        doc.setFillColor(lr,lg,lb); doc.roundedRect(x+0.5,sy+2,cw-2,29,1.5,1.5,"F");
+        doc.setFillColor(c.r,c.g,c.b); doc.rect(x+0.5,sy+2,3,29,"F");
         doc.setTextColor(c.r,c.g,c.b);
-        doc.setFontSize(14); doc.setFont("helvetica","bold"); doc.text(c.val, x+cw/2-1, sy+19, { align:"center" });
-        doc.setFontSize(5.5); doc.setFont("helvetica","bold"); doc.text(c.label, x+cw/2-1, sy+26, { align:"center" });
+        doc.setFontSize(13); doc.setFont("helvetica","bold");
+        doc.text(c.val, x+cw/2+1, sy+18, { align:"center" });
+        doc.setFontSize(5); doc.setFont("helvetica","bold");
+        doc.text(c.label, x+cw/2+1, sy+25, { align:"center" });
       });
     };
 
@@ -354,131 +361,161 @@ export default function Dashboard() {
     drawSummary();
     drawFooter();
 
-    const rows = FACILITIES.map((f,i) => {
+    // Build rows - keep facility name short to fit
+    const rows = FACILITIES.map((f,idx) => {
       const s = state[f.name] ?? defaultState();
       const ov = calcOverall(s);
       const bw = bwCompare(s.bandwidth, s.requiredBandwidth);
-      return [String(i+1), f.name, f.cat, iL[s.internet], bL[s.bio], pL[s.printing], oL[ov], s.bandwidth||"—", s.requiredBandwidth||"—", bw ? bw.label : "—", s.issue||"—", s.notes||"—"];
+      return {
+        data: [String(idx+1), f.name, f.cat, iL[s.internet], bL[s.bio], pL[s.printing], oL[ov], s.bandwidth||"—", s.requiredBandwidth||"—", bw?bw.label:"—", s.issue||"—", s.notes||"—"],
+        internet: s.internet, bio: s.bio, printing: s.printing, overall: ov, bw, cat: f.cat,
+      };
     });
 
     autoTable(doc, {
-      startY: 84, showHead: "everyPage", tableWidth: 281, margin: { left:8, right:8 },
-      head: [["#","Facility","Category","Internet","Biometric","Printing","Overall","Cur BW","Req BW","BW%","Issue","Notes"]],
-      body: rows,
-      styles: { fontSize:7, cellPadding:{ top:2.5,bottom:2.5,left:2.5,right:2.5 }, font:"helvetica", lineColor:[210,218,230], lineWidth:0.3, textColor:[30,40,60], overflow:"linebreak" },
-      headStyles: { fillColor:[15,40,75], textColor:[255,255,255], fontStyle:"bold", fontSize:7, cellPadding:{ top:3.5,bottom:3.5,left:2.5,right:2.5 }, lineColor:[201,163,66], lineWidth:0.5, halign:"center" },
-      alternateRowStyles: { fillColor:[245,248,252] },
+      startY: 80,
+      showHead: "everyPage",
+      tableWidth: TW,
+      margin: { left: ML, right: ML },
+      head: [["#","Facility Name","Cat","Internet","Biometric","Printing","Overall","Cur BW","Req BW","BW%","Issue / Outstanding","Notes"]],
+      body: rows.map(r => r.data),
+      styles: {
+        fontSize: 6.8,
+        cellPadding: { top:2.5, bottom:2.5, left:2, right:2 },
+        font: "helvetica",
+        lineColor: [215,222,232],
+        lineWidth: 0.25,
+        textColor: [25,35,55],
+        valign: "middle",
+        overflow: "linebreak",
+        minCellHeight: 7,
+      },
+      headStyles: {
+        fillColor: [15,40,75],
+        textColor: [255,255,255],
+        fontStyle: "bold",
+        fontSize: 7,
+        halign: "center",
+        valign: "middle",
+        cellPadding: { top:3, bottom:3, left:2, right:2 },
+        lineColor: [201,163,66],
+        lineWidth: 0.4,
+        minCellHeight: 8,
+      },
+      alternateRowStyles: { fillColor: [246,249,252] },
+      pageBreak: "auto",
+      rowPageBreak: "avoid",
+      // Total must equal TW=281: 5+32+12+19+20+15+18+13+13+15+70+16+... wait, use "auto" on last
       columnStyles: {
-        0:{ cellWidth:5,  halign:"center", textColor:[150,160,180], fontStyle:"bold" },
-        1:{ cellWidth:38, fontStyle:"bold", textColor:[15,40,75] },
-        2:{ cellWidth:14, halign:"center", fontStyle:"bold" },
-        3:{ cellWidth:22, halign:"center" },
-        4:{ cellWidth:24, halign:"center" },
-        5:{ cellWidth:18, halign:"center" },
-        6:{ cellWidth:20, halign:"center", fontStyle:"bold" },
-        7:{ cellWidth:14, halign:"center" },
-        8:{ cellWidth:14, halign:"center" },
-        9:{ cellWidth:16, halign:"center", fontStyle:"bold" },
-        10:{ cellWidth:38 },
-        11:{ cellWidth:18 },
+        0:  { cellWidth:5,  halign:"center", textColor:[155,165,180], fontStyle:"bold" },
+        1:  { cellWidth:32 },
+        2:  { cellWidth:12, halign:"center" },
+        3:  { cellWidth:19, halign:"center" },
+        4:  { cellWidth:21, halign:"center" },
+        5:  { cellWidth:15, halign:"center" },
+        6:  { cellWidth:18, halign:"center", fontStyle:"bold" },
+        7:  { cellWidth:13, halign:"center" },
+        8:  { cellWidth:13, halign:"center" },
+        9:  { cellWidth:15, halign:"center", fontStyle:"bold" },
+        10: { cellWidth:52 },
+        11: { cellWidth:16 },
       },
       didParseCell: (data: any) => {
-        if (data.section === "body") {
-          const row = rows[data.row.index];
-          const statusMaps: Record<number,Record<string,RAGStatus>> = {
-            3: Object.fromEntries(Object.entries(iL).map(([k,v])=>[v,k as RAGStatus])),
-            4: Object.fromEntries(Object.entries(bL).map(([k,v])=>[v,k as RAGStatus])),
-            5: Object.fromEntries(Object.entries(pL).map(([k,v])=>[v,k as RAGStatus])),
-            6: Object.fromEntries(Object.entries(oL).map(([k,v])=>[v,k as RAGStatus])),
-          };
-          const map = statusMaps[data.column.index];
-          if (map) {
-            const status = map[row[data.column.index]];
-            if (status && RAG[status]) {
-              const fills: Record<RAGStatus,[number,number,number]> = { green:[198,239,206], amber:[255,235,156], red:[255,199,206], na:[240,242,245] };
-              const texts: Record<RAGStatus,[number,number,number]> = { green:[15,90,40], amber:[120,70,0], red:[160,20,20], na:[120,130,145] };
-              data.cell.styles.fillColor = fills[status]; data.cell.styles.textColor = texts[status]; data.cell.styles.fontStyle = "bold";
-            }
-          }
-          if (data.column.index === 2) {
-            const catColors: Record<string,[number,number,number]> = { Projects:[59,91,219], Imarat:[12,122,109], Graana:[124,58,237], Agency21:[192,86,33] };
-            if (catColors[row[2]]) { data.cell.styles.textColor = catColors[row[2]]; data.cell.styles.fontStyle = "bold"; }
-          }
-          if (data.column.index === 7 && row[7] !== "—") { data.cell.styles.fillColor=[219,234,254]; data.cell.styles.textColor=[30,64,175]; data.cell.styles.fontStyle="bold"; }
-          if (data.column.index === 8 && row[8] !== "—") { data.cell.styles.fillColor=[240,240,255]; data.cell.styles.textColor=[80,60,180]; data.cell.styles.fontStyle="bold"; }
-          if (data.column.index === 9 && row[9] !== "—") {
-            const v = row[9];
-            if (v.includes("OK"))       { data.cell.styles.fillColor=[198,239,206]; data.cell.styles.textColor=[15,90,40];  data.cell.styles.fontStyle="bold"; }
-            else if (v.includes("LOW")) { data.cell.styles.fillColor=[255,235,156]; data.cell.styles.textColor=[120,70,0];  data.cell.styles.fontStyle="bold"; }
-            else if (v.includes("CRIT")){ data.cell.styles.fillColor=[255,199,206]; data.cell.styles.textColor=[160,20,20]; data.cell.styles.fontStyle="bold"; }
-          }
-          if (data.column.index === 10 && row[10] !== "—") { data.cell.styles.textColor=[160,20,20]; }
+        if (data.section !== "body") return;
+        const row = rows[data.row.index];
+        if (!row) return;
+        const si: Record<number,RAGStatus> = { 3:row.internet, 4:row.bio, 5:row.printing, 6:row.overall };
+        const s = si[data.column.index];
+        if (s) {
+          const f: Record<RAGStatus,[number,number,number]> = { green:[198,239,206], amber:[255,235,156], red:[255,199,206], na:[240,242,246] };
+          const t: Record<RAGStatus,[number,number,number]> = { green:[15,90,40], amber:[120,70,0], red:[155,20,20], na:[120,130,145] };
+          data.cell.styles.fillColor = f[s]; data.cell.styles.textColor = t[s]; data.cell.styles.fontStyle = "bold";
         }
+        if (data.column.index === 2) {
+          const cc: Record<string,[number,number,number]> = { Projects:[59,91,219], Imarat:[12,122,109], Graana:[124,58,237], Agency21:[192,86,33] };
+          if (cc[row.cat]) { data.cell.styles.textColor = cc[row.cat]; data.cell.styles.fontStyle = "bold"; }
+        }
+        if (data.column.index === 7 && row.data[7]!=="—") { data.cell.styles.fillColor=[219,234,254]; data.cell.styles.textColor=[30,64,175]; data.cell.styles.fontStyle="bold"; }
+        if (data.column.index === 8 && row.data[8]!=="—") { data.cell.styles.fillColor=[235,235,255]; data.cell.styles.textColor=[80,60,180]; data.cell.styles.fontStyle="bold"; }
+        if (data.column.index === 9 && row.bw) {
+          if (row.bw.label.includes("OK"))   { data.cell.styles.fillColor=[198,239,206]; data.cell.styles.textColor=[15,90,40];  data.cell.styles.fontStyle="bold"; }
+          if (row.bw.label.includes("LOW"))  { data.cell.styles.fillColor=[255,235,156]; data.cell.styles.textColor=[120,70,0];  data.cell.styles.fontStyle="bold"; }
+          if (row.bw.label.includes("CRIT")) { data.cell.styles.fillColor=[255,199,206]; data.cell.styles.textColor=[155,20,20]; data.cell.styles.fontStyle="bold"; }
+        }
+        if (data.column.index === 10 && row.data[10]!=="—") { data.cell.styles.textColor=[155,20,20]; }
       },
       didDrawPage: (data: any) => {
-          try {
-            drawFooter();
-            if (data.pageNumber > 1) {
-              drawHeader("IT Facilities RAG Dashboard","Daily Facility Monitoring Report — All Sites");
-            }
-          } catch(e) {}
-        },
+        try {
+          drawFooter();
+          if (data.pageNumber > 1) drawHeader("IT Facilities RAG Dashboard","Daily Facility Monitoring Report — All Sites");
+        } catch(e) {}
+      },
     });
 
     if (tickets.length > 0) {
       doc.addPage();
       drawHeader("IT Support Tickets","Helpdesk Issue Tracking — All Reported Incidents");
       drawFooter();
-      const tsy = 36;
-      doc.setFillColor(235,240,250); doc.rect(0,tsy,W,18,"F");
-      doc.setDrawColor(200,210,230); doc.setLineWidth(0.3); doc.line(0,tsy,W,tsy); doc.line(0,tsy+18,W,tsy+18);
+      const tsy = 43;
+      doc.setFillColor(236,241,251); doc.rect(0,tsy,W,20,"F");
+      doc.setDrawColor(200,210,230); doc.setLineWidth(0.2); doc.line(0,tsy,W,tsy); doc.line(0,tsy+20,W,tsy+20);
       const tCards = [
-        { label:"TOTAL", val:String(tickets.length), r:15,g:40,b:75, light:[220,228,245] as [number,number,number] },
-        { label:"OPEN", val:String(tCounts.open), r:185,g:28,b:28, light:[255,199,206] as [number,number,number] },
-        { label:"IN PROGRESS", val:String(tCounts.inprogress), r:161,g:98,b:7, light:[255,235,156] as [number,number,number] },
-        { label:"PENDING", val:String(tCounts.pending), r:30,g:64,b:175, light:[219,234,254] as [number,number,number] },
-        { label:"RESOLVED", val:String(tCounts.resolved), r:21,g:128,b:61, light:[198,239,206] as [number,number,number] },
+        { label:"TOTAL",       val:String(tickets.length),     r:15,g:40,b:75,  light:[220,228,245] as [number,number,number] },
+        { label:"OPEN",        val:String(tCounts.open),       r:185,g:28,b:28, light:[255,199,206] as [number,number,number] },
+        { label:"IN PROGRESS", val:String(tCounts.inprogress), r:161,g:98,b:7,  light:[255,235,156] as [number,number,number] },
+        { label:"PENDING",     val:String(tCounts.pending),    r:30,g:64,b:175, light:[219,234,254] as [number,number,number] },
+        { label:"RESOLVED",    val:String(tCounts.resolved),   r:21,g:128,b:61, light:[198,239,206] as [number,number,number] },
       ];
-      const tcw = (W-20)/tCards.length;
+      const tcw = TW/tCards.length;
       tCards.forEach((c,i) => {
-        const x = 10+i*tcw; const [lr,lg,lb] = c.light;
-        doc.setFillColor(lr,lg,lb); doc.roundedRect(x,tsy+2,tcw-3,14,2,2,"F");
-        doc.setFillColor(c.r,c.g,c.b); doc.rect(x,tsy+2,2,14,"F");
+        const x = ML+i*tcw; const [lr,lg,lb] = c.light;
+        doc.setFillColor(lr,lg,lb); doc.roundedRect(x+0.5,tsy+1,tcw-2,18,1.5,1.5,"F");
+        doc.setFillColor(c.r,c.g,c.b); doc.rect(x+0.5,tsy+1,3,18,"F");
         doc.setTextColor(c.r,c.g,c.b);
-        doc.setFontSize(12); doc.setFont("helvetica","bold"); doc.text(c.val, x+tcw/2-1, tsy+11, { align:"center" });
-        doc.setFontSize(5.5); doc.setFont("helvetica","bold"); doc.text(c.label, x+tcw/2-1, tsy+15.5, { align:"center" });
+        doc.setFontSize(11); doc.setFont("helvetica","bold"); doc.text(c.val, x+tcw/2+1, tsy+12, { align:"center" });
+        doc.setFontSize(5); doc.setFont("helvetica","bold"); doc.text(c.label, x+tcw/2+1, tsy+17, { align:"center" });
       });
       const tRows = tickets.map(t => [t.id, t.office, t.medium||"—", t.description, t.reportedBy, t.assignedTo||"Unassigned", TICKET_STATUS[t.status].lbl, t.resolvedBy||"—", t.ts, t.resolvedTs||"—"]);
       autoTable(doc, {
-        startY: 58, margin: { left:8, right:8 },
-        head: [["Ticket ID","Office","Medium","Issue Description","Reported By","Assigned To","Status","Resolved By","Reported At","Resolved At"]],
+        startY: tsy+24, showHead:"everyPage", tableWidth:TW, margin:{ left:ML, right:ML },
+        head: [["Ticket ID","Office / Location","Medium","Issue Description","Reported By","Assigned To","Status","Resolved By","Reported At","Resolved At"]],
         body: tRows,
-        styles: { fontSize:7.5, cellPadding:{ top:3,bottom:3,left:3,right:3 }, font:"helvetica", lineColor:[210,218,230], lineWidth:0.3, textColor:[30,40,60] },
-        headStyles: { fillColor:[15,40,75], textColor:[255,255,255], fontStyle:"bold", fontSize:7.5, cellPadding:{ top:4,bottom:4,left:3,right:3 }, lineColor:[201,163,66], lineWidth:0.5, halign:"center" },
-        alternateRowStyles: { fillColor:[245,248,252] },
+        styles: { fontSize:7, cellPadding:{top:2.5,bottom:2.5,left:2,right:2}, font:"helvetica", lineColor:[215,222,232], lineWidth:0.25, textColor:[25,35,55], overflow:"linebreak", minCellHeight:7 },
+        headStyles: { fillColor:[15,40,75], textColor:[255,255,255], fontStyle:"bold", fontSize:7, halign:"center", cellPadding:{top:3,bottom:3,left:2,right:2}, lineColor:[201,163,66], lineWidth:0.4 },
+        alternateRowStyles: { fillColor:[246,249,252] },
         rowPageBreak: "avoid",
-        columnStyles: { 0:{ cellWidth:20, fontStyle:"bold", textColor:[15,40,75] }, 1:{ cellWidth:28 }, 2:{ cellWidth:18, halign:"center" }, 3:{ cellWidth:52 }, 4:{ cellWidth:22 }, 5:{ cellWidth:24 }, 6:{ cellWidth:20, halign:"center", fontStyle:"bold" }, 7:{ cellWidth:22 }, 8:{ cellWidth:24, halign:"center" }, 9:{ cellWidth:24, halign:"center" } },
+        columnStyles: {
+          0:{ cellWidth:20, fontStyle:"bold", textColor:[15,40,75] },
+          1:{ cellWidth:30 },
+          2:{ cellWidth:18, halign:"center" },
+          3:{ cellWidth:60 },
+          4:{ cellWidth:22 },
+          5:{ cellWidth:24 },
+          6:{ cellWidth:20, halign:"center", fontStyle:"bold" },
+          7:{ cellWidth:22 },
+          8:{ cellWidth:32, halign:"center" },
+          9:{ cellWidth:32, halign:"center" },
+        },
         didParseCell: (data: any) => {
-          if (data.section === "body" && data.column.index === 6) {
+          if (data.section==="body" && data.column.index===6) {
             const st = tRows[data.row.index][6];
-            if (st==="Open")        { data.cell.styles.fillColor=[255,199,206]; data.cell.styles.textColor=[160,20,20];  data.cell.styles.fontStyle="bold"; }
+            if (st==="Open")        { data.cell.styles.fillColor=[255,199,206]; data.cell.styles.textColor=[155,20,20];  data.cell.styles.fontStyle="bold"; }
             if (st==="In Progress") { data.cell.styles.fillColor=[255,235,156]; data.cell.styles.textColor=[120,70,0];   data.cell.styles.fontStyle="bold"; }
             if (st==="Resolved")    { data.cell.styles.fillColor=[198,239,206]; data.cell.styles.textColor=[15,90,40];   data.cell.styles.fontStyle="bold"; }
             if (st==="Pending")     { data.cell.styles.fillColor=[219,234,254]; data.cell.styles.textColor=[30,64,175];  data.cell.styles.fontStyle="bold"; }
           }
-          if (data.section === "body" && data.column.index === 2) {
-            const medColors: Record<string,[number,number,number]> = { "Email":[30,64,175], "Helpdesk Ticket":[124,58,237], "Whatsapp":[21,128,61], "In Person":[161,98,7] };
-            if (medColors[tRows[data.row.index][2]]) { data.cell.styles.textColor = medColors[tRows[data.row.index][2]]; data.cell.styles.fontStyle = "bold"; }
+          if (data.section==="body" && data.column.index===2) {
+            const mc: Record<string,[number,number,number]> = { "Email":[30,64,175],"Helpdesk Ticket":[124,58,237],"Whatsapp":[21,128,61],"In Person":[161,98,7] };
+            if (mc[tRows[data.row.index][2]]) { data.cell.styles.textColor=mc[tRows[data.row.index][2]]; data.cell.styles.fontStyle="bold"; }
           }
         },
         didDrawPage: (data: any) => {
-          try { if (data.pageNumber > 1) { drawHeader("IT Support Tickets","Helpdesk Issue Tracking — All Reported Incidents"); drawFooter(); } } catch(e) {}
+          try { drawFooter(); if (data.pageNumber>1) drawHeader("IT Support Tickets","Helpdesk Issue Tracking — All Reported Incidents"); } catch(e) {}
         },
       });
     }
     doc.save(`Imarat_RAG_${d.toISOString().slice(0,10)}.pdf`);
   };
-
   if (!mounted) return (
     <div style={{ minHeight:"100vh", background:"#eef1f7", display:"flex", alignItems:"center", justifyContent:"center" }}>
       <div style={{ textAlign:"center" }}>
