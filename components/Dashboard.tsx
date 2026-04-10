@@ -34,6 +34,7 @@ const FACILITIES: { name: string; cat: string }[] = [
   { name: "Mardan Office", cat: "Agency21" },
   { name: "Site Office GT Road", cat: "Agency21" },
   { name: "Faisalabad Office", cat: "Agency21" },
+  { name: "DHA E", cat: "Agency21" },
 ];
 
 const TEAM = [
@@ -61,6 +62,7 @@ type AppState = Record<string, FacilityState>;
 type FilterMode = "all" | "green" | "amber" | "red";
 
 interface Ticket {
+  medium: string;
   id: string;
   office: string;
   description: string;
@@ -187,7 +189,7 @@ export default function Dashboard() {
   const [now, setNow] = useState("");
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [showTicketForm, setShowTicketForm] = useState(false);
-  const [newTicket, setNewTicket] = useState({ office:"", description:"", reportedBy:"", assignedTo:"" });
+  const [newTicket, setNewTicket] = useState({ office:"", description:"", reportedBy:"", assignedTo:"", medium:"" });
   const [stats, setStats] = useState<DailyStats>({ received:0, resolved:0, pending:0, inprogress:0 });
 
   useEffect(() => {
@@ -219,6 +221,7 @@ export default function Dashboard() {
   const addTicket = () => {
     if (!newTicket.description) return;
     const t: Ticket = {
+      medium: newTicket.medium || "—",
       id: uid(),
       office: newTicket.office || "Unknown / Remote Office",
       description: newTicket.description,
@@ -230,7 +233,7 @@ export default function Dashboard() {
       resolvedTs: "",
     };
     setTickets(prev => [t, ...prev]);
-    setNewTicket({ office:"", description:"", reportedBy:"", assignedTo:"" });
+    setNewTicket({ office:"", description:"", reportedBy:"", assignedTo:"", medium:"" });
     setShowTicketForm(false);
   };
 
@@ -777,7 +780,7 @@ export default function Dashboard() {
               <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
                 <thead>
                   <tr style={{ background:"#f8f9fb" }}>
-                    {["TICKET ID","OFFICE / LOCATION","ISSUE DESCRIPTION","REPORTED BY","ASSIGNED TO TEAM MEMBER","STATUS","RESOLVED BY","REPORTED AT","RESOLVED AT",""].map(h => (
+                    {["TICKET ID","OFFICE / LOCATION","MEDIUM","ISSUE DESCRIPTION","REPORTED BY","ASSIGNED TO TEAM MEMBER","STATUS","RESOLVED BY","REPORTED AT","RESOLVED AT",""].map(h => (
                       <th key={h} style={{ textAlign:"left", padding:"9px 10px", color:"#8a94a6", fontWeight:600, fontSize:10, borderBottom:"2px solid #e2e6ed", whiteSpace:"nowrap" }}>{h}</th>
                     ))}
                   </tr>
@@ -831,3 +834,4 @@ export default function Dashboard() {
     </div>
   );
 }
+
