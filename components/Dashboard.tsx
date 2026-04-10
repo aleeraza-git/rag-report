@@ -1,10 +1,9 @@
 ﻿"use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import jsPDF from "jspdf";
-// @ts-ignore
-// @ts-ignore
 import autoTable from "jspdf-autotable";
+import { supabase } from "@/lib/supabase";
 
 const FACILITIES: { name: string; cat: string }[] = [
   { name: "Amazon Mall", cat: "Projects" },
@@ -64,9 +63,9 @@ type AppState = Record<string, FacilityState>;
 type FilterMode = "all" | "green" | "amber" | "red";
 
 interface Ticket {
-  medium: string;
   id: string;
   office: string;
+  medium: string;
   description: string;
   reportedBy: string;
   assignedTo: string;
@@ -112,10 +111,10 @@ const CAT_COLORS: Record<string,string> = {
   Projects:"#3b5bdb", Imarat:"#0c7a6d", Graana:"#7c3aed", Agency21:"#c05621",
 };
 const TICKET_STATUS: Record<string,{ bg:string; text:string; lbl:string; border:string }> = {
-  open:       { bg:"#fdf0f0", text:"#8b1c1c", lbl:"Open",        border:"#f5b8b8" },
-  inprogress: { bg:"#fef8ec", text:"#7a5200", lbl:"In Progress",  border:"#f5d48a" },
-  resolved:   { bg:"#edf7f0", text:"#1a6b35", lbl:"Resolved",     border:"#a8d5b5" },
-  pending:    { bg:"#f0f4ff", text:"#3b5bdb", lbl:"Pending",      border:"#b4c6fb" },
+  open:       { bg:"#fdf0f0", text:"#8b1c1c", lbl:"Open",       border:"#f5b8b8" },
+  inprogress: { bg:"#fef8ec", text:"#7a5200", lbl:"In Progress", border:"#f5d48a" },
+  resolved:   { bg:"#edf7f0", text:"#1a6b35", lbl:"Resolved",    border:"#a8d5b5" },
+  pending:    { bg:"#f0f4ff", text:"#3b5bdb", lbl:"Pending",     border:"#b4c6fb" },
 };
 
 function nowTime() {
@@ -134,18 +133,6 @@ function calcOverall(s: FacilityState): RAGStatus {
 }
 function defaultState(): FacilityState {
   return { internet:"green", bio:"green", printing:"green", bandwidth:"", issue:"", notes:"", ts:nowTime() };
-}
-function loadFromStorage(): AppState {
-  try { const r = localStorage.getItem("rag_v7"); if (r) return JSON.parse(r); } catch {}
-  return {};
-}
-function loadTickets(): Ticket[] {
-  try { const r = localStorage.getItem("rag_tickets"); if (r) return JSON.parse(r); } catch {}
-  return [];
-}
-function loadStats(): DailyStats {
-  try { const r = localStorage.getItem("rag_daily_stats"); if (r) return JSON.parse(r); } catch {}
-  return { received:0, resolved:0, pending:0, inprogress:0 };
 }
 
 function Dot({ s }: { s: RAGStatus }) {
@@ -168,7 +155,6 @@ function Sel({ value, opts, onChange }: { value:RAGStatus; opts:{v:RAGStatus;l:s
     </select>
   );
 }
-
 function StatInput({ label, value, color, bg, border, onChange }: { label:string; value:number; color:string; bg:string; border:string; onChange:(v:number)=>void }) {
   return (
     <div style={{ background:bg, border:`1px solid ${border}`, borderRadius:8, padding:"12px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
@@ -188,44 +174,100 @@ export default function Dashboard() {
   const [state, setState] = useState<AppState>({});
   const [filter, setFilter] = useState<FilterMode>("all");
   const [mounted, setMounted] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState("");
   const [now, setNow] = useState("");
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [showTicketForm, setShowTicketForm] = useState(false);
   const [newTicket, setNewTicket] = useState({ office:"", description:"", reportedBy:"", assignedTo:"", medium:"" });
   const [stats, setStats] = useState<DailyStats>({ received:0, resolved:0, pending:0, inprogress:0 });
+  const saveTimer = useRef<NodeJS.Timeout|null>(null);
 
   useEffect(() => {
-    const saved = loadFromStorage();
     const init: AppState = {};
-    FACILITIES.forEach(f => { init[f.name] = saved[f.name] ?? defaultState(); });
-    setState(init);
-    setTickets(loadTickets());
-    setStats(loadStats());
+    FACILITIES.forEach(f => { init[f.name] = defaultState(); });
+
+    const loadAll = async () => {
+      setSyncing(true);
+      try {
+        const [{ data: fsData }, { data: tkData }, { data: stData }] = await Promise.all([
+          supabase.from("facility_state").select("*"),
+          supabase.from("tickets").select("*"),
+          supabase.from("daily_stats").select("*").eq("id","today").single(),
+        ]);
+        if (fsData) fsData.forEach((row: any) => { if (init[row.id]) init[row.id] = row.data; });
+        if (tkData) setTickets(tkData.map((r: any) => r.data).sort((a: Ticket, b: Ticket) => b.ts.localeCompare(a.ts)));
+        if (stData) setStats(stData.data);
+      } catch {}
+      setState(init);
+      setSyncing(false);
+      setLastSync(nowTime());
+      setMounted(true);
+    };
+    loadAll();
+
     const fmt = () => new Date().toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
     setNow(fmt());
-    setMounted(true);
     const t = setInterval(() => setNow(fmt()), 60000);
-    return () => clearInterval(t);
+
+    const fsSub = supabase.channel("fs_changes")
+      .on("postgres_changes", { event:"*", schema:"public", table:"facility_state" }, (payload: any) => {
+        if (payload.new) { setState(prev => ({ ...prev, [payload.new.id]: payload.new.data })); setLastSync(nowTime()); }
+      }).subscribe();
+
+    const tkSub = supabase.channel("tk_changes")
+      .on("postgres_changes", { event:"*", schema:"public", table:"tickets" }, async () => {
+        const { data } = await supabase.from("tickets").select("*");
+        if (data) setTickets(data.map((r: any) => r.data).sort((a: Ticket, b: Ticket) => b.ts.localeCompare(a.ts)));
+        setLastSync(nowTime());
+      }).subscribe();
+
+    const stSub = supabase.channel("st_changes")
+      .on("postgres_changes", { event:"*", schema:"public", table:"daily_stats" }, (payload: any) => {
+        if (payload.new) { setStats(payload.new.data); setLastSync(nowTime()); }
+      }).subscribe();
+
+    return () => {
+      clearInterval(t);
+      supabase.removeChannel(fsSub);
+      supabase.removeChannel(tkSub);
+      supabase.removeChannel(stSub);
+    };
   }, []);
 
-  useEffect(() => { if (mounted) localStorage.setItem("rag_v7", JSON.stringify(state)); }, [state, mounted]);
-  useEffect(() => { if (mounted) localStorage.setItem("rag_tickets", JSON.stringify(tickets)); }, [tickets, mounted]);
-  useEffect(() => { if (mounted) localStorage.setItem("rag_daily_stats", JSON.stringify(stats)); }, [stats, mounted]);
+  const saveFacility = useCallback(async (name: string, data: FacilityState) => {
+    await supabase.from("facility_state").upsert({ id: name, data, updated_at: new Date().toISOString() });
+    setLastSync(nowTime());
+  }, []);
 
   const updateField = useCallback((name:string, field:keyof FacilityState, val:string) => {
-    setState(prev => ({ ...prev, [name]: { ...prev[name], [field]: val, ts: nowTime() } }));
-  }, []);
+    setState(prev => {
+      const updated = { ...prev[name], [field]: val, ts: nowTime() };
+      const newState = { ...prev, [name]: updated };
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => saveFacility(name, updated), 800);
+      return newState;
+    });
+  }, [saveFacility]);
 
-  const updateStat = (field: keyof DailyStats, val: number) => {
-    setStats(prev => ({ ...prev, [field]: val }));
+  const updateStat = async (field: keyof DailyStats, val: number) => {
+    const updated = { ...stats, [field]: val };
+    setStats(updated);
+    await supabase.from("daily_stats").upsert({ id:"today", data: updated, updated_at: new Date().toISOString() });
   };
 
-  const addTicket = () => {
+  const resetStats = async () => {
+    const reset = { received:0, resolved:0, pending:0, inprogress:0 };
+    setStats(reset);
+    await supabase.from("daily_stats").upsert({ id:"today", data: reset, updated_at: new Date().toISOString() });
+  };
+
+  const addTicket = async () => {
     if (!newTicket.description) return;
     const t: Ticket = {
-      medium: newTicket.medium || "—",
       id: uid(),
       office: newTicket.office || "Unknown / Remote Office",
+      medium: newTicket.medium || "—",
       description: newTicket.description,
       reportedBy: newTicket.reportedBy || "Unknown",
       assignedTo: newTicket.assignedTo,
@@ -234,21 +276,22 @@ export default function Dashboard() {
       ts: nowFull(),
       resolvedTs: "",
     };
-    setTickets(prev => [t, ...prev]);
+    await supabase.from("tickets").upsert({ id: t.id, data: t, updated_at: new Date().toISOString() });
     setNewTicket({ office:"", description:"", reportedBy:"", assignedTo:"", medium:"" });
     setShowTicketForm(false);
   };
 
-  const updateTicket = (id:string, field:keyof Ticket, val:string) => {
-    setTickets(prev => prev.map(t => {
-      if (t.id !== id) return t;
-      const updated = { ...t, [field]: val };
-      if (field === "status" && val === "resolved") updated.resolvedTs = nowFull();
-      return updated;
-    }));
+  const updateTicket = async (id:string, field:keyof Ticket, val:string) => {
+    const ticket = tickets.find(t => t.id === id);
+    if (!ticket) return;
+    const updated = { ...ticket, [field]: val };
+    if (field === "status" && val === "resolved") updated.resolvedTs = nowFull();
+    await supabase.from("tickets").upsert({ id, data: updated, updated_at: new Date().toISOString() });
   };
 
-  const deleteTicket = (id:string) => setTickets(prev => prev.filter(t => t.id !== id));
+  const deleteTicket = async (id:string) => {
+    await supabase.from("tickets").delete().eq("id", id);
+  };
 
   const counts = { green:0, amber:0, red:0, na:0 };
   const iC = { green:0, amber:0, red:0 };
@@ -275,90 +318,59 @@ export default function Dashboard() {
     const W = doc.internal.pageSize.getWidth();
     const H = doc.internal.pageSize.getHeight();
 
-    const iL: Record<RAGStatus,string> = { green:"Working", amber:"Slow / Intermittent", red:"Down", na:"N/A" };
+    const iL: Record<RAGStatus,string> = { green:"Working", amber:"Slow/Intermittent", red:"Down", na:"N/A" };
     const bL: Record<RAGStatus,string> = { green:"Working & Syncing", amber:"Delayed", red:"Not Working", na:"N/A" };
     const pL: Record<RAGStatus,string> = { green:"Working", amber:"Partial", red:"Not Working", na:"N/A" };
     const oL: Record<RAGStatus,string> = { green:"Operational", amber:"Degraded", red:"Critical", na:"N/A" };
 
     const drawHeader = (title: string, subtitle: string) => {
-      // Top navy bar
-      doc.setFillColor(15,40,75);
-      doc.rect(0,0,W,30,"F");
-      // Gold accent line
-      doc.setFillColor(201,163,66);
-      doc.rect(0,30,W,1.5,"F");
-      // Logo area left
-      doc.setFillColor(255,255,255);
-      doc.setTextColor(255,255,255);
-      doc.setFontSize(20); doc.setFont("helvetica","bold");
+      doc.setFillColor(15,40,75); doc.rect(0,0,W,30,"F");
+      doc.setFillColor(201,163,66); doc.rect(0,30,W,1.5,"F");
+      doc.setTextColor(255,255,255); doc.setFontSize(20); doc.setFont("helvetica","bold");
       doc.text("IMARAT", 10, 14);
-      doc.setFontSize(8); doc.setFont("helvetica","normal");
-      doc.setTextColor(201,163,66);
+      doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(201,163,66);
       doc.text("GROUP", 10, 20);
-      doc.setTextColor(180,200,225);
-      doc.text("Information Technology Department", 10, 26);
-      // Divider
-      doc.setDrawColor(201,163,66);
-      doc.setLineWidth(0.5);
-      doc.line(55,8,55,26);
-      // Title right of divider
-      doc.setTextColor(255,255,255);
-      doc.setFontSize(13); doc.setFont("helvetica","bold");
+      doc.setTextColor(180,200,225); doc.text("Information Technology Department", 10, 26);
+      doc.setDrawColor(201,163,66); doc.setLineWidth(0.5); doc.line(55,8,55,26);
+      doc.setTextColor(255,255,255); doc.setFontSize(13); doc.setFont("helvetica","bold");
       doc.text(title, 60, 14);
-      doc.setFontSize(8); doc.setFont("helvetica","normal");
-      doc.setTextColor(180,200,225);
+      doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(180,200,225);
       doc.text(subtitle, 60, 21);
-      // Date top right
-      doc.setTextColor(201,163,66);
-      doc.setFontSize(8); doc.setFont("helvetica","bold");
+      doc.setTextColor(201,163,66); doc.setFontSize(8); doc.setFont("helvetica","bold");
       doc.text(today, W-10, 12, { align:"right" });
-      doc.setTextColor(180,200,225);
-      doc.setFontSize(7); doc.setFont("helvetica","normal");
+      doc.setTextColor(180,200,225); doc.setFontSize(7); doc.setFont("helvetica","normal");
       doc.text("Report Time: "+timeNow, W-10, 18, { align:"right" });
       doc.text("it.support@imarat.com.pk", W-10, 24, { align:"right" });
     };
 
     const drawFooter = () => {
-      doc.setFillColor(15,40,75);
-      doc.rect(0,H-10,W,10,"F");
-      doc.setFillColor(201,163,66);
-      doc.rect(0,H-10,W,0.8,"F");
-      doc.setTextColor(180,200,225);
-      doc.setFontSize(6.5); doc.setFont("helvetica","normal");
+      doc.setFillColor(15,40,75); doc.rect(0,H-10,W,10,"F");
+      doc.setFillColor(201,163,66); doc.rect(0,H-10,W,0.8,"F");
+      doc.setTextColor(180,200,225); doc.setFontSize(6.5); doc.setFont("helvetica","normal");
       doc.text("IMARAT GROUP  |  IT Facilities RAG Dashboard  |  Internal Use Only  |  Confidential", 10, H-4);
       doc.text(`Generated: ${today} at ${timeNow}`, W-10, H-4, { align:"right" });
     };
 
-    const drawSummarySection = () => {
+    const drawSummary = () => {
       const sy = 36;
-      // Section label
-      doc.setFillColor(235,240,250);
-      doc.rect(0,sy,W,34,"F");
-      doc.setDrawColor(200,210,230);
-      doc.setLineWidth(0.3);
-      doc.line(0,sy,W,sy);
-      doc.line(0,sy+34,W,sy+34);
-
-      const cardData = [
-        { label:"TOTAL FACILITIES", val:String(FACILITIES.length), icon:"", r:15,g:40,b:75, light:[220,228,245] },
-        { label:"FULLY OPERATIONAL", val:String(counts.green), icon:"", r:21,g:128,b:61, light:[198,239,206] },
-        { label:"WARNING / DEGRADED", val:String(counts.amber), icon:"", r:161,g:98,b:7, light:[255,235,156] },
-        { label:"CRITICAL", val:String(counts.red), icon:"", r:185,g:28,b:28, light:[255,199,206] },
-        { label:"QUERIES TODAY", val:String(stats.received), icon:"", r:30,g:64,b:175, light:[219,234,254] },
-        { label:"RESOLVED TODAY", val:String(stats.resolved), icon:"", r:4,g:120,b:87, light:[187,247,208] },
-        { label:"PENDING", val:String(stats.pending), icon:"", r:120,g:53,b:15, light:[254,215,170] },
+      doc.setFillColor(235,240,250); doc.rect(0,sy,W,34,"F");
+      doc.setDrawColor(200,210,230); doc.setLineWidth(0.3);
+      doc.line(0,sy,W,sy); doc.line(0,sy+34,W,sy+34);
+      const cards = [
+        { label:"TOTAL FACILITIES", val:String(FACILITIES.length), r:15,g:40,b:75, light:[220,228,245] as [number,number,number] },
+        { label:"FULLY OPERATIONAL", val:String(counts.green), r:21,g:128,b:61, light:[198,239,206] as [number,number,number] },
+        { label:"WARNING / DEGRADED", val:String(counts.amber), r:161,g:98,b:7, light:[255,235,156] as [number,number,number] },
+        { label:"CRITICAL", val:String(counts.red), r:185,g:28,b:28, light:[255,199,206] as [number,number,number] },
+        { label:"QUERIES TODAY", val:String(stats.received), r:30,g:64,b:175, light:[219,234,254] as [number,number,number] },
+        { label:"RESOLVED TODAY", val:String(stats.resolved), r:4,g:120,b:87, light:[187,247,208] as [number,number,number] },
+        { label:"PENDING", val:String(stats.pending), r:120,g:53,b:15, light:[254,215,170] as [number,number,number] },
       ];
-      const cw = (W-20)/cardData.length;
-      cardData.forEach((c,i) => {
+      const cw = (W-20)/cards.length;
+      cards.forEach((c,i) => {
         const x = 10+i*cw;
         const [lr,lg,lb] = c.light;
-        doc.setFillColor(lr,lg,lb);
-        doc.roundedRect(x,sy+3,cw-3,28,2,2,"F");
-        doc.setDrawColor(c.r,c.g,c.b);
-        doc.setLineWidth(0.8);
-        doc.line(x,sy+3,x,sy+31);
-        doc.setFillColor(c.r,c.g,c.b);
-        doc.rect(x,sy+3,2.5,28,"F");
+        doc.setFillColor(lr,lg,lb); doc.roundedRect(x,sy+3,cw-3,28,2,2,"F");
+        doc.setFillColor(c.r,c.g,c.b); doc.rect(x,sy+3,2.5,28,"F");
         doc.setTextColor(c.r,c.g,c.b);
         doc.setFontSize(14); doc.setFont("helvetica","bold");
         doc.text(c.val, x+cw/2-1, sy+19, { align:"center" });
@@ -367,9 +379,8 @@ export default function Dashboard() {
       });
     };
 
-    // PAGE 1
-    drawHeader("IT Facilities RAG Dashboard", "Daily Facility Monitoring Report — All Sites");
-    drawSummarySection();
+    drawHeader("IT Facilities RAG Dashboard","Daily Facility Monitoring Report — All Sites");
+    drawSummary();
     drawFooter();
 
     const rows = FACILITIES.map((f,i) => {
@@ -379,45 +390,28 @@ export default function Dashboard() {
     });
 
     autoTable(doc, {
-      startY: 74,
-      pageBreak: 'avoid',
+      startY: 76,
+      showHead: "everyPage",
       margin: { left:8, right:8 },
-      head: [["#","Facility Name","Category","Internet","Biometric","Printing","Overall Status","Bandwidth","Reported Issue","Notes"]],
+      head: [["#","Facility Name","Category","Internet","Biometric","Printing","Overall","Bandwidth","Reported Issue","Notes"]],
       body: rows,
-      styles: {
-        fontSize: 7.5,
-        cellPadding: { top:3, bottom:3, left:3, right:3 },
-        font: "helvetica",
-        lineColor: [210,218,230],
-        lineWidth: 0.3,
-        textColor: [30,40,60],
-        overflow: "linebreak",
-      },
-      headStyles: {
-        fillColor: [15,40,75],
-        textColor: [255,255,255],
-        fontStyle: "bold",
-        fontSize: 7.5,
-        cellPadding: { top:4, bottom:4, left:3, right:3 },
-        lineColor: [201,163,66],
-        lineWidth: 0.5,
-        halign: "center",
-      },
+      styles: { fontSize:7.5, cellPadding:{ top:3,bottom:3,left:3,right:3 }, font:"helvetica", lineColor:[210,218,230], lineWidth:0.3, textColor:[30,40,60], overflow:"linebreak" },
+      headStyles: { fillColor:[15,40,75], textColor:[255,255,255], fontStyle:"bold", fontSize:7.5, cellPadding:{ top:4,bottom:4,left:3,right:3 }, lineColor:[201,163,66], lineWidth:0.5, halign:"center" },
       alternateRowStyles: { fillColor:[245,248,252] },
-      rowPageBreak: "auto",
+      rowPageBreak: "avoid",
       columnStyles: {
-        0: { cellWidth:7,  halign:"center", textColor:[150,160,180], fontStyle:"bold" },
-        1: { cellWidth:32, fontStyle:"bold", textColor:[15,40,75] },
-        2: { cellWidth:16, halign:"center", fontStyle:"bold" },
-        3: { cellWidth:22, halign:"center" },
-        4: { cellWidth:23, halign:"center" },
-        5: { cellWidth:19, halign:"center" },
-        6: { cellWidth:20, halign:"center", fontStyle:"bold" },
-        7: { cellWidth:16, halign:"center" },
-        8: { cellWidth:32 },
-        9: { cellWidth:26 },
+        0:{ cellWidth:6,  halign:"center", textColor:[150,160,180], fontStyle:"bold" },
+        1:{ cellWidth:30, fontStyle:"bold", textColor:[15,40,75] },
+        2:{ cellWidth:15, halign:"center", fontStyle:"bold" },
+        3:{ cellWidth:20, halign:"center" },
+        4:{ cellWidth:22, halign:"center" },
+        5:{ cellWidth:18, halign:"center" },
+        6:{ cellWidth:19, halign:"center", fontStyle:"bold" },
+        7:{ cellWidth:15, halign:"center" },
+        8:{ cellWidth:28 },
+        9:{ cellWidth:24 },
       },
-      didParseCell: (data) => {
+      didParseCell: (data: any) => {
         if (data.section === "body") {
           const row = rows[data.row.index];
           const statusMaps: Record<number,Record<string,RAGStatus>> = {
@@ -430,44 +424,24 @@ export default function Dashboard() {
           if (map) {
             const status = map[row[data.column.index]];
             if (status && RAG[status]) {
-              const fills: Record<RAGStatus,[number,number,number]> = {
-                green:[198,239,206], amber:[255,235,156], red:[255,199,206], na:[240,242,245]
-              };
-              const texts: Record<RAGStatus,[number,number,number]> = {
-                green:[15,90,40], amber:[120,70,0], red:[160,20,20], na:[120,130,145]
-              };
+              const fills: Record<RAGStatus,[number,number,number]> = { green:[198,239,206], amber:[255,235,156], red:[255,199,206], na:[240,242,245] };
+              const texts: Record<RAGStatus,[number,number,number]> = { green:[15,90,40], amber:[120,70,0], red:[160,20,20], na:[120,130,145] };
               data.cell.styles.fillColor = fills[status];
               data.cell.styles.textColor = texts[status];
               data.cell.styles.fontStyle = "bold";
             }
           }
           if (data.column.index === 2) {
-            const catColors: Record<string,[number,number,number]> = {
-              Projects:[59,91,219], Imarat:[12,122,109], Graana:[124,58,237], Agency21:[192,86,33]
-            };
-            const cat = row[2];
-            if (catColors[cat]) {
-              data.cell.styles.textColor = catColors[cat];
-              data.cell.styles.fontStyle = "bold";
-            }
+            const catColors: Record<string,[number,number,number]> = { Projects:[59,91,219], Imarat:[12,122,109], Graana:[124,58,237], Agency21:[192,86,33] };
+            if (catColors[row[2]]) { data.cell.styles.textColor = catColors[row[2]]; data.cell.styles.fontStyle = "bold"; }
           }
-          if (data.column.index === 7 && row[7] !== "—") {
-            data.cell.styles.fillColor = [219,234,254];
-            data.cell.styles.textColor = [30,64,175];
-            data.cell.styles.fontStyle = "bold";
-          }
-          if (data.column.index === 8 && row[8] !== "—") {
-            data.cell.styles.textColor = [160,20,20];
-          }
+          if (data.column.index === 7 && row[7] !== "—") { data.cell.styles.fillColor = [219,234,254]; data.cell.styles.textColor = [30,64,175]; data.cell.styles.fontStyle = "bold"; }
+          if (data.column.index === 8 && row[8] !== "—") { data.cell.styles.textColor = [160,20,20]; }
         }
       },
-      didDrawPage: (data) => {
-          if (data.pageNumber > 1) {
-            drawHeader("IT Facilities RAG Dashboard","Daily Facility Monitoring Report — All Sites");
-            drawFooter();
-            (doc as any).autoTable.previous.finalY = 76;
-          }
-        },
+      didDrawPage: (data: any) => {
+        try { if (data.pageNumber > 1) { drawHeader("IT Facilities RAG Dashboard","Daily Facility Monitoring Report — All Sites"); drawFooter(); } } catch(e) {}
+      },
     });
 
     if (tickets.length > 0) {
@@ -475,15 +449,12 @@ export default function Dashboard() {
       drawHeader("IT Support Tickets","Helpdesk Issue Tracking — All Reported Incidents");
       drawFooter();
 
-      // Ticket summary bar
       const tsy = 36;
-      doc.setFillColor(235,240,250);
-      doc.rect(0,tsy,W,18,"F");
+      doc.setFillColor(235,240,250); doc.rect(0,tsy,W,18,"F");
       doc.setDrawColor(200,210,230); doc.setLineWidth(0.3);
       doc.line(0,tsy,W,tsy); doc.line(0,tsy+18,W,tsy+18);
-
       const tCards = [
-        { label:"TOTAL TICKETS", val:String(tickets.length), r:15,g:40,b:75, light:[220,228,245] as [number,number,number] },
+        { label:"TOTAL", val:String(tickets.length), r:15,g:40,b:75, light:[220,228,245] as [number,number,number] },
         { label:"OPEN", val:String(tCounts.open), r:185,g:28,b:28, light:[255,199,206] as [number,number,number] },
         { label:"IN PROGRESS", val:String(tCounts.inprogress), r:161,g:98,b:7, light:[255,235,156] as [number,number,number] },
         { label:"PENDING", val:String(tCounts.pending), r:30,g:64,b:175, light:[219,234,254] as [number,number,number] },
@@ -493,10 +464,8 @@ export default function Dashboard() {
       tCards.forEach((c,i) => {
         const x = 10+i*tcw;
         const [lr,lg,lb] = c.light;
-        doc.setFillColor(lr,lg,lb);
-        doc.roundedRect(x,tsy+2,tcw-3,14,2,2,"F");
-        doc.setFillColor(c.r,c.g,c.b);
-        doc.rect(x,tsy+2,2,14,"F");
+        doc.setFillColor(lr,lg,lb); doc.roundedRect(x,tsy+2,tcw-3,14,2,2,"F");
+        doc.setFillColor(c.r,c.g,c.b); doc.rect(x,tsy+2,2,14,"F");
         doc.setTextColor(c.r,c.g,c.b);
         doc.setFontSize(12); doc.setFont("helvetica","bold");
         doc.text(c.val, x+tcw/2-1, tsy+11, { align:"center" });
@@ -504,194 +473,44 @@ export default function Dashboard() {
         doc.text(c.label, x+tcw/2-1, tsy+15.5, { align:"center" });
       });
 
-      const tRows = tickets.map(t => [
-        t.id, t.office, t.medium||"—", t.description,
-        t.reportedBy, t.assignedTo||"Unassigned",
-        TICKET_STATUS[t.status].lbl,
-        t.resolvedBy||"—", t.ts, t.resolvedTs||"—"
-      ]);
+      const tRows = tickets.map(t => [t.id, t.office, t.medium||"—", t.description, t.reportedBy, t.assignedTo||"Unassigned", TICKET_STATUS[t.status].lbl, t.resolvedBy||"—", t.ts, t.resolvedTs||"—"]);
 
       autoTable(doc, {
         startY: 58,
-        margin: { left:10, right:10 },
-        head: [["Ticket ID","Office / Location","Medium","Issue Description","Reported By","Assigned To","Status","Resolved By","Reported At","Resolved At"]],
+        margin: { left:8, right:8 },
+        head: [["Ticket ID","Office","Medium","Issue Description","Reported By","Assigned To","Status","Resolved By","Reported At","Resolved At"]],
         body: tRows,
-        styles: {
-          fontSize:7.5, cellPadding:{ top:3,bottom:3,left:3,right:3 },
-          font:"helvetica", lineColor:[210,218,230], lineWidth:0.3, textColor:[30,40,60],
-        },
-        headStyles: {
-          fillColor:[15,40,75], textColor:[255,255,255], fontStyle:"bold",
-          fontSize:7.5, cellPadding:{ top:4,bottom:4,left:3,right:3 },
-          lineColor:[201,163,66], lineWidth:0.5, halign:"center",
-        },
+        styles: { fontSize:7.5, cellPadding:{ top:3,bottom:3,left:3,right:3 }, font:"helvetica", lineColor:[210,218,230], lineWidth:0.3, textColor:[30,40,60] },
+        headStyles: { fillColor:[15,40,75], textColor:[255,255,255], fontStyle:"bold", fontSize:7.5, cellPadding:{ top:4,bottom:4,left:3,right:3 }, lineColor:[201,163,66], lineWidth:0.5, halign:"center" },
         alternateRowStyles: { fillColor:[245,248,252] },
+        rowPageBreak: "avoid",
         columnStyles: {
-          0:{ cellWidth:22, fontStyle:"bold", textColor:[15,40,75] },
-          1:{ cellWidth:30 },
-          2:{ cellWidth:20, halign:"center" },
+          0:{ cellWidth:20, fontStyle:"bold", textColor:[15,40,75] },
+          1:{ cellWidth:28 },
+          2:{ cellWidth:18, halign:"center" },
           3:{ cellWidth:52 },
-          4:{ cellWidth:24 },
-          5:{ cellWidth:26 },
-          6:{ cellWidth:22, halign:"center", fontStyle:"bold" },
-          7:{ cellWidth:24 },
+          4:{ cellWidth:22 },
+          5:{ cellWidth:24 },
+          6:{ cellWidth:20, halign:"center", fontStyle:"bold" },
+          7:{ cellWidth:22 },
           8:{ cellWidth:24, halign:"center" },
           9:{ cellWidth:24, halign:"center" },
         },
-        didParseCell: (data) => {
+        didParseCell: (data: any) => {
           if (data.section === "body" && data.column.index === 6) {
             const st = tRows[data.row.index][6];
-            if (st==="Open")        { data.cell.styles.fillColor=[255,199,206]; data.cell.styles.textColor=[160,20,20]; }
-            if (st==="In Progress") { data.cell.styles.fillColor=[255,235,156]; data.cell.styles.textColor=[120,70,0]; }
-            if (st==="Resolved")    { data.cell.styles.fillColor=[198,239,206]; data.cell.styles.textColor=[15,90,40]; }
-            if (st==="Pending")     { data.cell.styles.fillColor=[219,234,254]; data.cell.styles.textColor=[30,64,175]; }
+            if (st==="Open")        { data.cell.styles.fillColor=[255,199,206]; data.cell.styles.textColor=[160,20,20];  data.cell.styles.fontStyle="bold"; }
+            if (st==="In Progress") { data.cell.styles.fillColor=[255,235,156]; data.cell.styles.textColor=[120,70,0];   data.cell.styles.fontStyle="bold"; }
+            if (st==="Resolved")    { data.cell.styles.fillColor=[198,239,206]; data.cell.styles.textColor=[15,90,40];   data.cell.styles.fontStyle="bold"; }
+            if (st==="Pending")     { data.cell.styles.fillColor=[219,234,254]; data.cell.styles.textColor=[30,64,175];  data.cell.styles.fontStyle="bold"; }
           }
           if (data.section === "body" && data.column.index === 2) {
-            const med = tRows[data.row.index][2];
-            const medColors: Record<string,[number,number,number]> = {
-              "Email":[30,64,175], "Helpdesk Ticket":[124,58,237],
-              "Whatsapp":[21,128,61], "In Person":[161,98,7]
-            };
-            if (medColors[med]) {
-              data.cell.styles.textColor = medColors[med];
-              data.cell.styles.fontStyle = "bold";
-            }
+            const medColors: Record<string,[number,number,number]> = { "Email":[30,64,175], "Helpdesk Ticket":[124,58,237], "Whatsapp":[21,128,61], "In Person":[161,98,7] };
+            if (medColors[tRows[data.row.index][2]]) { data.cell.styles.textColor = medColors[tRows[data.row.index][2]]; data.cell.styles.fontStyle = "bold"; }
           }
         },
-        didDrawPage: (data) => {
-          if (data.pageNumber > 1) {
-            drawHeader("IT Support Tickets","Helpdesk Issue Tracking — All Reported Incidents");
-            drawFooter();
-          }
-        },
-      });
-    }
-
-    doc.save(`Imarat_RAG_${d.toISOString().slice(0,10)}.pdf`);
-  };
-  const _unused2 = () => {
-    const d = new Date();
-    const today = d.toLocaleDateString("en-GB", { day:"2-digit", month:"long", year:"numeric" });
-    const timeNow = d.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", second:"2-digit" });
-    const doc = new jsPDF({ orientation:"landscape", unit:"mm", format:"a4" });
-    const W = doc.internal.pageSize.getWidth();
-
-    doc.setFillColor(26,58,92); doc.rect(0,0,W,28,"F");
-    doc.setTextColor(255,255,255); doc.setFontSize(18); doc.setFont("helvetica","bold");
-    doc.text("IMARAT GROUP",10,12);
-    doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(148,184,212);
-    doc.text("INFORMATION TECHNOLOGY DEPARTMENT",10,18);
-    doc.setTextColor(255,255,255); doc.setFontSize(11); doc.setFont("helvetica","bold");
-    doc.text("IT Facilities RAG Dashboard", W-10, 10, { align:"right" });
-    doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(148,184,212);
-    doc.text(today, W-10, 16, { align:"right" });
-    doc.text("Report Time: "+timeNow, W-10, 22, { align:"right" });
-
-    doc.setFillColor(34,55,90); doc.rect(0,28,W,10,"F");
-    doc.setTextColor(148,184,212); doc.setFontSize(7.5);
-    const infos = [`Period: Daily`,`Total: ${FACILITIES.length}`,`Operational: ${counts.green}`,`Degraded: ${counts.amber}`,`Critical: ${counts.red}`,`Support: it.support@imarat.com.pk`];
-    const step = W/infos.length;
-    infos.forEach((t,i) => doc.text(t, 10+i*step, 34.5));
-
-    const cards = [
-      { label:"Total Facilities", val:String(FACILITIES.length), r:255,g:255,b:255, tr:26,tg:31,tb:46 },
-      { label:"Fully Operational", val:String(counts.green), r:237,g:247,b:240, tr:26,tg:107,tb:53 },
-      { label:"Warning Sites", val:String(counts.amber), r:254,g:248,b:236, tr:122,tg:82,tb:0 },
-      { label:"Critical Sites", val:String(counts.red), r:253,g:240,b:240, tr:139,tg:28,tb:28 },
-    ];
-    const cw=(W-20)/4;
-    cards.forEach((c,i) => {
-      doc.setFillColor(c.r,c.g,c.b); doc.roundedRect(10+i*cw,42,cw-3,14,2,2,"F");
-      doc.setTextColor(120,130,150); doc.setFontSize(6.5); doc.setFont("helvetica","normal");
-      doc.text(c.label.toUpperCase(), 13+i*cw, 47);
-      doc.setTextColor(c.tr,c.tg,c.tb); doc.setFontSize(14); doc.setFont("helvetica","bold");
-      doc.text(c.val, 13+i*cw, 54);
-    });
-
-    const iL: Record<RAGStatus,string> = { green:"Working", amber:"Slow/Intermittent", red:"Down", na:"N/A" };
-    const bL: Record<RAGStatus,string> = { green:"Working & Syncing", amber:"Delayed", red:"Not Working", na:"N/A" };
-    const pL: Record<RAGStatus,string> = { green:"Working", amber:"Partial", red:"Not Working", na:"N/A" };
-    const oL: Record<RAGStatus,string> = { green:"Operational", amber:"Degraded", red:"Critical", na:"N/A" };
-
-    const rows = FACILITIES.map((f,i) => {
-      const s = state[f.name] ?? defaultState();
-      const ov = calcOverall(s);
-      return [String(i+1), f.name, f.cat, iL[s.internet], bL[s.bio], pL[s.printing], oL[ov], s.bandwidth||"—", s.issue||"—", s.notes||"—", s.ts];
-    });
-
-    autoTable(doc, {
-      startY: 60,
-      head: [["#","Facility","Category","Internet","Biometric","Printing","Overall","Bandwidth","Reported Issue","Notes","Updated"]],
-      body: rows,
-      styles: { fontSize:7, cellPadding:2.5, font:"helvetica" },
-      headStyles: { fillColor:[44,74,110], textColor:255, fontStyle:"bold", fontSize:7.5 },
-      alternateRowStyles: { fillColor:[244,246,249] },
-      columnStyles: {
-        0:{ cellWidth:7, halign:"center" },
-        1:{ cellWidth:34 },
-        2:{ cellWidth:16 },
-        3:{ cellWidth:20 },
-        4:{ cellWidth:24 },
-        5:{ cellWidth:18 },
-        6:{ cellWidth:18 },
-        7:{ cellWidth:18 },
-        8:{ cellWidth:28 },
-        9:{ cellWidth:24 },
-        10:{ cellWidth:15, halign:"center" },
-      },
-      didParseCell: (data) => {
-        if (data.section === "body") {
-          const row = rows[data.row.index];
-          const colMap: Record<number, Record<string,RAGStatus>> = {
-            3: Object.fromEntries(Object.entries(iL).map(([k,v])=>[v,k as RAGStatus])),
-            4: Object.fromEntries(Object.entries(bL).map(([k,v])=>[v,k as RAGStatus])),
-            5: Object.fromEntries(Object.entries(pL).map(([k,v])=>[v,k as RAGStatus])),
-            6: Object.fromEntries(Object.entries(oL).map(([k,v])=>[v,k as RAGStatus])),
-          };
-          const map = colMap[data.column.index];
-          if (map) {
-            const status = map[row[data.column.index]];
-            if (status && RAG[status]) {
-              const [r,g,b] = RAG[status].pdf;
-              data.cell.styles.fillColor = [r,g,b];
-              const tc: Record<RAGStatus,[number,number,number]> = { green:[26,107,53], amber:[122,82,0], red:[139,28,28], na:[107,114,128] };
-              data.cell.styles.textColor = tc[status];
-              data.cell.styles.fontStyle = "bold";
-            }
-          }
-          if (data.column.index === 7 && row[7] !== "—") {
-            data.cell.styles.fillColor = [220,228,255];
-            data.cell.styles.textColor = [26,58,92];
-            data.cell.styles.fontStyle = "bold";
-          }
-        }
-      },
-    });
-
-    if (tickets.length > 0) {
-      doc.addPage();
-      doc.setFillColor(26,58,92); doc.rect(0,0,W,18,"F");
-      doc.setTextColor(255,255,255); doc.setFontSize(13); doc.setFont("helvetica","bold");
-      doc.text("IT Support Tickets", 10, 12);
-      doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(148,184,212);
-      doc.text(`Queries Today: ${stats.received}  |  Resolved: ${stats.resolved}  |  Pending: ${stats.pending}  |  In Progress: ${stats.inprogress}`, W-10, 12, { align:"right" });
-      const tRows = tickets.map(t => [t.id, t.office, t.description, t.reportedBy, t.assignedTo||"Unassigned", t.resolvedBy||"—", TICKET_STATUS[t.status].lbl, t.ts, t.resolvedTs||"—"]);
-      autoTable(doc, {
-        startY: 22,
-        head: [["ID","Office","Description","Reported By","Assigned To","Resolved By","Status","Reported At","Resolved At"]],
-        body: tRows,
-        styles: { fontSize:7, cellPadding:2.5, font:"helvetica" },
-        headStyles: { fillColor:[44,74,110], textColor:255, fontStyle:"bold", fontSize:7.5 },
-        alternateRowStyles: { fillColor:[244,246,249] },
-        columnStyles: { 0:{ cellWidth:20 }, 1:{ cellWidth:30 }, 2:{ cellWidth:55 }, 3:{ cellWidth:25 }, 4:{ cellWidth:25 }, 5:{ cellWidth:25 }, 6:{ cellWidth:22, halign:"center" }, 7:{ cellWidth:28 }, 8:{ cellWidth:28 } },
-        didParseCell: (data) => {
-          if (data.section === "body" && data.column.index === 6) {
-            const st = tRows[data.row.index][6];
-            if (st==="Open")        { data.cell.styles.fillColor=[255,199,206]; data.cell.styles.textColor=[139,28,28]; data.cell.styles.fontStyle="bold"; }
-            if (st==="In Progress") { data.cell.styles.fillColor=[255,235,156]; data.cell.styles.textColor=[122,82,0];  data.cell.styles.fontStyle="bold"; }
-            if (st==="Resolved")    { data.cell.styles.fillColor=[198,239,206]; data.cell.styles.textColor=[26,107,53]; data.cell.styles.fontStyle="bold"; }
-            if (st==="Pending")     { data.cell.styles.fillColor=[220,228,255]; data.cell.styles.textColor=[59,91,219]; data.cell.styles.fontStyle="bold"; }
-          }
+        didDrawPage: (data: any) => {
+          try { if (data.pageNumber > 1) { drawHeader("IT Support Tickets","Helpdesk Issue Tracking — All Reported Incidents"); drawFooter(); } } catch(e) {}
         },
       });
     }
@@ -699,7 +518,16 @@ export default function Dashboard() {
     doc.save(`Imarat_RAG_${d.toISOString().slice(0,10)}.pdf`);
   };
 
-  if (!mounted) return null;
+  if (!mounted) return (
+    <div style={{ minHeight:"100vh", background:"#eef1f7", display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ textAlign:"center" }}>
+        <div style={{ width:48, height:48, border:"4px solid #1A3A5C", borderTopColor:"transparent", borderRadius:"50%", animation:"spin 1s linear infinite", margin:"0 auto 16px" }} />
+        <div style={{ color:"#1A3A5C", fontWeight:600, fontSize:14 }}>Connecting to server...</div>
+        <div style={{ color:"#8a94a6", fontSize:12, marginTop:4 }}>Loading latest data from all users</div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+      </div>
+    </div>
+  );
 
   const fOpts: FilterMode[] = ["all","red","amber","green"];
   const fLabels: Record<FilterMode,string> = { all:"ALL", red:"CRITICAL ONLY", amber:"DEGRADED ONLY", green:"OPERATIONAL ONLY" };
@@ -716,21 +544,23 @@ export default function Dashboard() {
             <div style={{ color:"#94B8D4", fontSize:10 }}>Imarat Group — {FACILITIES.length} Facilities Nationwide</div>
           </div>
         </div>
-        <div style={{ marginLeft:"auto" }}><div style={{ fontSize:11, color:"#94B8D4" }}>{now}</div></div>
+        <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:12 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+            <span style={{ width:8, height:8, borderRadius:"50%", background:syncing?"#f59e0b":"#22c55e", display:"inline-block" }} />
+            <span style={{ fontSize:10, color:"#94B8D4" }}>{syncing ? "Syncing..." : `Live — Last sync: ${lastSync}`}</span>
+          </div>
+          <div style={{ fontSize:11, color:"#94B8D4" }}>{now}</div>
+        </div>
       </div>
 
       <div style={{ padding:"16px 20px" }}>
-
         <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, padding:"14px 18px", marginBottom:16 }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
             <div>
               <div style={{ fontSize:13, fontWeight:600, color:"#1a1f2e" }}>Today's Query Summary</div>
-              <div style={{ fontSize:10, color:"#8a94a6", marginTop:2 }}>Manually track daily IT support queries — use + / - to update counts</div>
+              <div style={{ fontSize:10, color:"#8a94a6", marginTop:2 }}>Shared across all users in real-time — use + / - to update</div>
             </div>
-            <button onClick={() => setStats({ received:0, resolved:0, pending:0, inprogress:0 })}
-              style={{ padding:"4px 12px", background:"#f1f4f8", border:"1px solid #dde1e8", borderRadius:4, fontSize:11, color:"#6b7280", cursor:"pointer" }}>
-              Reset Day
-            </button>
+            <button onClick={resetStats} style={{ padding:"4px 12px", background:"#f1f4f8", border:"1px solid #dde1e8", borderRadius:4, fontSize:11, color:"#6b7280", cursor:"pointer" }}>Reset Day</button>
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12 }}>
             <StatInput label="QUERIES RECEIVED TODAY" value={stats.received} color="#1A3A5C" bg="#f0f4ff" border="#b4c6fb" onChange={v=>updateStat("received",v)} />
@@ -765,9 +595,7 @@ export default function Dashboard() {
               <div style={{ fontSize:12, fontWeight:600, color:"#1a1f2e", marginBottom:10 }}>{panel.title}</div>
               {panel.rows.map((r: {l:string;s:RAGStatus;c?:number}) => (
                 <div key={r.l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"5px 0", borderBottom:"1px solid #f5f5f5" }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:7, fontSize:11, color:"#1a1f2e" }}>
-                    <Dot s={r.s} />{r.l}
-                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:7, fontSize:11, color:"#1a1f2e" }}><Dot s={r.s} />{r.l}</div>
                   {r.c !== undefined
                     ? <span style={{ fontSize:12, fontWeight:700, color:RAG[r.s].text }}>{r.c}/{FACILITIES.length}</span>
                     : <span style={{ background:RAG[r.s].bg, color:RAG[r.s].text, border:`1px solid ${RAG[r.s].border}`, padding:"1px 7px", borderRadius:3, fontSize:10, fontWeight:600 }}>
@@ -793,10 +621,7 @@ export default function Dashboard() {
                 style={{ padding:"5px 12px", background:"#f1f4f8", border:"1px solid #dde1e8", borderRadius:4, fontSize:11, color:"#4a5568", cursor:"pointer" }}>
                 {fLabels[filter]}
               </button>
-              <button onClick={exportPDF}
-                style={{ padding:"5px 14px", background:"#1A3A5C", border:"none", borderRadius:4, fontSize:11, color:"#fff", cursor:"pointer", fontWeight:600 }}>
-                EXPORT PDF
-              </button>
+              <button onClick={exportPDF} style={{ padding:"5px 14px", background:"#1A3A5C", border:"none", borderRadius:4, fontSize:11, color:"#fff", cursor:"pointer", fontWeight:600 }}>EXPORT PDF</button>
             </div>
           </div>
           <div style={{ overflowX:"auto" }}>
@@ -846,7 +671,7 @@ export default function Dashboard() {
           <div style={{ padding:"12px 16px", borderBottom:"1px solid #e2e6ed", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
             <div>
               <div style={{ fontSize:13, fontWeight:600, color:"#1a1f2e" }}>IT Support Tickets</div>
-              <div style={{ fontSize:10, color:"#8a94a6", marginTop:2 }}>Track issues from any office including unknown / remote locations</div>
+              <div style={{ fontSize:10, color:"#8a94a6", marginTop:2 }}>Shared in real-time across all team members</div>
             </div>
             <div style={{ display:"flex", gap:8, marginLeft:"auto", alignItems:"center", flexWrap:"wrap" }}>
               {[
@@ -868,20 +693,28 @@ export default function Dashboard() {
             <div style={{ padding:"16px", background:"#f8f9fb", borderBottom:"1px solid #e2e6ed", display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:10 }}>
               <div>
                 <div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>OFFICE / LOCATION</div>
-                <input value={newTicket.office} onChange={e=>setNewTicket(p=>({...p,office:e.target.value}))}
-                  placeholder="Office name or Unknown / Remote"
+                <input value={newTicket.office} onChange={e=>setNewTicket(p=>({...p,office:e.target.value}))} placeholder="Office name or Unknown / Remote"
                   style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} />
+              </div>
+              <div>
+                <div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>MEDIUM</div>
+                <select value={newTicket.medium} onChange={e=>setNewTicket(p=>({...p,medium:e.target.value}))}
+                  style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff", cursor:"pointer" }}>
+                  <option value="">— Select Medium —</option>
+                  <option value="Email">Email</option>
+                  <option value="Helpdesk Ticket">Helpdesk Ticket</option>
+                  <option value="Whatsapp">Whatsapp</option>
+                  <option value="In Person">In Person</option>
+                </select>
               </div>
               <div style={{ gridColumn:"span 2" }}>
                 <div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>ISSUE DESCRIPTION</div>
-                <input value={newTicket.description} onChange={e=>setNewTicket(p=>({...p,description:e.target.value}))}
-                  placeholder="Describe the issue..."
+                <input value={newTicket.description} onChange={e=>setNewTicket(p=>({...p,description:e.target.value}))} placeholder="Describe the issue..."
                   style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} />
               </div>
               <div>
                 <div style={{ fontSize:10, color:"#6b7280", marginBottom:4, fontWeight:600 }}>REPORTED BY</div>
-                <input value={newTicket.reportedBy} onChange={e=>setNewTicket(p=>({...p,reportedBy:e.target.value}))}
-                  placeholder="Name or Unknown"
+                <input value={newTicket.reportedBy} onChange={e=>setNewTicket(p=>({...p,reportedBy:e.target.value}))} placeholder="Name or Unknown"
                   style={{ width:"100%", padding:"6px 8px", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#1a1f2e", background:"#fff" }} />
               </div>
               <div>
@@ -892,22 +725,14 @@ export default function Dashboard() {
                 </select>
               </div>
               <div style={{ display:"flex", alignItems:"flex-end", gap:8, gridColumn:"span 2" }}>
-                <button onClick={addTicket}
-                  style={{ padding:"6px 18px", background:"#1A3A5C", border:"none", borderRadius:4, fontSize:12, color:"#fff", cursor:"pointer", fontWeight:600 }}>
-                  Add Ticket
-                </button>
-                <button onClick={() => setShowTicketForm(false)}
-                  style={{ padding:"6px 14px", background:"#f1f4f8", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#4a5568", cursor:"pointer" }}>
-                  Cancel
-                </button>
+                <button onClick={addTicket} style={{ padding:"6px 18px", background:"#1A3A5C", border:"none", borderRadius:4, fontSize:12, color:"#fff", cursor:"pointer", fontWeight:600 }}>Add Ticket</button>
+                <button onClick={() => setShowTicketForm(false)} style={{ padding:"6px 14px", background:"#f1f4f8", border:"1px solid #dde1e8", borderRadius:4, fontSize:12, color:"#4a5568", cursor:"pointer" }}>Cancel</button>
               </div>
             </div>
           )}
 
           {tickets.length === 0 ? (
-            <div style={{ padding:"32px", textAlign:"center", color:"#8a94a6", fontSize:13 }}>
-              No tickets yet. Click "+ New Ticket" to log an issue.
-            </div>
+            <div style={{ padding:"32px", textAlign:"center", color:"#8a94a6", fontSize:13 }}>No tickets yet. Click "+ New Ticket" to log an issue.</div>
           ) : (
             <div style={{ overflowX:"auto" }}>
               <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
@@ -923,6 +748,9 @@ export default function Dashboard() {
                     <tr key={t.id} style={{ borderBottom:"1px solid #f0f2f5", background:i%2===0?"#fff":"#fafbfc" }}>
                       <td style={{ padding:"7px 10px", fontFamily:"monospace", fontSize:11, fontWeight:600, color:"#1A3A5C" }}>{t.id}</td>
                       <td style={{ padding:"7px 10px", fontWeight:600, color:"#1a1f2e", whiteSpace:"nowrap" }}>{t.office}</td>
+                      <td style={{ padding:"7px 10px" }}>
+                        <span style={{ background:"#f0f4ff", border:"1px solid #b4c6fb", color:"#1A3A5C", padding:"2px 8px", borderRadius:3, fontSize:10, fontWeight:600, whiteSpace:"nowrap" as const }}>{t.medium||"—"}</span>
+                      </td>
                       <td style={{ padding:"7px 10px", color:"#4a5568", maxWidth:200 }}>{t.description}</td>
                       <td style={{ padding:"7px 10px", color:"#4a5568", whiteSpace:"nowrap" }}>{t.reportedBy}</td>
                       <td style={{ padding:"7px 10px" }}>
@@ -951,10 +779,7 @@ export default function Dashboard() {
                       <td style={{ padding:"7px 10px", fontFamily:"monospace", fontSize:10, color:"#8a94a6", whiteSpace:"nowrap" }}>{t.ts}</td>
                       <td style={{ padding:"7px 10px", fontFamily:"monospace", fontSize:10, color:t.resolvedTs?"#1a6b35":"#c0c8d6", whiteSpace:"nowrap" }}>{t.resolvedTs||"—"}</td>
                       <td style={{ padding:"7px 10px" }}>
-                        <button onClick={()=>deleteTicket(t.id)}
-                          style={{ padding:"2px 8px", background:"#fdf0f0", border:"1px solid #f5b8b8", borderRadius:3, fontSize:10, color:"#8b1c1c", cursor:"pointer" }}>
-                          Delete
-                        </button>
+                        <button onClick={()=>deleteTicket(t.id)} style={{ padding:"2px 8px", background:"#fdf0f0", border:"1px solid #f5b8b8", borderRadius:3, fontSize:10, color:"#8b1c1c", cursor:"pointer" }}>Delete</button>
                       </td>
                     </tr>
                   ))}
@@ -967,5 +792,3 @@ export default function Dashboard() {
     </div>
   );
 }
-
-
