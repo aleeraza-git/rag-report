@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import jsPDF from "jspdf";
+// @ts-ignore
+// @ts-ignore
 import autoTable from "jspdf-autotable";
 
 const FACILITIES: { name: string; cat: string }[] = [
@@ -965,4 +967,5 @@ export default function Dashboard() {
     </div>
   );
 }
+
 
