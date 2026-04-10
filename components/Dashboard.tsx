@@ -73,6 +73,16 @@ interface ActivityLog {
   type: "status" | "issue" | "notes" | "bandwidth" | "ticket";
 }
 
+interface DowntimeRecord {
+  id: string;
+  facility: string;
+  field: string;
+  startTs: string;
+  endTs: string;
+  durationMin: number;
+  resolvedBy: string;
+}
+
 interface Ticket {
   id: string;
   office: string;
@@ -227,6 +237,9 @@ export default function Dashboard() {
   const [activityLog, setActivityLog] = useState<ActivityLog[]>([]);
   const [logFrom, setLogFrom] = useState("");
   const [logTo, setLogTo] = useState("");
+  const [downtimeRecords, setDowntimeRecords] = useState<DowntimeRecord[]>([]);
+  const [showDowntime, setShowDowntime] = useState(false);
+  const activeDowntime = useRef<Record<string,{field:string;startTs:string;startMs:number}>>({});
   const saveTimer = useRef<NodeJS.Timeout|null>(null);
 
   const loadTickets = useCallback(async () => {
@@ -250,11 +263,14 @@ export default function Dashboard() {
           supabase.from("tickets").select("*"),
           supabase.from("daily_stats").select("*").eq("id","today").single(),
           supabase.from("activity_log").select("*").order("updated_at", { ascending: false }).limit(500),
+          supabase.from("downtime_log").select("*").order("updated_at", { ascending: false }).limit(200),
         ]);
         if (fsData) fsData.forEach((row: any) => { if (init[row.id]) init[row.id] = { ...defaultState(), ...row.data }; });
         if (tkData) setTickets(tkData.map((r: any) => r.data).sort((a: Ticket, b: Ticket) => b.ts.localeCompare(a.ts)));
         if (stData) setStats(stData.data);
         if (logData) setActivityLog(logData.map((r: any) => r.data));
+        const dtData = (await supabase.from("downtime_log").select("*").order("updated_at", { ascending: false }).limit(200)).data;
+        if (dtData) setDowntimeRecords(dtData.map((r: any) => r.data));
       } catch {}
       setState(init);
       setSyncing(false);
@@ -279,8 +295,12 @@ export default function Dashboard() {
       if (payload.new) { setStats(payload.new.data); setLastSync(nowTime()); }
     }).subscribe();
     const logSub = supabase.channel("log_ch2").on("postgres_changes", { event:"*", schema:"public", table:"activity_log" }, () => { loadLog(); }).subscribe();
+    const dtSub = supabase.channel("dt_ch").on("postgres_changes", { event:"*", schema:"public", table:"downtime_log" }, async () => {
+      const { data } = await supabase.from("downtime_log").select("*").order("updated_at", { ascending: false }).limit(200);
+      if (data) setDowntimeRecords(data.map((r: any) => r.data));
+    }).subscribe();
 
-    return () => { clearInterval(t); supabase.removeChannel(fsSub); supabase.removeChannel(tkSub); supabase.removeChannel(stSub); supabase.removeChannel(logSub); };
+    return () => { clearInterval(t); supabase.removeChannel(fsSub); supabase.removeChannel(tkSub); supabase.removeChannel(stSub); supabase.removeChannel(logSub); supabase.removeChannel(dtSub); };
   }, [loadTickets, loadLog]);
 
   const addLog = useCallback(async (entry: Omit<ActivityLog,"id"|"ts">) => {
@@ -296,6 +316,37 @@ export default function Dashboard() {
       const type: ActivityLog["type"] = ["internet","bio","printing"].includes(changedField) ? "status" : changedField === "issue" ? "issue" : changedField.includes("andwidth") ? "bandwidth" : "notes";
       const fl = fieldLabel(changedField);
       await addLog({ facility: name, field: fl, oldVal: humanVal(oldVal)||"—", newVal: humanVal(newVal)||"—", type });
+
+      // DOWNTIME TRACKING
+      if (["internet","bio","printing"].includes(changedField)) {
+        const dtKey = `${name}__${changedField}`;
+        const nowMs = Date.now();
+
+        // If going RED or AMBER — start downtime timer
+        if ((newVal === "red" || newVal === "amber") && oldVal === "green") {
+          activeDowntime.current[dtKey] = { field: fl, startTs: nowFull(), startMs: nowMs };
+        }
+
+        // If recovering to GREEN — close downtime record
+        if (newVal === "green" && (oldVal === "red" || oldVal === "amber")) {
+          const active = activeDowntime.current[dtKey];
+          if (active) {
+            const durationMin = Math.round((nowMs - active.startMs) / 60000);
+            const record: DowntimeRecord = {
+              id: uid(),
+              facility: name,
+              field: fl,
+              startTs: active.startTs,
+              endTs: nowFull(),
+              durationMin,
+              resolvedBy: "System",
+            };
+            setDowntimeRecords(prev => [record, ...prev]);
+            await supabase.from("downtime_log").upsert({ id: record.id, data: record, updated_at: new Date().toISOString() });
+            delete activeDowntime.current[dtKey];
+          }
+        }
+      }
     }
     setLastSync(nowTime());
   }, [addLog]);
@@ -838,6 +889,99 @@ export default function Dashboard() {
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* Downtime Tracker */}
+        <div style={{ background:"#fff", border:"1px solid #e2e6ed", borderRadius:8, overflow:"hidden", marginBottom:16 }}>
+          <div style={{ padding:"12px 16px", borderBottom:"1px solid #e2e6ed", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+            <div>
+              <div style={{ fontSize:13, fontWeight:600, color:"#1a1f2e" }}>Downtime Tracker</div>
+              <div style={{ fontSize:10, color:"#8a94a6", marginTop:2 }}>Automatically records when a facility goes down and how long it took to recover</div>
+            </div>
+            <div style={{ marginLeft:"auto", display:"flex", gap:10, alignItems:"center" }}>
+              {/* Live downtime indicators */}
+              {Object.entries(activeDowntime.current).length > 0 && (
+                <span style={{ background:"#fdf0f0", border:"1px solid #f5b8b8", color:"#8b1c1c", padding:"3px 10px", borderRadius:4, fontSize:11, fontWeight:600 }}>
+                  {Object.keys(activeDowntime.current).length} Active Downtime(s)
+                </span>
+              )}
+              <span style={{ background:"#f0f4ff", border:"1px solid #b4c6fb", color:"#1A3A5C", padding:"3px 10px", borderRadius:4, fontSize:11, fontWeight:600 }}>
+                {downtimeRecords.length} Records
+              </span>
+              <button onClick={()=>setShowDowntime(v=>!v)}
+                style={{ padding:"5px 12px", background:"#1A3A5C", border:"none", borderRadius:4, fontSize:11, color:"#fff", cursor:"pointer", fontWeight:600 }}>
+                {showDowntime ? "Hide" : "Show History"}
+              </button>
+            </div>
+          </div>
+
+          {/* Active downtimes */}
+          {Object.entries(activeDowntime.current).length > 0 && (
+            <div style={{ padding:"10px 16px", background:"#fdf5f5", borderBottom:"1px solid #f5e0e0" }}>
+              <div style={{ fontSize:11, fontWeight:600, color:"#8b1c1c", marginBottom:8 }}>Currently Down / Degraded:</div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                {Object.entries(activeDowntime.current).map(([key, val]) => {
+                  const mins = Math.round((Date.now() - val.startMs) / 60000);
+                  const [fac] = key.split("__");
+                  return (
+                    <div key={key} style={{ background:"#fdf0f0", border:"1px solid #f5b8b8", borderRadius:6, padding:"6px 12px", fontSize:11 }}>
+                      <span style={{ fontWeight:600, color:"#8b1c1c" }}>{fac}</span>
+                      <span style={{ color:"#4a5568", margin:"0 6px" }}>—</span>
+                      <span style={{ color:"#7a5200" }}>{val.field}</span>
+                      <span style={{ color:"#8a94a6", marginLeft:6 }}>since {val.startTs}</span>
+                      <span style={{ background:"#8b1c1c", color:"#fff", borderRadius:3, padding:"1px 6px", fontSize:10, marginLeft:8, fontWeight:600 }}>
+                        {mins < 1 ? "< 1 min" : `${mins} min${mins>1?"s":""}`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {showDowntime && (
+            downtimeRecords.length === 0 ? (
+              <div style={{ padding:"24px", textAlign:"center", color:"#8a94a6", fontSize:13 }}>
+                No downtime recorded yet. When a facility goes red/amber and recovers, it will appear here automatically.
+              </div>
+            ) : (
+              <div style={{ overflowX:"auto", maxHeight:320, overflowY:"auto" }}>
+                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+                  <thead style={{ position:"sticky" as const, top:0 }}>
+                    <tr style={{ background:"#f8f9fb" }}>
+                      {["FACILITY","FIELD","WENT DOWN AT","RECOVERED AT","DURATION","STATUS"].map(h=>(
+                        <th key={h} style={{ textAlign:"left", padding:"9px 12px", color:"#8a94a6", fontWeight:600, fontSize:10, borderBottom:"2px solid #e2e6ed", whiteSpace:"nowrap" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {downtimeRecords.map((r,i) => {
+                      const hrs = Math.floor(r.durationMin / 60);
+                      const mins = r.durationMin % 60;
+                      const durLabel = hrs > 0 ? `${hrs}h ${mins}m` : `${mins} min${mins!==1?"s":""}`;
+                      const severity = r.durationMin >= 60 ? { bg:"#fdf0f0", text:"#8b1c1c", label:"LONG" } :
+                                       r.durationMin >= 15 ? { bg:"#fef8ec", text:"#7a5200", label:"MED" } :
+                                                             { bg:"#edf7f0", text:"#1a6b35", label:"SHORT" };
+                      return (
+                        <tr key={r.id} style={{ borderBottom:"1px solid #f0f2f5", background:i%2===0?"#fff":"#fafbfc" }}>
+                          <td style={{ padding:"8px 12px", fontWeight:600, color:"#1A3A5C" }}>{r.facility}</td>
+                          <td style={{ padding:"8px 12px", color:"#4a5568" }}>{r.field}</td>
+                          <td style={{ padding:"8px 12px", fontFamily:"monospace", fontSize:11, color:"#8b1c1c" }}>{r.startTs}</td>
+                          <td style={{ padding:"8px 12px", fontFamily:"monospace", fontSize:11, color:"#1a6b35" }}>{r.endTs}</td>
+                          <td style={{ padding:"8px 12px" }}>
+                            <span style={{ background:"#f0f4ff", border:"1px solid #b4c6fb", color:"#1A3A5C", padding:"2px 8px", borderRadius:3, fontSize:11, fontWeight:600 }}>{durLabel}</span>
+                          </td>
+                          <td style={{ padding:"8px 12px" }}>
+                            <span style={{ background:severity.bg, color:severity.text, padding:"2px 8px", borderRadius:3, fontSize:10, fontWeight:600, border:`1px solid ${severity.text}33` }}>{severity.label}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )
+          )}
         </div>
 
         {/* Tickets */}
