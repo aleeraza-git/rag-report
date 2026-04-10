@@ -279,9 +279,9 @@ export default function Dashboard() {
     };
     loadAll();
 
-    const fmt = () => new Date().toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
+    const fmt = () => new Date().toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit" });
     setNow(fmt());
-    const t = setInterval(() => setNow(fmt()), 30000);
+    const t = setInterval(() => setNow(fmt()), 1000);
 
     const fsSub = supabase.channel("fs_ch2").on("postgres_changes", { event:"*", schema:"public", table:"facility_state" }, (payload: any) => {
       if (payload.new) { setState(prev => ({ ...prev, [payload.new.id]: { ...defaultState(), ...payload.new.data } })); setLastSync(nowTime()); }
