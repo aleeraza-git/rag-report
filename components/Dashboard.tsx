@@ -424,6 +424,14 @@ export default function Dashboard() {
   });
   const tCounts = { open:0, inprogress:0, resolved:0, pending:0 };
   tickets.forEach(t => { tCounts[t.status]++; });
+
+  // Auto-sync stats with ticket counts
+  const autoStats = {
+    received: tickets.length,
+    resolved: tCounts.resolved,
+    pending: tCounts.pending,
+    inprogress: tCounts.inprogress,
+  };
   const visible = filter === "all" ? FACILITIES : FACILITIES.filter(f => { const s = state[f.name]; return s && calcOverall(s) === filter; });
 
   const filteredLog = activityLog.filter(l => {
@@ -538,9 +546,9 @@ export default function Dashboard() {
         { label:"OPERATIONAL",      val:String(counts.green),       f:gF,  t:gT,   accent:gT },
         { label:"WARNING",          val:String(counts.amber),       f:aF,  t:aT,   accent:aT },
         { label:"CRITICAL",         val:String(counts.red),         f:rF,  t:rT,   accent:rT },
-        { label:"QUERIES TODAY",    val:String(stats.received),     f:[215,230,255] as [number,number,number], t:[22,60,170] as [number,number,number], accent:[22,60,170] as [number,number,number] },
-        { label:"RESOLVED",         val:String(stats.resolved),     f:[185,245,205] as [number,number,number], t:[5,98,58] as [number,number,number],   accent:[5,98,58] as [number,number,number] },
-        { label:"PENDING",          val:String(stats.pending),      f:aF,  t:aT,   accent:aT },
+        { label:"QUERIES TODAY",    val:String(autoStats.received),     f:[215,230,255] as [number,number,number], t:[22,60,170] as [number,number,number], accent:[22,60,170] as [number,number,number] },
+        { label:"RESOLVED",         val:String(autoStats.resolved),     f:[185,245,205] as [number,number,number], t:[5,98,58] as [number,number,number],   accent:[5,98,58] as [number,number,number] },
+        { label:"PENDING",          val:String(autoStats.pending),      f:aF,  t:aT,   accent:aT },
       ];
       const cw = TW / cards.length;
       cards.forEach((c, i) => {
@@ -987,10 +995,10 @@ export default function Dashboard() {
             { label:"Operational",      value:counts.green,      color:S.green, bg:S.greenBg, accent:S.green },
             { label:"Warning",          value:counts.amber,      color:S.amber, bg:S.amberBg, accent:S.amber },
             { label:"Critical",         value:counts.red,        color:S.red,   bg:S.redBg,   accent:S.red },
-            { label:"Queries Today",    value:stats.received,    color:"#1a4a8a", bg:"#EBF4FF", accent:"#2563eb" },
-            { label:"Resolved",         value:stats.resolved,    color:S.green, bg:S.greenBg, accent:S.green },
-            { label:"Pending",          value:stats.pending,     color:S.amber, bg:S.amberBg, accent:S.amber },
-            { label:"In Progress",      value:stats.inprogress,  color:"#6b21a8", bg:"#F5F3FF", accent:"#7c3aed" },
+            { label:"Queries Today",    value:autoStats.received,    color:"#1a4a8a", bg:"#EBF4FF", accent:"#2563eb" },
+            { label:"Resolved",         value:autoStats.resolved,    color:S.green, bg:S.greenBg, accent:S.green },
+            { label:"Pending",          value:autoStats.pending,     color:S.amber, bg:S.amberBg, accent:S.amber },
+            { label:"In Progress",      value:autoStats.inprogress,  color:"#6b21a8", bg:"#F5F3FF", accent:"#7c3aed" },
           ].map(c => (
             <div key={c.label} style={{ ...card, padding:"16px 18px", background:c.bg, borderLeft:`3px solid ${c.accent}`, position:"relative" as const }}>
               <div style={{ fontSize:10, color:S.textMuted, fontWeight:600, letterSpacing:.5, textTransform:"uppercase" as const, marginBottom:6 }}>{c.label}</div>
@@ -1000,34 +1008,25 @@ export default function Dashboard() {
         </div>
 
         {/* ── TODAY QUERY CONTROLS ────────────────────────── */}
-        <div style={{ ...card, padding:"18px 22px", marginBottom:20 }}>
+                <div style={{ ...card, padding:"18px 22px", marginBottom:20 }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
             <div>
               <div style={{ fontSize:14, fontWeight:700, color:S.text }}>{"Today's Query Summary"}</div>
-              <div style={{ fontSize:11, color:S.textMuted, marginTop:2 }}>Shared live across all team members</div>
+              <div style={{ fontSize:11, color:S.textMuted, marginTop:2 }}>Auto-calculated from tickets — updates instantly when ticket status changes</div>
             </div>
-            <button onClick={resetStats} style={{ padding:"6px 14px", background:"#F7FAFC", border:`1px solid ${S.border}`, borderRadius:8, fontSize:12, color:S.textMuted, cursor:"pointer", fontWeight:500 }}>
-              Reset Day
-            </button>
+            <span style={{ background:"#EEF2FF", border:"1px solid #C7D2FE", color:"#3730a3", padding:"4px 12px", borderRadius:20, fontSize:11, fontWeight:600 }}>Live from Tickets</span>
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14 }}>
             {[
-              { label:"Queries Received", field:"received" as keyof DailyStats, value:stats.received, color:"#1a4a8a", bg:"#EBF4FF", border:"#93C5FD" },
-              { label:"Resolved Today",   field:"resolved" as keyof DailyStats, value:stats.resolved, color:S.green,  bg:S.greenBg, border:S.greenBorder },
-              { label:"Pending",          field:"pending"  as keyof DailyStats, value:stats.pending,  color:S.amber,  bg:S.amberBg, border:S.amberBorder },
-              { label:"In Progress",      field:"inprogress" as keyof DailyStats, value:stats.inprogress, color:"#6b21a8", bg:"#F5F3FF", border:"#C4B5FD" },
+              { label:"Total Tickets", value:autoStats.received,   color:"#1a4a8a", bg:"#EBF4FF", bd:"#93C5FD",     desc:"All tickets logged" },
+              { label:"Resolved",      value:autoStats.resolved,   color:S.green,   bg:S.greenBg, bd:S.greenBorder, desc:"Marked as resolved" },
+              { label:"Pending",       value:autoStats.pending,    color:S.amber,   bg:S.amberBg, bd:S.amberBorder, desc:"Awaiting action" },
+              { label:"In Progress",   value:autoStats.inprogress, color:"#6b21a8", bg:"#F5F3FF", bd:"#C4B5FD",     desc:"Being worked on" },
             ].map(s2 => (
-              <div key={s2.label} style={{ background:s2.bg, border:`1px solid ${s2.border}`, borderRadius:10, padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                <div>
-                  <div style={{ fontSize:10, color:S.textMuted, fontWeight:600, letterSpacing:.5, marginBottom:6 }}>{s2.label.toUpperCase()}</div>
-                  <div style={{ fontSize:28, fontWeight:800, color:s2.color }}>{s2.value}</div>
-                </div>
-                <div style={{ display:"flex", flexDirection:"column" as const, gap:5 }}>
-                  <button onClick={()=>updateStat(s2.field, s2.value+1)}
-                    style={{ width:30, height:30, border:`1px solid ${s2.border}`, borderRadius:6, background:"#fff", color:s2.color, fontSize:18, cursor:"pointer", fontWeight:700, lineHeight:1, display:"flex", alignItems:"center", justifyContent:"center" }}>+</button>
-                  <button onClick={()=>updateStat(s2.field, Math.max(0,s2.value-1))}
-                    style={{ width:30, height:30, border:`1px solid ${s2.border}`, borderRadius:6, background:"#fff", color:s2.color, fontSize:18, cursor:"pointer", fontWeight:700, lineHeight:1, display:"flex", alignItems:"center", justifyContent:"center" }}>−</button>
-                </div>
+              <div key={s2.label} style={{ background:s2.bg, border:"1px solid "+s2.bd, borderRadius:10, padding:"16px 18px" }}>
+                <div style={{ fontSize:10, color:S.textMuted, fontWeight:600, letterSpacing:.5, marginBottom:6 }}>{s2.label.toUpperCase()}</div>
+                <div style={{ fontSize:32, fontWeight:800, color:s2.color, lineHeight:1, marginBottom:4 }}>{s2.value}</div>
+                <div style={{ fontSize:10, color:S.textLight }}>{s2.desc}</div>
               </div>
             ))}
           </div>
