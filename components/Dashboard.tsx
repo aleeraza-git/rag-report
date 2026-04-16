@@ -425,12 +425,16 @@ export default function Dashboard() {
   const tCounts = { open:0, inprogress:0, resolved:0, pending:0 };
   tickets.forEach(t => { tCounts[t.status]++; });
 
-  // Auto-sync stats with ticket counts
+  // Auto-sync stats with ticket counts — today only
+  const todayStr = new Date().toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
+  const todayTickets = tickets.filter(t => t.ts && t.ts.includes(todayStr));
+  const todayCounts = { open:0, inprogress:0, resolved:0, pending:0 };
+  todayTickets.forEach(t => { todayCounts[t.status]++; });
   const autoStats = {
-    received: tickets.length,
-    resolved: tCounts.resolved,
-    pending: tCounts.pending,
-    inprogress: tCounts.inprogress,
+    received: todayTickets.length,
+    resolved: todayCounts.resolved,
+    pending: todayCounts.pending,
+    inprogress: todayCounts.inprogress,
   };
   const visible = filter === "all" ? FACILITIES : FACILITIES.filter(f => { const s = state[f.name]; return s && calcOverall(s) === filter; });
 
