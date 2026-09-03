@@ -297,50 +297,107 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
           {/* TABLE */}
           {cfg.includeTable && (
             <div style={{ padding: "6px 20px 10px" }}>
-              <div style={{ fontSize: 8, fontWeight: 700, color: "#8A9AB8", letterSpacing: 1, marginBottom: 5, borderTop: "1px solid #DDE4EF", paddingTop: 6 }}>
-                FACILITY STATUS DETAIL — {sorted.length} SITES
+          {/* FACILITY ANALYTICS — all facilities, no truncation */}
+          {cfg.includeTable && (
+            <div style={{ padding: "6px 20px 10px" }}>
+              {/* Section header */}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", borderTop:"1px solid #DDE4EF", paddingTop:6, marginBottom:7 }}>
+                <span style={{ fontSize:8, fontWeight:700, color:"#8A9AB8", letterSpacing:1 }}>
+                  FACILITY PERFORMANCE ANALYTICS — {sorted.length} SITES
+                </span>
+                <span style={{ display:"flex", gap:8, fontSize:6.5 }}>
+                  {[{l:"Operational",c:"#059669"},{l:"Degraded",c:"#D97706"},{l:"Critical",c:"#DC2626"},{l:"N/A",c:"#9CA3AF"}].map(s=>(
+                    <span key={s.l} style={{ display:"flex", alignItems:"center", gap:3, color:s.c, fontWeight:700 }}>
+                      <span style={{ width:6,height:6,borderRadius:"50%",background:s.c,display:"inline-block" }} />{s.l}
+                    </span>
+                  ))}
+                </span>
               </div>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 9 }}>
-                <thead>
-                  <tr style={{ background: "#0C1A2E" }}>
-                    {["#","Facility","Division","Internet","Biometric","Printing","Status","Updated"].map(h => (
-                      <th key={h} style={{ padding: "5px 6px", color: "#fff", fontWeight: 700, textAlign: "left" as const, fontSize: 8, whiteSpace: "nowrap" as const }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.slice(0, 8).map((f, i) => {
-                    const s = state[f.name] ?? defState();
-                    const ov = calcOverall(s);
-                    const ovCol = ov==="green"?"#059669":ov==="amber"?"#D97706":ov==="red"?"#DC2626":"#8A9AB8";
-                    const ovBg = ov==="green"?"#ECFDF5":ov==="amber"?"#FFFBEB":ov==="red"?"#FEF2F2":"#F4F7FC";
+
+              <div style={{ display:"flex", gap:10 }}>
+
+                {/* LEFT: Ranked performance bar chart */}
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:7, fontWeight:800, color:"#0C1A2E", letterSpacing:0.8, marginBottom:5, textTransform:"uppercase" as const }}>
+                    Performance Ranking
+                  </div>
+                  {/* Chart header */}
+                  <div style={{ display:"flex", alignItems:"center", gap:4, marginBottom:4, paddingBottom:3, borderBottom:"1px solid #EEF2F8" }}>
+                    <div style={{ width:12, fontSize:5.5, color:"#C0CAD8", fontWeight:700 }}>#</div>
+                    <div style={{ width:88, fontSize:5.5, color:"#8A9AB8", fontWeight:700 }}>FACILITY</div>
+                    <div style={{ flex:1, fontSize:5.5, color:"#8A9AB8", fontWeight:700 }}>SCORE</div>
+                    <div style={{ width:44, fontSize:5.5, color:"#8A9AB8", fontWeight:700, textAlign:"center" as const }}>STATUS</div>
+                  </div>
+                  {sorted.map((f,i)=>{
+                    const s   = state[f.name]??defState();
+                    const ov  = calcOverall(s);
+                    const sc  = ov==="green"?100:ov==="amber"?62:ov==="red"?28:8;
+                    const bc  = ov==="green"?"#059669":ov==="amber"?"#D97706":ov==="red"?"#DC2626":"#9CA3AF";
+                    const bbg = ov==="green"?"#ECFDF5":ov==="amber"?"#FFFBEB":ov==="red"?"#FEF2F2":"#F4F7FC";
+                    const catBdr = (i===0||sorted[i-1].cat!==f.cat) ? `2px solid ${CAT_HEX[f.cat]}` : undefined;
                     return (
-                      <tr key={f.name} style={{ background: i%2===0?"#fff":"#F7FAFF" }}>
-                        <td style={{ padding: "3.5px 6px", color: "#8A9AB8", fontSize: 8 }}>{i+1}</td>
-                        <td style={{ padding: "3.5px 6px", fontWeight: 700, color: "#0C1A2E", fontSize: 8.5, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{f.name}</td>
-                        <td style={{ padding: "3.5px 6px" }}>
-                          <span style={{ fontSize: 7.5, fontWeight: 700, color: CAT_HEX[f.cat], background: CAT_BGHEX[f.cat], padding: "1px 6px", borderRadius: 10 }}>{f.cat}</span>
-                        </td>
-                        <td style={{ padding: "3.5px 6px", fontSize: 8 }}>{iLabel(s.internet)}</td>
-                        <td style={{ padding: "3.5px 6px", fontSize: 8 }}>{bLabel(s.bio)}</td>
-                        <td style={{ padding: "3.5px 6px", fontSize: 8 }}>{pLabel(s.printing)}</td>
-                        <td style={{ padding: "3.5px 6px" }}>
-                          <span style={{ fontSize: 7.5, fontWeight: 700, color: ovCol, background: ovBg, padding: "1px 7px", borderRadius: 10 }}>{ragLabel(ov)}</span>
-                        </td>
-                        <td style={{ padding: "3.5px 6px", fontSize: 7.5, color: "#8A9AB8" }}>{s.ts ? s.ts.slice(5,16).replace("T"," ") : "—"}</td>
-                      </tr>
+                      <div key={f.name} style={{ display:"flex", alignItems:"center", gap:4, padding:"1.6px 0", background:i%2===0?"#fff":"#F7FAFF", borderTop:catBdr }}>
+                        <div style={{ width:12, fontSize:6, color:"#C0CAD8", fontWeight:700, textAlign:"right" as const, flexShrink:0 }}>{i+1}</div>
+                        <div style={{ width:88, fontSize:6.5, color:"#0C1A2E", fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const, flexShrink:0 }}>{f.name}</div>
+                        <div style={{ flex:1, height:5, background:"#EEF2F8", borderRadius:3, position:"relative" as const }}>
+                          <div style={{ position:"absolute" as const, left:0, top:0, height:5, width:`${sc}%`, background:bc, borderRadius:3, transition:"width 0.3s" }} />
+                        </div>
+                        <div style={{ width:10, fontSize:6, color:"#8A9AB8", textAlign:"right" as const, flexShrink:0 }}>{sc}%</div>
+                        <div style={{ width:44, flexShrink:0, textAlign:"center" as const }}>
+                          <span style={{ fontSize:6, fontWeight:700, color:bc, background:bbg, padding:"1px 5px", borderRadius:8 }}>{ragLabel(ov)}</span>
+                        </div>
+                      </div>
                     );
                   })}
-                </tbody>
-              </table>
-              {sorted.length > 8 && (
-                <div style={{ textAlign: "center" as const, fontSize: 8, color: "#8A9AB8", padding: "5px 0 2px", fontStyle: "italic" }}>
-                  ··· {sorted.length - 8} more facilities not shown in preview ···
                 </div>
-              )}
+
+                {/* RIGHT: Service availability heatmap */}
+                <div style={{ width:138, flexShrink:0 }}>
+                  <div style={{ fontSize:7, fontWeight:800, color:"#0C1A2E", letterSpacing:0.8, marginBottom:5, textTransform:"uppercase" as const }}>
+                    Service Matrix
+                  </div>
+                  {/* Column headers */}
+                  <div style={{ display:"flex", gap:2, marginBottom:4, paddingBottom:3, borderBottom:"1px solid #EEF2F8" }}>
+                    {["INTERNET","BIOMETRIC","PRINTING"].map(h=>(
+                      <div key={h} style={{ flex:1, fontSize:5, color:"#8A9AB8", fontWeight:700, textAlign:"center" as const }}>{h}</div>
+                    ))}
+                  </div>
+                  {sorted.map((f,i)=>{
+                    const s = state[f.name]??defState();
+                    const catBdr = (i===0||sorted[i-1].cat!==f.cat) ? `2px solid ${CAT_HEX[f.cat]}` : undefined;
+                    return (
+                      <div key={f.name} style={{ display:"flex", gap:2, padding:"1.6px 0", background:i%2===0?"#fff":"#F7FAFF", borderTop:catBdr }}>
+                        {([s.internet,s.bio,s.printing] as RAGStatus[]).map((st,j)=>{
+                          const dc = st==="green"?"#059669":st==="amber"?"#D97706":st==="red"?"#DC2626":"#9CA3AF";
+                          const db = st==="green"?"#ECFDF5":st==="amber"?"#FFFBEB":st==="red"?"#FEF2F2":"#F4F7FC";
+                          return (
+                            <div key={j} style={{ flex:1, height:7, background:db, borderRadius:2, display:"flex", alignItems:"center", justifyContent:"center", gap:2 }}>
+                              <div style={{ width:4,height:4,borderRadius:"50%",background:dc,flexShrink:0 }} />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+
+                  {/* Summary footer */}
+                  <div style={{ marginTop:6, padding:"5px 6px", background:"#F4F7FC", borderRadius:4 }}>
+                    <div style={{ fontSize:5.5, color:"#8A9AB8", fontWeight:700, marginBottom:3 }}>DISTRIBUTION</div>
+                    {[{l:"Operational",v:sorted.filter(f=>calcOverall(state[f.name]??defState())==="green").length,c:"#059669"},
+                      {l:"Degraded",v:sorted.filter(f=>calcOverall(state[f.name]??defState())==="amber").length,c:"#D97706"},
+                      {l:"Critical",v:sorted.filter(f=>calcOverall(state[f.name]??defState())==="red").length,c:"#DC2626"}
+                    ].map(r=>(
+                      <div key={r.l} style={{ display:"flex", justifyContent:"space-between", fontSize:5.5, marginBottom:1.5 }}>
+                        <span style={{ color:"#8A9AB8" }}>{r.l}</span>
+                        <span style={{ color:r.c, fontWeight:700 }}>{r.v} <span style={{ color:"#C0CAD8" }}>({sorted.length>0?Math.round(r.v/sorted.length*100):0}%)</span></span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
             </div>
           )}
-
           {/* FOOTER */}
           <div style={{ background: "#0C1A2E", padding: "8px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "2px solid #C49A1E" }}>
             <div>
@@ -609,53 +666,144 @@ async function generatePDF(
     lgX-=5.5; doc.setFillColor(...lg.c); doc.circle(lgX,SY+3,1.4,"F"); lgX-=3.5;
   });
 
-  // ── TABLE ──────────────────────────────────────────────────────────────────
-  const facRows = sorted.map((f,i) => {
+  // ── FACILITY ANALYTICS — ranked chart + service heatmap ───────────────────
+  // Layout: Y:TBL_START – FTR_Y (66–198 = 132mm)
+  // Left block (chart): PAD … PAD+157  (157mm)
+  // Right block (heat):  PAD+160 … PW-PAD (115mm)
+  // Headers: 14mm  →  data rows: 132-14 = 118mm → 31 rows × 3.8mm = 117.8mm ✓
+
+  const facData = sorted.map((f,i)=>{
     const s  = state[f.name]??defaultState();
     const ov = calcOverall(s);
-    return {
-      d:[String(i+1),f.name,f.cat,iLabel(s.internet),bLabel(s.bio),pLabel(s.printing),ragLabel(ov),s.ts?s.ts.replace("T"," ").slice(5,16):"—",s.issue||""],
-      internet:s.internet,bio:s.bio,printing:s.printing,overall:ov,cat:f.cat,prevCat:i>0?sorted[i-1].cat:"",
+    return { f, s, ov, i,
+      score:   ov==="green"?100:ov==="amber"?62:ov==="red"?28:8,
+      prevCat: i>0?sorted[i-1].cat:"",
     };
   });
 
-  autoTable(doc,{
-    startY:TBL_START, tableWidth:TW,
-    margin:{left:PAD,right:PAD,bottom:14},
-    head:[["#","Facility Name","Division","Internet","Biometric","Printing","RAG Status","Updated","Notes"]],
-    body:facRows.map(r=>r.d),
-    styles:{font:"helvetica",fontSize:5.2,cellPadding:{top:1.3,bottom:1.3,left:2,right:2},minCellHeight:3.5,valign:"middle",overflow:"ellipsize",textColor:INK,fillColor:WHITE,lineColor:BDR,lineWidth:0.1},
-    headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",fontSize:5.2,halign:"center",cellPadding:{top:2.5,bottom:2.5,left:2,right:2},minCellHeight:7.5,lineWidth:0},
-    alternateRowStyles:{fillColor:[244,247,253] as RGB},
-    columnStyles:{
-      0:{cellWidth:5.5,halign:"center",fontStyle:"bold",textColor:MUTED},
-      1:{cellWidth:40,fontStyle:"bold",textColor:NAVY},
-      2:{cellWidth:16,halign:"center"},
-      3:{cellWidth:16,halign:"center"},
-      4:{cellWidth:15,halign:"center"},
-      5:{cellWidth:13,halign:"center"},
-      6:{cellWidth:21,halign:"center",fontStyle:"bold"},
-      7:{cellWidth:17,halign:"center"},
-      8:{cellWidth:"auto" as any},
-    },
-    didParseCell:(data:any)=>{
-      if(data.section!=="body") return;
-      const row=facRows[data.row.index]; if(!row) return;
-      const sm:Record<number,RAGStatus>={3:row.internet,4:row.bio,5:row.printing,6:row.overall};
-      const st=sm[data.column.index];
-      if(st){data.cell.styles.fillColor=ragFill(st);data.cell.styles.textColor=ragText(st);data.cell.styles.fontStyle="bold";}
-      if(data.column.index===2){data.cell.styles.fillColor=CAT_BG[row.cat];data.cell.styles.textColor=CAT_C[row.cat];data.cell.styles.fontStyle="bold";}
-      if(data.column.index===7){data.cell.styles.textColor=MUTED;data.cell.styles.fontSize=4.5;}
-      if(data.column.index===8&&row.d[8]){data.cell.styles.textColor=rD;data.cell.styles.fontStyle="italic";}
-      if(row.cat!==row.prevCat&&data.row.index>0){data.cell.styles.lineColor=CAT_C[row.cat]??BDR;data.cell.styles.lineWidth=0.5;}
-    },
-    didDrawCell:(data:any)=>{
-      if(data.section==="body"&&data.column.index===0){
-        const row=facRows[data.row.index];
-        if(row&&row.cat!==row.prevCat){doc.setFillColor(...(CAT_C[row.cat]??NAVY));doc.rect(data.cell.x,data.cell.y,1.8,data.cell.height,"F");}
-      }
-    },
+  const LX  = PAD;          // left block X
+  const LW  = 157;          // left block width
+  const RX  = PAD+160;      // right block X
+  const RW  = TW-160;       // right block width ≈ 115mm
+  const HDR_ROW  = TBL_START;          // section header band
+  const COL_ROW  = TBL_START + 8;      // column label row
+  const DATA_Y   = TBL_START + 14;     // first data row Y
+  const ROW_H    = (FTR_Y - DATA_Y - 2) / facData.length;  // ~3.8mm
+
+  // ── Section header ─────────────────────────────────────────────────────────
+  fr(0,HDR_ROW-0.5,PW,9,BG);
+  doc.setDrawColor(...BDR); doc.setLineWidth(0.3);
+  doc.line(PAD,HDR_ROW,PW-PAD,HDR_ROW);
+  txt("FACILITY PERFORMANCE ANALYTICS", PAD, HDR_ROW+5.5, 5.5, NAVY, "bold");
+  txt(`${sorted.length} sites · all divisions`, PAD, HDR_ROW+5.5, 5.5, NAVY, "normal");  // overwritten below
+  txt(`${sorted.length} SITES MONITORED`, PW-PAD, HDR_ROW+5.5, 4.5, MUTED, "normal", "right");
+
+  // Legend chips (right of section title)
+  const lgR: {lbl:string;c:RGB}[] = [{lbl:"Operational",c:gC},{lbl:"Degraded",c:aC},{lbl:"Critical",c:rC}];
+  let lgRX = PW - PAD - 80;
+  lgR.forEach(lg=>{
+    doc.setFillColor(...lg.c); doc.circle(lgRX,HDR_ROW+4.5,1.2,"F");
+    txt(lg.lbl,lgRX+3,HDR_ROW+5.5,4,INK); lgRX+=27;
   });
+
+  // ── Column headers ─────────────────────────────────────────────────────────
+  fr(LX,COL_ROW,LW,6,NAVY); fr(RX,COL_ROW,RW,6,NAVY);
+
+  // Left headers
+  txt("#",      LX+3.5,         COL_ROW+4.2, 4.5, WHITE, "bold", "center");
+  txt("FACILITY NAME",   LX+10,          COL_ROW+4.2, 4.5, WHITE, "bold");
+  txt("PERFORMANCE",     LX+65,          COL_ROW+4.2, 4.5, WHITE, "bold");
+  txt("SCORE", LX+128,          COL_ROW+4.2, 4.5, WHITE, "bold", "center");
+  txt("STATUS", LX+140,         COL_ROW+4.2, 4.5, WHITE, "bold", "center");
+
+  // Right headers
+  const cellW = RW / 3;
+  ["INTERNET","BIOMETRIC","PRINTING"].forEach((h,hi)=>{
+    txt(h, RX+hi*cellW+cellW/2, COL_ROW+4.2, 4.5, WHITE, "bold", "center");
+  });
+
+  // ── Data rows ──────────────────────────────────────────────────────────────
+  const BAR_X  = LX + 62;   // bar track starts
+  const BAR_W  = 62;         // bar track total width
+  const SCORE_X= LX + 127;  // score % label X
+  const STATUS_X= LX+140;   // status badge centre
+
+  facData.forEach(({f,s,ov,score,prevCat,i})=>{
+    const y   = DATA_Y + i*ROW_H;
+    const rowBg: RGB = i%2===0?WHITE:[244,247,253];
+    const stC  = ragAccent(ov);
+    const stL  = ragFill(ov);
+    const stD  = ragText(ov);
+
+    // Row background
+    fr(LX,y,LW,ROW_H,rowBg); fr(RX,y,RW,ROW_H,rowBg);
+
+    // Category boundary: coloured top rule + left stripe
+    if(prevCat!==f.cat&&i>0){
+      const divC = CAT_C[f.cat]??NAVY;
+      doc.setDrawColor(...divC); doc.setLineWidth(0.5);
+      doc.line(LX,y,LX+LW,y); doc.line(RX,y,RX+RW,y);
+      doc.setLineWidth(0.1);
+    }
+
+    // Left stripe (category colour)
+    frr(LX,y,2,ROW_H,0,CAT_C[f.cat]??NAVY);
+
+    // Row number
+    txt(String(i+1), LX+4.5, y+ROW_H*0.68, 4, MUTED, "normal", "center");
+
+    // Facility name (truncate to ~53mm)
+    const name = f.name.length>24?f.name.slice(0,22)+"…":f.name;
+    doc.setFont("helvetica","bold"); doc.setFontSize(4.8); doc.setTextColor(...NAVY);
+    doc.text(name, LX+9, y+ROW_H*0.68);
+
+    // Performance bar track
+    frr(BAR_X, y+ROW_H*0.25, BAR_W, ROW_H*0.5, ROW_H*0.25, [220,228,242] as RGB);
+    // Bar fill
+    const barFill = Math.max(BAR_W*score/100, ROW_H*0.5);
+    frr(BAR_X, y+ROW_H*0.25, barFill, ROW_H*0.5, ROW_H*0.25, stC);
+
+    // Score %
+    txt(`${score}%`, SCORE_X, y+ROW_H*0.68, 4, MUTED, "normal", "center");
+
+    // Status badge
+    frr(STATUS_X-11, y+ROW_H*0.15, 22, ROW_H*0.7, 1, stL);
+    txt(ragLabel(ov), STATUS_X, y+ROW_H*0.68, 4, stD, "bold", "center");
+
+    // Right heatmap cells (Internet, Biometric, Printing)
+    ([s.internet,s.bio,s.printing] as RAGStatus[]).forEach((st,si)=>{
+      const cx  = RX + si*cellW;
+      const cBg = ragFill(st);
+      const cAc = ragAccent(st);
+      fr(cx+0.5, y+0.5, cellW-1, ROW_H-1, cBg);
+      doc.setFillColor(...cAc); doc.circle(cx+cellW/2, y+ROW_H/2, 1.2,"F");
+    });
+  });
+
+  // Right block outer border
+  doc.setDrawColor(...BDR); doc.setLineWidth(0.2);
+  doc.rect(RX, COL_ROW, RW, DATA_Y+facData.length*ROW_H-COL_ROW);
+
+  // ── Distribution summary below chart (if space allows) ─────────────────────
+  const chartBottom = DATA_Y + facData.length*ROW_H;
+  if(chartBottom + 6 < FTR_Y - 2){
+    const grnN = facData.filter(r=>r.ov==="green").length;
+    const ambN = facData.filter(r=>r.ov==="amber").length;
+    const redN = facData.filter(r=>r.ov==="red").length;
+    const tot  = facData.length;
+    fr(LX, chartBottom+1, LW+RW+3, FTR_Y-chartBottom-3, [244,247,252] as RGB);
+    txt("DISTRIBUTION SUMMARY", LX+3, chartBottom+5.5, 4.5, MUTED, "bold");
+    const distItems = [{lbl:`Operational (${grnN})`,pct:grnN/tot,c:gC},{lbl:`Degraded (${ambN})`,pct:ambN/tot,c:aC},{lbl:`Critical (${redN})`,pct:redN/tot,c:rC}];
+    let distX = LX+50;
+    distItems.forEach(d=>{
+      const bw = 55*d.pct;
+      txt(d.lbl, distX, chartBottom+5.5, 4, d.c, "bold");
+      frr(distX, chartBottom+7, 55, 2.5, 1.25, [220,228,242] as RGB);
+      if(bw>0) frr(distX, chartBottom+7, bw, 2.5, 1.25, d.c);
+      txt(`${Math.round(d.pct*100)}%`, distX+57, chartBottom+5.5, 4, d.c);
+      distX += 75;
+    });
+  }
 
   // ── FOOTER ─────────────────────────────────────────────────────────────────
   fr(0,FTR_Y,PW,PH-FTR_Y,NAVY); fr(0,FTR_Y,PW,0.6,GOLD);
