@@ -452,228 +452,237 @@ export default function Dashboard() {
     const timeStr = d.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
     const refNo   = `IGC-IT-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}-${String(d.getHours()).padStart(2,"0")}${String(d.getMinutes()).padStart(2,"0")}`;
 
-    // ── Load logo ─────────────────────────────────────────────────────────────
+    // ── Logo: load & invert to white-on-transparent for dark header ───────────
     let logoData = "";
     try {
-      const resp = await fetch("/imarat-logo.png");
-      const blob = await resp.blob();
-      logoData   = await new Promise<string>(res => {
-        const fr = new FileReader();
-        fr.onload = () => res(fr.result as string);
-        fr.readAsDataURL(blob);
+      const img = await new Promise<HTMLImageElement>((res, rej) => {
+        const el = new Image(); el.onload = () => res(el); el.onerror = rej;
+        el.src = "/imarat-logo.png";
       });
-    } catch { /* logo optional */ }
+      const cv  = document.createElement("canvas");
+      cv.width  = img.naturalWidth; cv.height = img.naturalHeight;
+      const ctx = cv.getContext("2d")!;
+      ctx.drawImage(img, 0, 0);
+      const id  = ctx.getImageData(0, 0, cv.width, cv.height);
+      for (let i = 0; i < id.data.length; i += 4) {
+        const bright = (id.data[i] + id.data[i+1] + id.data[i+2]) / 3;
+        if (bright < 140) {
+          id.data[i] = id.data[i+1] = id.data[i+2] = 255; id.data[i+3] = 255; // white
+        } else {
+          id.data[i+3] = 0; // transparent
+        }
+      }
+      ctx.putImageData(id, 0, 0);
+      logoData = cv.toDataURL("image/png");
+    } catch { /* skip logo if unavailable */ }
 
-    // ── Document ──────────────────────────────────────────────────────────────
+    // ── Document setup ────────────────────────────────────────────────────────
     const doc = new jsPDF({ orientation:"landscape", unit:"mm", format:"a4" });
-    const PW  = doc.internal.pageSize.getWidth();   // 297
-    const PH  = doc.internal.pageSize.getHeight();  // 210
-    const PAD = 11;
-    const TW  = PW - PAD * 2;                       // 275
+    const PW  = doc.internal.pageSize.getWidth();
+    const PH  = doc.internal.pageSize.getHeight();
+    const PAD = 12;
+    const TW  = PW - PAD * 2;
 
-    // ── Palette ───────────────────────────────────────────────────────────────
+    // ── Colour system ─────────────────────────────────────────────────────────
     type RGB = [number,number,number];
     const C = {
-      navy:   [7,  22,  54] as RGB,
-      navyM:  [12, 34,  78] as RGB,
-      navyL:  [22, 52, 110] as RGB,
-      gold:   [201,168,  76] as RGB,
-      goldL:  [245,225, 160] as RGB,
-      white:  [255,255, 255] as RGB,
-      bg:     [247,248, 252] as RGB,
-      bgCard: [255,255, 255] as RGB,
-      muted:  [107,122, 159] as RGB,
-      border: [221,227, 240] as RGB,
-      shadow: [205,213, 232] as RGB,
-      ink:    [18,  28,  60] as RGB,
+      // Core
+      ocean:   [18,  46,  82] as RGB,   // header / footer
+      oceanM:  [26,  62, 108] as RGB,
+      oceanL:  [38,  82, 136] as RGB,
+      coral:   [235, 94,  40] as RGB,   // primary accent
+      coralL:  [255,236,228] as RGB,
+      bg:      [240,244,255] as RGB,    // page background (cool lavender-white)
+      white:   [255,255,255] as RGB,
+      ink:     [22,  36,  60] as RGB,
+      inkM:    [80, 100, 135] as RGB,
+      inkL:    [145,162,198] as RGB,
+      border:  [210,220,240] as RGB,
+      shadow:  [200,212,235] as RGB,
       // Status
-      gC: [0,  155, 130] as RGB,   gL: [208,246,238] as RGB,   gD: [0,  88,  72] as RGB,
-      aC: [218,148,  0] as RGB,    aL: [254,238,170] as RGB,   aD: [100, 62,  0] as RGB,
-      rC: [208, 34,  48] as RGB,   rL: [255,210,216] as RGB,   rD: [130, 10,  20] as RGB,
-      nC: [150,160, 185] as RGB,   nL: [234,237,246] as RGB,   nD: [80,  90, 115] as RGB,
-      // Division
-      dImarat:   [0,  155, 130] as RGB,
-      dProjects: [34,  80, 210] as RGB,
-      dGraana:   [110, 32, 210] as RGB,
-      dAgency21: [210, 80,  12] as RGB,
+      gC:  [14, 160, 110] as RGB,  gL:  [210,246,232] as RGB,  gD:  [6,  88, 58]  as RGB,
+      aC:  [210,138,  0] as RGB,   aL:  [255,238,170] as RGB,  aD:  [100, 64,  0] as RGB,
+      rC:  [210, 40,  55] as RGB,  rL:  [255,210,215] as RGB,  rD:  [130, 10,  22] as RGB,
+      nC:  [148,162,190] as RGB,   nL:  [232,236,248] as RGB,  nD:  [80,  96, 130] as RGB,
+      // Divisions (completely new palette)
+      iC:  [0,  148,136] as RGB,   iL:  [205,246,242] as RGB,  // Imarat   – jade teal
+      pC:  [108, 56, 210] as RGB,  pL:  [234,224,255] as RGB,  // Projects – violet
+      grC: [194,108,  0] as RGB,   grL: [255,238,190] as RGB,  // Graana   – amber
+      a21C:[198, 32,  70] as RGB,  a21L:[255,218,228] as RGB,  // Agency21 – crimson
     };
-    const CAT_C:  Record<string,RGB> = { Imarat:C.dImarat, Projects:C.dProjects, Graana:C.dGraana, Agency21:C.dAgency21 };
-    const CAT_BG: Record<string,RGB> = { Imarat:[210,248,240], Projects:[218,228,255], Graana:[236,222,255], Agency21:[255,228,208] };
+    const CAT_C:  Record<string,RGB> = { Imarat:C.iC,  Projects:C.pC,  Graana:C.grC, Agency21:C.a21C };
+    const CAT_BG: Record<string,RGB> = { Imarat:C.iL,  Projects:C.pL,  Graana:C.grL, Agency21:C.a21L };
 
-    const ragC  = (s:RAGStatus):RGB => s==="green"?C.gC:s==="amber"?C.aC:s==="red"?C.rC:C.nC;
-    const ragL  = (s:RAGStatus):RGB => s==="green"?C.gL:s==="amber"?C.aL:s==="red"?C.rL:C.nL;
-    const ragD  = (s:RAGStatus):RGB => s==="green"?C.gD:s==="amber"?C.aD:s==="red"?C.rD:C.nD;
-    const ragTx = (s:RAGStatus) => s==="green"?"Operational":s==="amber"?"Degraded":s==="red"?"Critical":"Not Set";
-    const iLbl  = (s:RAGStatus) => ({green:"Active",   amber:"Unstable", red:"Down",    na:"—"})[s];
-    const bLbl  = (s:RAGStatus) => ({green:"Syncing",  amber:"Delayed",  red:"Offline", na:"—"})[s];
-    const pLbl  = (s:RAGStatus) => ({green:"Online",   amber:"Partial",  red:"Down",    na:"—"})[s];
+    const ragL  = (s:RAGStatus):RGB => ({green:C.gL,amber:C.aL,red:C.rL,na:C.nL})[s];
+    const ragD  = (s:RAGStatus):RGB => ({green:C.gD,amber:C.aD,red:C.rD,na:C.nD})[s];
+    const ragC2 = (s:RAGStatus):RGB => ({green:C.gC,amber:C.aC,red:C.rC,na:C.nC})[s];
+    const ragTx = (s:RAGStatus) => ({green:"Operational",amber:"Degraded",red:"Critical",na:"Not Set"})[s];
+    const iLbl  = (s:RAGStatus) => ({green:"Active",  amber:"Unstable",red:"Down",   na:"—"})[s];
+    const bLbl  = (s:RAGStatus) => ({green:"Syncing", amber:"Delayed", red:"Offline",na:"—"})[s];
+    const pLbl  = (s:RAGStatus) => ({green:"Online",  amber:"Partial", red:"Down",   na:"—"})[s];
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-    const fillRect = (x:number,y:number,w:number,h:number,c:RGB) => {
-      doc.setFillColor(...c); doc.rect(x,y,w,h,"F");
+    // ── Drawing helpers ───────────────────────────────────────────────────────
+    const fr  = (x:number,y:number,w:number,h:number,c:RGB)          => { doc.setFillColor(...c); doc.rect(x,y,w,h,"F"); };
+    const frr = (x:number,y:number,w:number,h:number,r:number,c:RGB) => { doc.setFillColor(...c); doc.roundedRect(x,y,w,h,r,r,"F"); };
+    const t   = (s:string,x:number,y:number,sz:number,c:RGB,b:"bold"|"normal"="normal",a:"left"|"center"|"right"="left") => {
+      doc.setFont("helvetica",b); doc.setFontSize(sz); doc.setTextColor(...c); doc.text(s,x,y,{align:a});
     };
-    const fillRR = (x:number,y:number,w:number,h:number,r:number,c:RGB) => {
-      doc.setFillColor(...c); doc.roundedRect(x,y,w,h,r,r,"F");
+    // White card with drop shadow
+    const card = (x:number,y:number,w:number,h:number,r=2.5) => {
+      frr(x+1,y+1,w,h,r,C.shadow); frr(x,y,w,h,r,C.white);
     };
-    const card = (x:number,y:number,w:number,h:number,r=2) => {
-      doc.setFillColor(...C.shadow); doc.roundedRect(x+0.8,y+0.8,w,h,r,r,"F");
-      doc.setFillColor(...C.bgCard); doc.roundedRect(x,y,w,h,r,r,"F");
-    };
-    const progressBar = (x:number,y:number,w:number,h:number,pct:number,col:RGB) => {
-      fillRR(x,y,w,h,h/2,C.border);
-      if(pct>0) fillRR(x,y,Math.max(w*pct,h),h,h/2,col);
-    };
-    const txt = (t:string,x:number,y:number,size:number,col:RGB,style:"normal"|"bold"="normal",align:"left"|"center"|"right"="left") => {
-      doc.setFont("helvetica",style); doc.setFontSize(size); doc.setTextColor(...col);
-      doc.text(t,x,y,{align});
+    // Progress track + fill
+    const pbar = (x:number,y:number,w:number,h:number,pct:number,c:RGB) => {
+      frr(x,y,w,h,h/2,C.border);
+      if(pct>0) frr(x,y,Math.max(w*pct,h),h,h/2,c);
     };
 
     // ─────────────────────────────────────────────────────────────────────────
-    // LAYOUT BANDS
-    // ─────────────────────────────────────────────────────────────────────────
-    // Header      Y: 0   – 27
-    // KPI band    Y: 28  – 44   (height 16, cards 28.5–43.5)
-    // Division    Y: 45  – 62   (height 17, cards 45.5–61.5)
-    // Section bar Y: 63  – 67
-    // Table       Y: 68  – 197  (usable 117mm; 31×3.5+7.5=116mm ✓)
-    // Footer      Y: 197 – 210
-    const HDR_H = 27;
-    const KY = 28.5, KH = 15;
-    const DY = 45.5, DH = 16;
-    const SY = 63;
-    const TBL_Y = 68;
-    const FTR_Y = PH - 13;   // 197
+    // LAYOUT
+    //  Header     0  – 28
+    //  KPI        29 – 45   (height 16)
+    //  Division   46 – 63   (height 17)
+    //  Section    64 – 68
+    //  Table      69 – 197  (128mm; 31×3.5+7.5=116mm ✓)
+    //  Footer    197 – 210
+    const HDR = 28;
+    const KY  = 29,  KH = 16;
+    const DY  = 46,  DH = 17;
+    const SY  = 64;
+    const TBL = 69;
+    const FTR = PH - 13;
 
     // =========================================================================
-    // 1. PAGE BACKGROUND
-    fillRect(0,0,PW,PH,C.bg);
+    // PAGE BG
+    fr(0,0,PW,PH,C.bg);
 
     // =========================================================================
-    // 2. HEADER  (0–27mm)
-    // Left third: white panel with logo
-    // Right two-thirds: navy with title
-    const LOGO_W = 58;  // white panel width
+    // HEADER
+    // Full ocean band
+    fr(0,0,PW,HDR,C.ocean);
+    // Coral accent strip at top (3mm)
+    fr(0,0,PW,3,C.coral);
+    // Subtle inner gradient band at bottom of header
+    fr(0,HDR-1,PW,1,C.oceanM);
 
-    // Navy background full header
-    fillRect(0,0,PW,HDR_H,C.navy);
-
-    // Gold top rule (2.5mm)
-    fillRect(0,0,PW,2.5,C.gold);
-
-    // White logo panel
-    fillRR(PAD,3.5,LOGO_W,21,2,C.white);
-
-    // Logo image inside white panel (centred, scaled to fit 50×14mm)
+    // Logo — white wordmark direct on ocean (no white box)
     if (logoData) {
-      // Logo is ~560×187px ≈ 3:1 aspect. At w=46mm → h=15.3mm
-      const lw = 46, lh = 15;
-      const lx = PAD + (LOGO_W - lw) / 2;
-      const ly = 3.5 + (21 - lh) / 2;
-      doc.addImage(logoData, "PNG", lx, ly, lw, lh);
+      // 560×187px logo, ~3:1 ratio. At h=14mm → w=41.9mm
+      const lh = 14, lw = 42;
+      doc.addImage(logoData, "PNG", PAD, (HDR-lh)/2+0.5, lw, lh);
     } else {
-      txt("IMARAT", PAD + LOGO_W/2, 3.5+13, 14, C.navy, "bold", "center");
+      t("IMARAT", PAD, 17, 14, C.white, "bold");
     }
 
-    // Vertical gold separator
-    doc.setDrawColor(...C.gold); doc.setLineWidth(0.6);
-    doc.line(PAD + LOGO_W + 5, 4, PAD + LOGO_W + 5, 24.5);
+    // Thin vertical separator
+    doc.setDrawColor(...C.coral); doc.setLineWidth(0.5);
+    doc.line(PAD+48, 4.5, PAD+48, 25);
 
-    // Title block (starts after separator)
-    const TX = PAD + LOGO_W + 10;
-    txt("IT FACILITIES RAG DASHBOARD", TX, 13.5, 11.5, C.white, "bold");
-    txt("IMARAT GROUP OF COMPANIES", TX, 19.5, 6, C.gold, "bold");
-    txt(`Daily Operational Report  ·  ${FACILITIES.length} Sites Monitored`, TX, 24, 4.2, [100,130,180] as RGB);
+    // Title block
+    const TX = PAD + 53;
+    t("IT FACILITIES RAG DASHBOARD", TX, 13, 12, C.white, "bold");
+    t("IMARAT GROUP OF COMPANIES  ·  IT Department", TX, 19, 5.5, C.coral, "bold");
+    t(`Daily Operational Report  ·  ${FACILITIES.length} Sites  ·  ${dateStr}`, TX, 24.5, 4, [110,140,185] as RGB);
 
-    // Right meta block
-    txt(dateStr, PW-PAD, 12, 10.5, C.gold, "bold", "right");
-    txt(timeStr, PW-PAD, 18.5, 5.5, [140,165,210] as RGB, "normal", "right");
-    txt(`Ref: ${refNo}`, PW-PAD, 23.5, 3.8, [90,118,165] as RGB, "normal", "right");
+    // Right block
+    t(timeStr, PW-PAD, 13, 11, C.white, "bold", "right");
+    t(dateStr, PW-PAD, 19.5, 5.5, C.coral, "bold", "right");
+    t(`Ref: ${refNo}`, PW-PAD, 24.5, 3.8, [100,130,175] as RGB, "normal", "right");
 
     // =========================================================================
-    // 3. KPI CARDS  (Y:28.5–43.5)
+    // KPI STRIP  (Y:29–45, height 16)
+    // Background band
+    fr(0,KY-1,PW,KH+2,[230,236,250] as RGB);
+
+    const totalSites = FACILITIES.length;
+    const healthPct  = totalSites>0 ? counts.green/totalSites : 0;
     const kpis = [
-      { val:String(FACILITIES.length),   lbl:"TOTAL SITES",   dot:C.navyL },
-      { val:String(counts.green),         lbl:"OPERATIONAL",   dot:C.gC    },
-      { val:String(counts.amber),         lbl:"DEGRADED",      dot:C.aC    },
-      { val:String(counts.red),           lbl:"CRITICAL",      dot:C.rC    },
-      { val:String(autoStats.received),   lbl:"TICKETS TODAY", dot:[48,80,218] as RGB },
-      { val:String(autoStats.resolved),   lbl:"RESOLVED",      dot:C.gC    },
-      { val:String(autoStats.pending),    lbl:"PENDING",       dot:C.aC    },
+      { val:String(totalSites),         lbl:"TOTAL SITES",   vc:C.ocean  },
+      { val:String(counts.green),        lbl:"OPERATIONAL",   vc:C.gC     },
+      { val:String(counts.amber),        lbl:"DEGRADED",      vc:C.aC     },
+      { val:String(counts.red),          lbl:"CRITICAL",      vc:C.rC     },
+      { val:String(autoStats.received),  lbl:"TICKETS",       vc:C.pC     },
+      { val:String(autoStats.resolved),  lbl:"RESOLVED",      vc:C.gC     },
+      { val:String(autoStats.pending),   lbl:"PENDING",       vc:C.aC     },
     ];
     const KW = TW / kpis.length;
     kpis.forEach((k,i) => {
       const x = PAD + i*KW;
-      card(x+0.5, KY, KW-1, KH);
-      // Left accent stripe (3×KH mm coloured strip)
-      fillRR(x+0.5, KY, 2.5, KH, 1, k.dot);
-      // Value
-      txt(k.val, x+KW/2+1, KY+9.5, 14, k.dot, "bold", "center");
+      card(x+0.6, KY, KW-1.2, KH, 2);
+      // Coral top bar (2mm)
+      frr(x+0.6, KY, KW-1.2, 2, 1, k.vc);
+      fr(x+0.6, KY+1, KW-1.2, 1, k.vc);
+      // Value – centred in card
+      t(k.val, x+KW/2, KY+10.5, 15, k.vc, "bold", "center");
       // Label
-      txt(k.lbl, x+KW/2+1, KY+13.3, 4.2, C.muted, "bold", "center");
+      t(k.lbl, x+KW/2, KY+14.2, 4, C.inkL, "bold", "center");
     });
 
     // =========================================================================
-    // 4. DIVISION STRIP  (Y:45.5–61.5)
-    const totalSites = FACILITIES.length;
-    const healthPct  = totalSites>0 ? counts.green/totalSites : 0;
-    const hCol:RGB   = healthPct>=0.8?C.gC:healthPct>=0.5?C.aC:C.rC;
-    const HSW = 52;
+    // DIVISION STRIP  (Y:46–63, height 17)
+    fr(0,DY-1,PW,DH+2,C.white);
+
+    // Section title above division row
+    t("DIVISION OVERVIEW", PAD, DY+3.5, 5, C.ocean, "bold");
+    const divStartY = DY + 5;  // cards start a bit lower
+    const divCardH  = DH - 5.5;  // 11.5mm card height
+
+    const HSW = 50;
     const divGap = 2;
-    const divW   = (TW - HSW - divGap) / 4 - 0.5;
+    const divW   = (TW - HSW - divGap) / 4 - 0.8;
 
-    // ── Health card ──────────────────────────────────────────────────────────
-    card(PAD, DY, HSW, DH);
-    fillRR(PAD, DY, HSW, 2, 1, hCol); fillRect(PAD, DY+1, HSW, 1, hCol); // coloured top strip
+    // ── Health score ─────────────────────────────────────────────────────────
+    const hCol:RGB = healthPct>=0.8?C.gC:healthPct>=0.5?C.aC:C.rC;
+    frr(PAD, divStartY, HSW, divCardH, 2, C.ocean);  // solid ocean card
+    // Small label
+    t("OVERALL HEALTH SCORE", PAD+HSW/2, divStartY+3.8, 4, [140,168,215] as RGB, "bold", "center");
+    // Big %
+    t(`${Math.round(healthPct*100)}%`, PAD+HSW/2, divStartY+9.5, 18, C.white, "bold", "center");
+    // Progress bar at bottom of card
+    frr(PAD+4, divStartY+divCardH-3, HSW-8, 2, 1, [38,62,100] as RGB);
+    if(healthPct>0) frr(PAD+4, divStartY+divCardH-3, Math.max((HSW-8)*healthPct,2), 2, 1, hCol);
 
-    txt("OVERALL HEALTH", PAD+HSW/2, DY+5.8, 4.5, C.muted, "bold", "center");
-    txt(`${Math.round(healthPct*100)}%`, PAD+HSW/2, DY+12.5, 19, hCol, "bold", "center");
-    progressBar(PAD+4, DY+DH-2.8, HSW-8, 2, healthPct, hCol);
-
-    // ── Division cards ───────────────────────────────────────────────────────
+    // ── Division cards ────────────────────────────────────────────────────────
     (["Imarat","Projects","Graana","Agency21"] as const).forEach((cat,ci) => {
       const facs  = FACILITIES.filter(f=>f.cat===cat);
       const total = facs.length;
       const grn   = facs.filter(f=>calcOverall(state[f.name]??defaultState())==="green").length;
       const amb   = facs.filter(f=>calcOverall(state[f.name]??defaultState())==="amber").length;
       const red   = facs.filter(f=>calcOverall(state[f.name]??defaultState())==="red").length;
-      const cx    = PAD + HSW + divGap + ci*(divW+1);
+      const cx    = PAD + HSW + divGap + ci*(divW+divGap);
       const ac    = CAT_C[cat];
+      const bg    = CAT_BG[cat];
 
-      card(cx, DY, divW, DH);
-      // Coloured top bar
-      fillRR(cx, DY, divW, 2, 1, ac); fillRect(cx, DY+1, divW, 1, ac);
+      frr(cx, divStartY, divW, divCardH, 2, bg);  // coloured bg card
 
-      // Division name row
-      txt(cat.toUpperCase(), cx+3, DY+6, 5.8, ac, "bold");
-      txt(`${total} sites`, cx+divW-3, DY+6, 4, C.muted, "normal", "right");
+      // Name + count
+      t(cat.toUpperCase(), cx+3.5, divStartY+4.5, 5.5, ac, "bold");
+      t(`${total}`, cx+divW-3.5, divStartY+4.5, 6, ac, "bold", "right");
 
-      // Stacked bar (Y:DY+8 – DY+10.2)
-      const sbX=cx+3, sbW=divW-6, sbY=DY+8, sbH=2.2;
-      fillRR(sbX,sbY,sbW,sbH,sbH/2,C.border);
+      // Stacked bar  (Y: divStartY+6 to divStartY+8.5)
+      const sbX=cx+3.5, sbW=divW-7, sbY=divStartY+6, sbH=2;
+      frr(sbX,sbY,sbW,sbH,sbH/2,[200,215,230] as RGB);
       let bx=sbX;
-      if(grn>0){const bw=sbW*(grn/total);fillRR(bx,sbY,bw,sbH,sbH/2,C.gC);bx+=bw;}
-      if(amb>0){const bw=sbW*(amb/total);fillRect(bx,sbY,bw,sbH,C.aC);bx+=bw;}
-      if(red>0){const bw=sbW*(red/total);fillRR(bx,sbY,bw,sbH,sbH/2,C.rC);}
+      if(grn>0){const bw=sbW*(grn/total);frr(bx,sbY,bw,sbH,sbH/2,C.gC);bx+=bw;}
+      if(amb>0){const bw=sbW*(amb/total);fr(bx,sbY,bw,sbH,C.aC);bx+=bw;}
+      if(red>0){const bw=sbW*(red/total);frr(bx,sbY,bw,sbH,sbH/2,C.rC);}
 
-      // 3 count columns  — MUST stay inside DY+DH (DY+16)
-      const colW3 = divW/3;
-      ([
-        {v:grn,label:"OK",  c:C.gC},
-        {v:amb,label:"WRN", c:C.aC},
-        {v:red,label:"CRT", c:C.rC},
-      ] as {v:number;label:string;c:RGB}[]).forEach((col,li)=>{
-        const lx = cx + li*colW3 + colW3/2;
-        txt(String(col.v), lx, DY+14.2, 8, col.c, "bold", "center");
-      });
+      // Counts — must stay inside divCardH (11.5mm from divStartY)
+      // Y: divStartY+9.8 → well inside divStartY+11.5
+      const cw3 = divW/3;
+      ([{v:grn,c:C.gC},{v:amb,c:C.aC},{v:red,c:C.rC}] as {v:number;c:RGB}[])
+        .forEach((col,li) => {
+          t(String(col.v), cx+li*cw3+cw3/2, divStartY+10.5, 8.5, col.c, "bold", "center");
+        });
     });
 
     // =========================================================================
-    // 5. SECTION BAR  (Y:63–67)
-    doc.setDrawColor(...C.border); doc.setLineWidth(0.35);
-    doc.line(PAD, SY+0.5, PW-PAD, SY+0.5);
-    txt("FACILITY STATUS DETAIL", PAD, SY+4.5, 5.8, C.navy, "bold");
+    // SECTION SEPARATOR  (Y:64)
+    doc.setDrawColor(...C.border); doc.setLineWidth(0.3);
+    doc.line(PAD,SY,PW-PAD,SY);
+    t("FACILITY STATUS DETAIL", PAD, SY+4.5, 5.5, C.ocean, "bold");
 
-    // Legend (right-aligned, precise spacing)
+    // Legend
     const lgItems = [
       {lbl:"Operational",c:C.gC},{lbl:"Degraded",c:C.aC},
       {lbl:"Critical",c:C.rC},{lbl:"Not Set",c:C.nC},
@@ -683,117 +692,98 @@ export default function Dashboard() {
       doc.setFont("helvetica","normal"); doc.setFontSize(4.8);
       const tw = doc.getTextWidth(lg.lbl);
       lgX -= tw;
-      txt(lg.lbl, lgX, SY+4.5, 4.8, C.ink);
-      lgX -= 5;
-      doc.setFillColor(...lg.c); doc.circle(lgX, SY+3, 1.4, "F");
-      lgX -= 4;
+      t(lg.lbl, lgX, SY+4.5, 4.8, C.ink);
+      lgX -= 5.5;
+      doc.setFillColor(...lg.c); doc.circle(lgX, SY+3, 1.4,"F");
+      lgX -= 3.5;
     });
 
     // =========================================================================
-    // 6. TABLE  (Y:68)
-    const ORDER: Record<string,number> = {Imarat:0,Projects:1,Graana:2,Agency21:3};
+    // TABLE
+    const ORDER:Record<string,number> = {Imarat:0,Projects:1,Graana:2,Agency21:3};
     const sorted  = [...FACILITIES].sort((a,b)=>(ORDER[a.cat]??9)-(ORDER[b.cat]??9));
-    const facRows = sorted.map((f,i)=>{
+    const facRows = sorted.map((f,i) => {
       const s  = state[f.name]??defaultState();
       const ov = calcOverall(s);
       const ts = s.ts?s.ts.replace("T"," ").slice(5,16):"—";
       return {
-        d:[String(i+1), f.name, f.cat, iLbl(s.internet), bLbl(s.bio), pLbl(s.printing), ragTx(ov), ts, s.issue||""],
+        d:[String(i+1),f.name,f.cat,iLbl(s.internet),bLbl(s.bio),pLbl(s.printing),ragTx(ov),ts,s.issue||""],
         internet:s.internet, bio:s.bio, printing:s.printing, overall:ov,
         cat:f.cat, prevCat:i>0?sorted[i-1].cat:"",
       };
     });
 
     autoTable(doc,{
-      startY: TBL_Y,
+      startY: TBL,
       tableWidth: TW,
       margin:{ left:PAD, right:PAD, bottom:14 },
-      head:[["#","Facility","Division","Internet","Biometric","Printing","Status","Updated","Notes"]],
+      head:[["#","Facility Name","Division","Internet","Biometric","Printing","RAG Status","Updated","Issue / Notes"]],
       body: facRows.map(r=>r.d),
       styles:{
         font:"helvetica", fontSize:5.2,
-        cellPadding:{top:1.4,bottom:1.4,left:2,right:2},
-        minCellHeight:3.5,
-        valign:"middle", overflow:"ellipsize",
+        cellPadding:{top:1.3,bottom:1.3,left:2,right:2},
+        minCellHeight:3.5, valign:"middle", overflow:"ellipsize",
         textColor:C.ink, fillColor:C.white,
-        lineColor:C.border, lineWidth:0.12,
+        lineColor:C.border, lineWidth:0.1,
       },
       headStyles:{
-        fillColor:C.navy, textColor:C.white,
+        fillColor:C.ocean, textColor:C.white,
         fontStyle:"bold", fontSize:5.2, halign:"center",
         cellPadding:{top:2.5,bottom:2.5,left:2,right:2},
         minCellHeight:7.5, lineWidth:0,
       },
-      alternateRowStyles:{ fillColor:[244,246,252] as RGB },
+      alternateRowStyles:{ fillColor:[244,247,255] as RGB },
       columnStyles:{
-        0:{ cellWidth:5.5,  halign:"center", fontStyle:"bold", textColor:C.muted },
-        1:{ cellWidth:40,   fontStyle:"bold", textColor:C.navy },
+        0:{ cellWidth:5.5,  halign:"center", fontStyle:"bold", textColor:C.inkL },
+        1:{ cellWidth:40,   fontStyle:"bold", textColor:C.ocean },
         2:{ cellWidth:16,   halign:"center" },
         3:{ cellWidth:16,   halign:"center" },
         4:{ cellWidth:15,   halign:"center" },
         5:{ cellWidth:13,   halign:"center" },
-        6:{ cellWidth:20,   halign:"center", fontStyle:"bold" },
+        6:{ cellWidth:21,   halign:"center", fontStyle:"bold" },
         7:{ cellWidth:17,   halign:"center" },
         8:{ cellWidth:"auto" as any },
       },
-      didParseCell:(data:any)=>{
+      didParseCell:(data:any) => {
         if(data.section!=="body") return;
         const row=facRows[data.row.index]; if(!row) return;
-        // Status badge colouring
-        const colMap: Record<number,RAGStatus> = {3:row.internet,4:row.bio,5:row.printing,6:row.overall};
-        const st=colMap[data.column.index];
+        const sm:Record<number,RAGStatus> = {3:row.internet,4:row.bio,5:row.printing,6:row.overall};
+        const st=sm[data.column.index];
         if(st){ data.cell.styles.fillColor=ragL(st); data.cell.styles.textColor=ragD(st); data.cell.styles.fontStyle="bold"; }
-        // Division badge
-        if(data.column.index===2){
-          data.cell.styles.fillColor=CAT_BG[row.cat]??C.nL;
-          data.cell.styles.textColor=CAT_C[row.cat]??C.nC;
-          data.cell.styles.fontStyle="bold";
-        }
-        // Updated dim
-        if(data.column.index===7){ data.cell.styles.textColor=C.muted; data.cell.styles.fontSize=4.5; }
-        // Notes italic
-        if(data.column.index===8&&row.d[8]){
-          data.cell.styles.textColor=C.rD; data.cell.styles.fontStyle="italic";
-        }
-        // Category boundary top rule
-        if(row.cat!==row.prevCat&&data.row.index>0){
-          data.cell.styles.lineColor=CAT_C[row.cat]??C.border;
-          data.cell.styles.lineWidth=0.5;
-        }
+        if(data.column.index===2){ data.cell.styles.fillColor=CAT_BG[row.cat]; data.cell.styles.textColor=CAT_C[row.cat]; data.cell.styles.fontStyle="bold"; }
+        if(data.column.index===7){ data.cell.styles.textColor=C.inkL; data.cell.styles.fontSize=4.5; }
+        if(data.column.index===8&&row.d[8]){ data.cell.styles.textColor=C.rC; data.cell.styles.fontStyle="italic"; }
+        if(row.cat!==row.prevCat&&data.row.index>0){ data.cell.styles.lineColor=CAT_C[row.cat]??C.border; data.cell.styles.lineWidth=0.5; }
       },
-      didDrawCell:(data:any)=>{
-        // Coloured left stripe on first column at category boundaries
+      didDrawCell:(data:any) => {
         if(data.section==="body"&&data.column.index===0){
           const row=facRows[data.row.index];
           if(row&&row.cat!==row.prevCat){
-            doc.setFillColor(...(CAT_C[row.cat]??C.navy));
-            doc.rect(data.cell.x, data.cell.y, 1.6, data.cell.height,"F");
+            doc.setFillColor(...(CAT_C[row.cat]??C.coral));
+            doc.rect(data.cell.x,data.cell.y,1.8,data.cell.height,"F");
           }
         }
       },
     });
 
     // =========================================================================
-    // 7. FOOTER  (Y:197–210)
-    fillRect(0,FTR_Y,PW,PH-FTR_Y,C.navy);
-    fillRect(0,FTR_Y,PW,0.6,C.gold);   // gold rule
+    // FOOTER
+    fr(0,FTR,PW,PH-FTR,C.ocean);
+    fr(0,FTR,PW,0.6,C.coral);
 
-    const fY1=FTR_Y+4.2, fY2=FTR_Y+7.8, fY3=FTR_Y+10.8;
+    const f1=FTR+4.2, f2=FTR+7.8, f3=FTR+11;
 
-    // Left
-    txt("IMARAT GROUP OF COMPANIES", PAD, fY1, 5.8, C.gold, "bold");
-    txt("IT Department  ·  it.support@imarat.com.pk", PAD, fY2, 4, [105,130,175] as RGB);
-    txt("CONFIDENTIAL — FOR AUTHORISED PERSONNEL ONLY", PAD, fY3, 3.5, [78,104,150] as RGB);
+    t("IMARAT GROUP OF COMPANIES", PAD, f1, 5.8, C.coral, "bold");
+    t("IT Department  ·  it.support@imarat.com.pk", PAD, f2, 4, [110,138,180] as RGB);
+    t("CONFIDENTIAL — AUTHORISED PERSONNEL ONLY", PAD, f3, 3.5, [80,110,155] as RGB);
 
-    // Centre
-    txt("SYSTEM GENERATED REPORT", PW/2, fY1, 5.5, [190,210,248] as RGB, "bold", "center");
-    txt(`RAG Dashboard Automation  ·  Ref: ${refNo}`, PW/2, fY2, 4, [105,130,175] as RGB, "normal", "center");
-    txt("Powered by Imarat IT — Do Not Distribute", PW/2, fY3, 3.5, [78,104,150] as RGB, "normal", "center");
+    t("SYSTEM GENERATED REPORT", PW/2, f1, 5.5, C.white, "bold", "center");
+    t(`RAG Dashboard  ·  Ref: ${refNo}`, PW/2, f2, 4, [110,138,180] as RGB, "normal", "center");
+    t("Imarat IT Automation — Do Not Alter", PW/2, f3, 3.5, [80,110,155] as RGB, "normal", "center");
 
-    // Right
-    txt(`${dateStr}  ·  ${timeStr}`, PW-PAD, fY1, 5.8, C.gold, "bold", "right");
-    txt(`${FACILITIES.length} Sites  ·  All Divisions`, PW-PAD, fY2, 4, [105,130,175] as RGB, "normal", "right");
-    txt("imarat.com.pk", PW-PAD, fY3, 3.5, [78,104,150] as RGB, "normal", "right");
+    t(`${dateStr}  ·  ${timeStr}`, PW-PAD, f1, 5.8, C.coral, "bold", "right");
+    t(`${FACILITIES.length} Sites  ·  All Divisions`, PW-PAD, f2, 4, [110,138,180] as RGB, "normal", "right");
+    t("imarat.com.pk", PW-PAD, f3, 3.5, [80,110,155] as RGB, "normal", "right");
 
     doc.save(`Imarat_IT_RAG_${d.toISOString().slice(0,10)}.pdf`);
   };
