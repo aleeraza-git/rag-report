@@ -7,8 +7,8 @@ import autoTable from "jspdf-autotable";
 export type RAGStatus = "green" | "amber" | "red" | "na";
 export interface FacilityState {
   internet: RAGStatus; bio: RAGStatus; printing: RAGStatus;
-  bandwidth?: string; requiredBandwidth?: string;
-  issue?: string; notes?: string; ts?: string;
+  bandwidth: string; requiredBandwidth: string;
+  issue: string; notes: string; ts: string;
 }
 export interface ReportConfig {
   title:        string;
