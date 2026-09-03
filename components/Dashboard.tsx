@@ -1,9 +1,8 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { supabase } from "@/lib/supabase";
 
 const FACILITIES: { name: string; cat: string }[] = [
   { name: "Amazon Mall", cat: "Projects" },
@@ -137,13 +136,6 @@ const TICKET_STATUS: Record<string,{ bg:string; text:string; lbl:string; border:
   resolved:   { bg:"#edf7f0", text:"#1a6b35", lbl:"Resolved",    border:"#a8d5b5" },
   pending:    { bg:"#f0f4ff", text:"#3b5bdb", lbl:"Pending",     border:"#b4c6fb" },
 };
-const LOG_STYLE: Record<string,{ bg:string; text:string; border:string }> = {
-  status:    { bg:"#f0f4ff", text:"#1A3A5C", border:"#b4c6fb" },
-  issue:     { bg:"#fdf0f0", text:"#8b1c1c", border:"#f5b8b8" },
-  notes:     { bg:"#f8f9fb", text:"#4a5568", border:"#dde1e8" },
-  bandwidth: { bg:"#edf7f0", text:"#1a6b35", border:"#a8d5b5" },
-  ticket:    { bg:"#fef8ec", text:"#7a5200", border:"#f5d48a" },
-};
 
 function nowTime() {
   return new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", second:"2-digit" });
@@ -199,29 +191,6 @@ function Badge({ s }: { s: RAGStatus }) {
     </span>
   );
 }
-function Sel({ value, opts, onChange }: { value:RAGStatus; opts:{v:RAGStatus;l:string}[]; onChange:(v:RAGStatus)=>void }) {
-  const r = RAG[value];
-  return (
-    <select value={value} onChange={e=>onChange(e.target.value as RAGStatus)}
-      style={{ background:r.bg, color:r.text, border:`1px solid ${r.border}`, borderRadius:3, padding:"3px 6px", fontSize:11, width:"100%", minWidth:130, cursor:"pointer", fontWeight:500 }}>
-      {opts.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
-    </select>
-  );
-}
-function StatInput({ label, value, color, bg, border, onChange }: { label:string; value:number; color:string; bg:string; border:string; onChange:(v:number)=>void }) {
-  return (
-    <div style={{ background:bg, border:`1px solid ${border}`, borderRadius:8, padding:"12px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
-      <div>
-        <div style={{ fontSize:10, color:"#8a94a6", marginBottom:4, letterSpacing:".3px" }}>{label}</div>
-        <div style={{ fontSize:26, fontWeight:700, color }}>{value}</div>
-      </div>
-      <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-        <button onClick={()=>onChange(value+1)} style={{ width:28, height:28, border:`1px solid ${border}`, borderRadius:4, background:"#fff", color, fontSize:16, cursor:"pointer", fontWeight:700, lineHeight:1 }}>+</button>
-        <button onClick={()=>onChange(Math.max(0,value-1))} style={{ width:28, height:28, border:`1px solid ${border}`, borderRadius:4, background:"#fff", color, fontSize:16, cursor:"pointer", fontWeight:700, lineHeight:1 }}>-</button>
-      </div>
-    </div>
-  );
-}
 
 export default function Dashboard() {
   const [state, setState] = useState<AppState>({});
@@ -243,129 +212,137 @@ export default function Dashboard() {
   const saveTimer = useRef<NodeJS.Timeout|null>(null);
   const [clock, setClock] = useState("");
 
-  const loadTickets = useCallback(async () => {
-    const { data } = await supabase.from("tickets").select("*");
-    if (data) setTickets(data.map((r: any) => r.data).sort((a: Ticket, b: Ticket) => b.ts.localeCompare(a.ts)));
+  // ── API helpers ──────────────────────────────────────────────────────────────
+
+  const apiFetch = useCallback(async (url: string, opts?: RequestInit) => {
+    const res = await fetch(url, opts);
+    if (!res.ok) throw new Error(`${url} → ${res.status}`);
+    return res.json();
   }, []);
 
+  const loadTickets = useCallback(async () => {
+    const rows = await apiFetch("/api/tickets");
+    setTickets(rows.map((r: any) => r.data).sort((a: Ticket, b: Ticket) => b.ts.localeCompare(a.ts)));
+  }, [apiFetch]);
+
   const loadLog = useCallback(async () => {
-    const { data } = await supabase.from("activity_log").select("*").order("updated_at", { ascending: false }).limit(500);
-    if (data) setActivityLog(data.map((r: any) => r.data));
-  }, []);
+    const rows = await apiFetch("/api/activity-log");
+    setActivityLog(rows.map((r: any) => r.data));
+  }, [apiFetch]);
+
+  // ── initial load + polling ───────────────────────────────────────────────────
 
   useEffect(() => {
     const init: AppState = {};
     FACILITIES.forEach(f => { init[f.name] = defaultState(); });
-    const loadAll = async () => {
-      setSyncing(true);
-      try {
-        const [{ data: fsData }, { data: tkData }, { data: stData }, { data: logData }] = await Promise.all([
-          supabase.from("facility_state").select("*"),
-          supabase.from("tickets").select("*"),
-          supabase.from("daily_stats").select("*").eq("id","today").single(),
-          supabase.from("activity_log").select("*").order("updated_at", { ascending: false }).limit(500),
-          supabase.from("downtime_log").select("*").order("updated_at", { ascending: false }).limit(200),
-        ]);
-        if (fsData) fsData.forEach((row: any) => { if (init[row.id]) init[row.id] = { ...defaultState(), ...row.data }; });
-        if (tkData) setTickets(tkData.map((r: any) => r.data).sort((a: Ticket, b: Ticket) => b.ts.localeCompare(a.ts)));
-        if (stData) setStats(stData.data);
-        if (logData) setActivityLog(logData.map((r: any) => r.data));
-        const dtData = (await supabase.from("downtime_log").select("*").order("updated_at", { ascending: false }).limit(200)).data;
-        if (dtData) setDowntimeRecords(dtData.map((r: any) => r.data));
-      } catch {}
-      setState(init);
-      setSyncing(false);
-      setLastSync(nowTime());
-      setMounted(true);
-    };
-    loadAll();
 
+    const loadAll = async (showSpinner = true) => {
+      if (showSpinner) setSyncing(true);
+      try {
+        const [fsRows, tkRows, stRow, logRows, dtRows] = await Promise.all([
+          apiFetch("/api/facilities"),
+          apiFetch("/api/tickets"),
+          apiFetch("/api/stats"),
+          apiFetch("/api/activity-log"),
+          apiFetch("/api/downtime"),
+        ]);
+        setState(prev => {
+          const next = { ...prev };
+          (fsRows as any[]).forEach((r: any) => { if (init[r.id] !== undefined) next[r.id] = { ...defaultState(), ...r.data }; });
+          return next;
+        });
+        setTickets((tkRows as any[]).map((r: any) => r.data).sort((a: Ticket, b: Ticket) => b.ts.localeCompare(a.ts)));
+        if (stRow?.data) setStats(stRow.data);
+        setActivityLog((logRows as any[]).map((r: any) => r.data));
+        setDowntimeRecords((dtRows as any[]).map((r: any) => r.data));
+        setLastSync(nowTime());
+      } catch {}
+      if (showSpinner) { setSyncing(false); setMounted(true); }
+    };
+
+    // set defaults immediately so first render shows something
+    setState(init);
+    loadAll(true);
+
+    const clockTick = () => setClock(new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", second:"2-digit" }));
     const fmt = () => new Date().toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
     setNow(fmt());
-    const clockTick = () => setClock(new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", second:"2-digit" }));
     clockTick();
-    const t = setInterval(() => { setNow(fmt()); clockTick(); }, 1000);
+    const clockTimer = setInterval(() => { setNow(fmt()); clockTick(); }, 1000);
 
-    const fsSub = supabase.channel("fs_ch2").on("postgres_changes", { event:"*", schema:"public", table:"facility_state" }, (payload: any) => {
-      if (payload.new) { setState(prev => ({ ...prev, [payload.new.id]: { ...defaultState(), ...payload.new.data } })); setLastSync(nowTime()); }
-    }).subscribe();
-    const tkSub = supabase.channel("tk_ch2")
-      .on("postgres_changes", { event:"INSERT", schema:"public", table:"tickets" }, () => { loadTickets(); setLastSync(nowTime()); })
-      .on("postgres_changes", { event:"UPDATE", schema:"public", table:"tickets" }, () => { loadTickets(); setLastSync(nowTime()); })
-      .on("postgres_changes", { event:"DELETE", schema:"public", table:"tickets" }, () => { loadTickets(); setLastSync(nowTime()); })
-      .subscribe();
-    const stSub = supabase.channel("st_ch2").on("postgres_changes", { event:"*", schema:"public", table:"daily_stats" }, (payload: any) => {
-      if (payload.new) { setStats(payload.new.data); setLastSync(nowTime()); }
-    }).subscribe();
-    const logSub = supabase.channel("log_ch2").on("postgres_changes", { event:"*", schema:"public", table:"activity_log" }, () => { loadLog(); }).subscribe();
-    const dtSub = supabase.channel("dt_ch").on("postgres_changes", { event:"*", schema:"public", table:"downtime_log" }, async () => {
-      const { data } = await supabase.from("downtime_log").select("*").order("updated_at", { ascending: false }).limit(200);
-      if (data) setDowntimeRecords(data.map((r: any) => r.data));
-    }).subscribe();
+    // poll every 5 seconds for updates from other sessions
+    const pollTimer = setInterval(() => loadAll(false), 5000);
 
-    return () => { clearInterval(t); supabase.removeChannel(fsSub); supabase.removeChannel(tkSub); supabase.removeChannel(stSub); supabase.removeChannel(logSub); supabase.removeChannel(dtSub); };
-  }, [loadTickets, loadLog]);
+    return () => { clearInterval(clockTimer); clearInterval(pollTimer); };
+  }, [apiFetch]);
+
+  // ── write helpers ────────────────────────────────────────────────────────────
 
   const addLog = useCallback(async (entry: Omit<ActivityLog,"id"|"ts">) => {
     const log: ActivityLog = { ...entry, id: uid(), ts: nowFull() };
-    // Update local state immediately so feed shows instantly
     setActivityLog(prev => [log, ...prev].slice(0, 500));
-    await supabase.from("activity_log").upsert({ id: log.id, data: log, updated_at: new Date().toISOString() });
-  }, []);
+    await apiFetch("/api/activity-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: log.id, data: log }),
+    });
+  }, [apiFetch]);
 
   const saveFacility = useCallback(async (name: string, data: FacilityState, oldData: FacilityState, changedField: string) => {
-    await supabase.from("facility_state").upsert({ id: name, data, updated_at: new Date().toISOString() });
+    await apiFetch("/api/facilities", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: name, data }),
+    });
+
     const oldVal = String((oldData as any)[changedField] || "");
     const newVal = String((data as any)[changedField] || "");
     if (oldVal !== newVal) {
-      const type: ActivityLog["type"] = ["internet","bio","printing"].includes(changedField) ? "status" : changedField === "issue" ? "issue" : changedField.includes("andwidth") ? "bandwidth" : "notes";
-      const fl = fieldLabel(changedField);
-      await addLog({ facility: name, field: fl, oldVal: humanVal(oldVal)||"—", newVal: humanVal(newVal)||"—", type });
+      const type: ActivityLog["type"] = ["internet","bio","printing"].includes(changedField)
+        ? "status"
+        : changedField === "issue"
+        ? "issue"
+        : changedField.includes("andwidth")
+        ? "bandwidth"
+        : "notes";
+      await addLog({ facility: name, field: fieldLabel(changedField), oldVal: humanVal(oldVal)||"—", newVal: humanVal(newVal)||"—", type });
 
-      // DOWNTIME TRACKING
       if (["internet","bio","printing"].includes(changedField)) {
         const dtKey = `${name}__${changedField}`;
         const nowMs = Date.now();
-
-        // If going RED or AMBER — start downtime timer
         if ((newVal === "red" || newVal === "amber") && oldVal === "green") {
-          activeDowntime.current[dtKey] = { field: fl, startTs: nowFull(), startMs: nowMs };
+          activeDowntime.current[dtKey] = { field: fieldLabel(changedField), startTs: nowFull(), startMs: nowMs };
         }
-
-        // If recovering to GREEN — close downtime record
         if (newVal === "green" && (oldVal === "red" || oldVal === "amber")) {
           const active = activeDowntime.current[dtKey];
           if (active) {
-            const durationMin = Math.round((nowMs - active.startMs) / 60000);
             const record: DowntimeRecord = {
-              id: uid(),
-              facility: name,
-              field: fl,
-              startTs: active.startTs,
-              endTs: nowFull(),
-              durationMin,
+              id: uid(), facility: name, field: active.field,
+              startTs: active.startTs, endTs: nowFull(),
+              durationMin: Math.round((nowMs - active.startMs) / 60000),
               resolvedBy: "System",
             };
             setDowntimeRecords(prev => [record, ...prev]);
-            await supabase.from("downtime_log").upsert({ id: record.id, data: record, updated_at: new Date().toISOString() });
+            await apiFetch("/api/downtime", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: record.id, data: record }),
+            });
             delete activeDowntime.current[dtKey];
           }
         }
       }
     }
     setLastSync(nowTime());
-  }, [addLog]);
+  }, [addLog, apiFetch]);
 
   const updateField = useCallback((name:string, field:keyof FacilityState, val:string) => {
     setState(prev => {
       const oldData = prev[name] || defaultState();
       const updated = { ...oldData, [field]: val, ts: nowTime() };
-      // Always update UI immediately
       const newState = { ...prev, [name]: updated };
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      const isStatus = ["internet","bio","printing"].includes(field as string);
-      if (isStatus) {
-        // Save and log immediately for status fields
+      if (["internet","bio","printing"].includes(field as string)) {
         saveFacility(name, updated, oldData, field as string);
       } else {
         saveTimer.current = setTimeout(() => saveFacility(name, updated, oldData, field as string), 800);
@@ -377,39 +354,54 @@ export default function Dashboard() {
   const updateStat = async (field: keyof DailyStats, val: number) => {
     const updated = { ...stats, [field]: val };
     setStats(updated);
-    await supabase.from("daily_stats").upsert({ id:"today", data: updated, updated_at: new Date().toISOString() });
-  };
-  const resetStats = async () => {
-    const reset = { received:0, resolved:0, pending:0, inprogress:0 };
-    setStats(reset);
-    await supabase.from("daily_stats").upsert({ id:"today", data: reset, updated_at: new Date().toISOString() });
+    await apiFetch("/api/stats", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: updated }),
+    });
   };
 
   const addTicket = async () => {
     if (!newTicket.description) return;
-    const t: Ticket = { id:imatTicketId(), office:newTicket.office||"Unknown / Remote Office", medium:newTicket.medium||"—", description:newTicket.description, reportedBy:newTicket.reportedBy||"Unknown", assignedTo:newTicket.assignedTo, resolvedBy:"", status:"open", ts:nowFull(), resolvedTs:"" };
+    const t: Ticket = {
+      id: imatTicketId(), office: newTicket.office||"Unknown / Remote Office",
+      medium: newTicket.medium||"—", description: newTicket.description,
+      reportedBy: newTicket.reportedBy||"Unknown", assignedTo: newTicket.assignedTo,
+      resolvedBy: "", status: "open", ts: nowFull(), resolvedTs: "",
+    };
     setTickets(prev => [t, ...prev]);
-    await supabase.from("tickets").upsert({ id: t.id, data: t, updated_at: new Date().toISOString() });
+    await apiFetch("/api/tickets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: t.id, data: t }),
+    });
     await addLog({ facility: t.office, field:"Ticket Created", oldVal:"—", newVal:`${t.id}: ${t.description}`, type:"ticket" });
     setNewTicket({ office:"", description:"", reportedBy:"", assignedTo:"", medium:"" });
     setShowTicketForm(false);
   };
+
   const updateTicket = async (id:string, field:keyof Ticket, val:string) => {
     const ticket = tickets.find(t => t.id === id); if (!ticket) return;
     const updated = { ...ticket, [field]: val };
     if (field === "status" && val === "resolved") updated.resolvedTs = nowFull();
-    // Optimistic update - update UI immediately
     setTickets(prev => prev.map(t => t.id === id ? updated : t));
-    await supabase.from("tickets").upsert({ id, data: updated, updated_at: new Date().toISOString() });
+    await apiFetch("/api/tickets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, data: updated }),
+    });
     if (field === "status") await addLog({ facility: ticket.office, field:`Ticket ${id}`, oldVal: humanVal(ticket.status), newVal: humanVal(val), type:"ticket" });
     if (field === "assignedTo") await addLog({ facility: ticket.office, field:`Ticket ${id} Assigned`, oldVal: ticket.assignedTo||"—", newVal: val||"—", type:"ticket" });
   };
+
   const deleteTicket = async (id:string) => {
     const ticket = tickets.find(t => t.id === id);
     setTickets(prev => prev.filter(t => t.id !== id));
-    await supabase.from("tickets").delete().eq("id", id);
+    await apiFetch(`/api/tickets/${id}`, { method: "DELETE" });
     if (ticket) await addLog({ facility: ticket.office, field:"Ticket Deleted", oldVal: id, newVal:"—", type:"ticket" });
   };
+
+  // ── computed values ──────────────────────────────────────────────────────────
 
   const counts = { green:0, amber:0, red:0, na:0 };
   const iC = { green:0, amber:0, red:0 };
@@ -425,7 +417,6 @@ export default function Dashboard() {
   const tCounts = { open:0, inprogress:0, resolved:0, pending:0 };
   tickets.forEach(t => { tCounts[t.status]++; });
 
-  // Auto-sync stats with ticket counts — today only
   const todayStr = new Date().toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
   const todayTickets = tickets.filter(t => t.ts && t.ts.includes(todayStr));
   const todayCounts = { open:0, inprogress:0, resolved:0, pending:0 };
@@ -448,6 +439,8 @@ export default function Dashboard() {
     } catch { return true; }
   });
 
+  // ── PDF export ───────────────────────────────────────────────────────────────
+
   const exportPDF = () => {
     const d = new Date();
     const dateStr = d.toLocaleDateString("en-GB", { day:"2-digit", month:"long", year:"numeric" });
@@ -459,11 +452,9 @@ export default function Dashboard() {
     const TW = PW - PAD * 2;
     let pg = 0;
 
-    // ── COLOUR PALETTE ──────────────────────────────────
     const navy:   [number,number,number] = [10, 22, 40];
     const navyM:  [number,number,number] = [17, 34, 64];
     const gold:   [number,number,number] = [201,168,76];
-    const goldL:  [number,number,number] = [245,230,175];
     const white:  [number,number,number] = [255,255,255];
     const ink:    [number,number,number] = [26, 32, 44];
     const muted:  [number,number,number] = [113,128,150];
@@ -495,64 +486,46 @@ export default function Dashboard() {
       } catch { return true; }
     });
 
-    // ── HEADER ──────────────────────────────────────────
     const drawHeader = (title: string, sub: string) => {
       pg++;
-      // Full navy header
       doc.setFillColor(...navy); doc.rect(0, 0, PW, 28, "F");
-      // Gold top stripe
       doc.setFillColor(...gold); doc.rect(0, 0, PW, 2.5, "F");
-      // Gold bottom stripe
       doc.setFillColor(...gold); doc.rect(0, 28, PW, 1, "F");
-      // Left section — company
-      doc.setFont("helvetica","bold"); doc.setFontSize(17);
-      doc.setTextColor(...white);
+      doc.setFont("helvetica","bold"); doc.setFontSize(17); doc.setTextColor(...white);
       doc.text("IMARAT", PAD, 13);
-      doc.setFont("helvetica","normal"); doc.setFontSize(7);
-      doc.setTextColor(...gold);
+      doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(...gold);
       doc.text("GROUP OF COMPANIES", PAD, 18.5);
       doc.setTextColor(160,185,218); doc.setFontSize(6.5);
       doc.text("Information Technology Department  ·  it.support@imarat.com.pk", PAD, 23.5);
-      // Vertical gold rule
-      doc.setDrawColor(...gold); doc.setLineWidth(0.4);
-      doc.line(PAD+88, 5, PAD+88, 24);
-      // Centre — report title
-      doc.setFont("helvetica","bold"); doc.setFontSize(12.5);
-      doc.setTextColor(...white);
+      doc.setDrawColor(...gold); doc.setLineWidth(0.4); doc.line(PAD+88, 5, PAD+88, 24);
+      doc.setFont("helvetica","bold"); doc.setFontSize(12.5); doc.setTextColor(...white);
       doc.text(title, PAD+94, 13);
-      doc.setFont("helvetica","normal"); doc.setFontSize(7);
-      doc.setTextColor(160,185,218);
+      doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(160,185,218);
       doc.text(sub, PAD+94, 19.5);
-      // Right — date / page
-      doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
-      doc.setTextColor(...gold);
+      doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.setTextColor(...gold);
       doc.text(dateStr, PW-PAD, 11, { align:"right" });
-      doc.setFont("helvetica","normal"); doc.setFontSize(7);
-      doc.setTextColor(160,185,218);
+      doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(160,185,218);
       doc.text(timeStr, PW-PAD, 17, { align:"right" });
       doc.text(`Page ${pg}`, PW-PAD, 23, { align:"right" });
     };
 
-    // ── FOOTER ──────────────────────────────────────────
     const drawFooter = () => {
       doc.setFillColor(...navy); doc.rect(0, PH-8, PW, 8, "F");
       doc.setFillColor(...gold); doc.rect(0, PH-8, PW, 0.6, "F");
-      doc.setFont("helvetica","normal"); doc.setFontSize(6.5);
-      doc.setTextColor(100,125,165);
+      doc.setFont("helvetica","normal"); doc.setFontSize(6.5); doc.setTextColor(100,125,165);
       doc.text("IMARAT Group of Companies  ·  IT Facilities RAG Dashboard  ·  Confidential  ·  Internal Use Only", PAD, PH-3);
       doc.text(`${dateStr}  ·  ${timeStr}`, PW-PAD, PH-3, { align:"right" });
     };
 
-    // ── KPI CARDS ───────────────────────────────────────
     const drawKPIs = (y: number) => {
       const cards = [
-        { label:"TOTAL SITES",      val:String(FACILITIES.length), f:[228,235,252] as [number,number,number], t:navy,   accent:navyM },
-        { label:"OPERATIONAL",      val:String(counts.green),       f:gF,  t:gT,   accent:gT },
-        { label:"WARNING",          val:String(counts.amber),       f:aF,  t:aT,   accent:aT },
-        { label:"CRITICAL",         val:String(counts.red),         f:rF,  t:rT,   accent:rT },
-        { label:"QUERIES TODAY",    val:String(autoStats.received),     f:[215,230,255] as [number,number,number], t:[22,60,170] as [number,number,number], accent:[22,60,170] as [number,number,number] },
-        { label:"RESOLVED",         val:String(autoStats.resolved),     f:[185,245,205] as [number,number,number], t:[5,98,58] as [number,number,number],   accent:[5,98,58] as [number,number,number] },
-        { label:"PENDING",          val:String(autoStats.pending),      f:aF,  t:aT,   accent:aT },
+        { label:"TOTAL SITES",   val:String(FACILITIES.length), f:[228,235,252] as [number,number,number], t:navy,   accent:navyM },
+        { label:"OPERATIONAL",   val:String(counts.green),       f:gF,  t:gT,   accent:gT },
+        { label:"WARNING",       val:String(counts.amber),       f:aF,  t:aT,   accent:aT },
+        { label:"CRITICAL",      val:String(counts.red),         f:rF,  t:rT,   accent:rT },
+        { label:"QUERIES TODAY", val:String(autoStats.received), f:[215,230,255] as [number,number,number], t:[22,60,170] as [number,number,number], accent:[22,60,170] as [number,number,number] },
+        { label:"RESOLVED",      val:String(autoStats.resolved), f:[185,245,205] as [number,number,number], t:[5,98,58] as [number,number,number],   accent:[5,98,58] as [number,number,number] },
+        { label:"PENDING",       val:String(autoStats.pending),  f:aF,  t:aT,   accent:aT },
       ];
       const cw = TW / cards.length;
       cards.forEach((c, i) => {
@@ -567,7 +540,6 @@ export default function Dashboard() {
       });
     };
 
-    // ── STATUS LEGEND ───────────────────────────────────
     const drawLegend = (y: number) => {
       doc.setFillColor(...pale); doc.roundedRect(PAD, y, TW, 8.5, 1.5, 1.5, "F");
       doc.setDrawColor(...border); doc.setLineWidth(0.2); doc.roundedRect(PAD, y, TW, 8.5, 1.5, 1.5, "S");
@@ -589,76 +561,36 @@ export default function Dashboard() {
       });
     };
 
-    // ══════════════════════════════════════════════════════
-    // PAGE 1 — FACILITY STATUS TABLE
-    // ══════════════════════════════════════════════════════
+    // PAGE 1 — facility table
     drawHeader("IT Facilities RAG Dashboard", `Daily Monitoring Report  ·  All ${FACILITIES.length} Sites  ·  ${dateStr}`);
-    drawKPIs(32);
-    drawLegend(55);
-    drawFooter();
+    drawKPIs(32); drawLegend(55); drawFooter();
 
     const facRows = FACILITIES.map((f, i) => {
       const s = state[f.name] ?? defaultState();
       const ov = calcOverall(s);
       const bw = bwCompare(s.bandwidth, s.requiredBandwidth);
       return {
-        d: [String(i+1), f.name, f.cat,
-            iL[s.internet], bL[s.bio], pL[s.printing], ragLbl(ov),
-            s.bandwidth ? s.bandwidth+" Mbps" : "—",
-            s.requiredBandwidth ? s.requiredBandwidth+" Mbps" : "—",
-            bw ? bw.label : "—",
-            s.issue||"—", s.notes||"—", s.ts],
+        d: [String(i+1), f.name, f.cat, iL[s.internet], bL[s.bio], pL[s.printing], ragLbl(ov),
+            s.bandwidth ? s.bandwidth+" Mbps" : "—", s.requiredBandwidth ? s.requiredBandwidth+" Mbps" : "—",
+            bw ? bw.label : "—", s.issue||"—", s.notes||"—", s.ts],
         internet:s.internet, bio:s.bio, printing:s.printing, overall:ov, bw, cat:f.cat,
       };
     });
 
     autoTable(doc, {
-      startY: 67,
-      showHead: "everyPage",
-      tableWidth: TW,
-      margin: { left:PAD, right:PAD },
+      startY: 67, showHead: "everyPage", tableWidth: TW, margin: { left:PAD, right:PAD },
       head: [["#","Facility Name","Cat","Internet","Biometric","Printing","Overall","Cur BW","Req BW","BW%","Issue / Outstanding","Notes","Updated"]],
       body: facRows.map(r => r.d),
-      styles: {
-        fontSize: 6.8,
-        cellPadding: { top:2.8, bottom:2.8, left:2.5, right:2.5 },
-        font: "helvetica",
-        lineColor: border,
-        lineWidth: 0.22,
-        textColor: ink,
-        valign: "middle",
-        overflow: "linebreak",
-        minCellHeight: 7.5,
-      },
-      headStyles: {
-        fillColor: navy,
-        textColor: white,
-        fontStyle: "bold",
-        fontSize: 6.8,
-        halign: "center",
-        valign: "middle",
-        cellPadding: { top:3.5, bottom:3.5, left:2.5, right:2.5 },
-        lineColor: gold,
-        lineWidth: 0.5,
-        minCellHeight: 9,
-      },
-      alternateRowStyles: { fillColor: [249,251,253] },
-      pageBreak: "auto",
-      rowPageBreak: "avoid",
+      styles: { fontSize:6.8, cellPadding:{top:2.8,bottom:2.8,left:2.5,right:2.5}, font:"helvetica", lineColor:border, lineWidth:0.22, textColor:ink, valign:"middle", overflow:"linebreak", minCellHeight:7.5 },
+      headStyles: { fillColor:navy, textColor:white, fontStyle:"bold", fontSize:6.8, halign:"center", valign:"middle", cellPadding:{top:3.5,bottom:3.5,left:2.5,right:2.5}, lineColor:gold, lineWidth:0.5, minCellHeight:9 },
+      alternateRowStyles: { fillColor:[249,251,253] },
+      pageBreak: "auto", rowPageBreak: "avoid",
       columnStyles: {
-        0:  { cellWidth:5,  halign:"center", textColor:muted, fontStyle:"bold" },
-        1:  { cellWidth:30, fontStyle:"bold", textColor:navy },
-        2:  { cellWidth:12, halign:"center" },
-        3:  { cellWidth:19, halign:"center" },
-        4:  { cellWidth:19, halign:"center" },
-        5:  { cellWidth:15, halign:"center" },
-        6:  { cellWidth:18, halign:"center", fontStyle:"bold" },
-        7:  { cellWidth:13, halign:"center" },
-        8:  { cellWidth:13, halign:"center" },
-        9:  { cellWidth:14, halign:"center", fontStyle:"bold" },
-        10: { cellWidth:44 },
-        11: { cellWidth:20 },
-        12: { cellWidth:15, halign:"center", textColor:muted },
+        0:{cellWidth:5,halign:"center",textColor:muted,fontStyle:"bold"}, 1:{cellWidth:30,fontStyle:"bold",textColor:navy},
+        2:{cellWidth:12,halign:"center"}, 3:{cellWidth:19,halign:"center"}, 4:{cellWidth:19,halign:"center"},
+        5:{cellWidth:15,halign:"center"}, 6:{cellWidth:18,halign:"center",fontStyle:"bold"},
+        7:{cellWidth:13,halign:"center"}, 8:{cellWidth:13,halign:"center"}, 9:{cellWidth:14,halign:"center",fontStyle:"bold"},
+        10:{cellWidth:44}, 11:{cellWidth:20}, 12:{cellWidth:15,halign:"center",textColor:muted},
       },
       didParseCell: (data:any) => {
         if (data.section !== "body") return;
@@ -680,39 +612,27 @@ export default function Dashboard() {
         if (data.column.index===10 && row.d[10]!=="—") { data.cell.styles.textColor=rT; }
       },
       didDrawPage: (data:any) => {
-        try {
-          drawFooter();
-          if (data.pageNumber > 1) {
-            drawHeader("IT Facilities RAG Dashboard","Daily Monitoring Report — Continued");
-            drawLegend(32);
-          }
-        } catch(e) {}
+        try { drawFooter(); if (data.pageNumber > 1) { drawHeader("IT Facilities RAG Dashboard","Daily Monitoring Report — Continued"); drawLegend(32); } } catch {}
       },
     });
 
-    // ══════════════════════════════════════════════════════
-    // PAGE 2 — RAG STATUS CHANGE LOG
-    // ══════════════════════════════════════════════════════
+    // PAGE 2 — status change log
     if (statusLog.length > 0) {
       doc.addPage();
-      const rl = logFrom||logTo
-        ? `${logFrom?logFrom.replace("T"," "):"Start"}  →  ${logTo?logTo.replace("T"," "):"Now"}`
-        : "All Time";
+      const rl = logFrom||logTo ? `${logFrom?logFrom.replace("T"," "):"Start"}  →  ${logTo?logTo.replace("T"," "):"Now"}` : "All Time";
       drawHeader("RAG Status Change Log", `Internet · Biometric · Printing  ·  ${rl}`);
       drawFooter();
-
-      // Summary strip
       const totalRed   = statusLog.filter(l=>l.newVal.includes("Down")||l.newVal.includes("Critical")).length;
       const totalAmber = statusLog.filter(l=>l.newVal.includes("Slow")||l.newVal.includes("Degraded")).length;
       const totalGreen = statusLog.filter(l=>l.newVal.includes("Working")||l.newVal.includes("OK")||l.newVal.includes("Sync")).length;
       const sumCards = [
-        { label:"Total Changes",  val:String(statusLog.length),  f:[228,235,252] as [number,number,number], t:navy },
-        { label:"Internet",       val:String(statusLog.filter(l=>l.field==="Internet").length),  f:[215,230,255] as [number,number,number], t:[22,60,170] as [number,number,number] },
-        { label:"Biometric",      val:String(statusLog.filter(l=>l.field==="Biometric").length), f:[235,225,255] as [number,number,number], t:[100,40,200] as [number,number,number] },
-        { label:"Printing",       val:String(statusLog.filter(l=>l.field==="Printing").length),  f:[215,245,225] as [number,number,number], t:[10,100,50] as [number,number,number] },
-        { label:"Went Critical",  val:String(totalRed),   f:rF, t:rT },
-        { label:"Went Degraded",  val:String(totalAmber), f:aF, t:aT },
-        { label:"Recovered",      val:String(totalGreen), f:gF, t:gT },
+        { label:"Total Changes", val:String(statusLog.length),                                   f:[228,235,252] as [number,number,number], t:navy },
+        { label:"Internet",      val:String(statusLog.filter(l=>l.field==="Internet").length),   f:[215,230,255] as [number,number,number], t:[22,60,170] as [number,number,number] },
+        { label:"Biometric",     val:String(statusLog.filter(l=>l.field==="Biometric").length),  f:[235,225,255] as [number,number,number], t:[100,40,200] as [number,number,number] },
+        { label:"Printing",      val:String(statusLog.filter(l=>l.field==="Printing").length),   f:[215,245,225] as [number,number,number], t:[10,100,50] as [number,number,number] },
+        { label:"Went Critical", val:String(totalRed),   f:rF, t:rT },
+        { label:"Went Degraded", val:String(totalAmber), f:aF, t:aT },
+        { label:"Recovered",     val:String(totalGreen), f:gF, t:gT },
       ];
       const scw = TW / sumCards.length;
       sumCards.forEach((c, i) => {
@@ -723,26 +643,15 @@ export default function Dashboard() {
         doc.setFont("helvetica","normal"); doc.setFontSize(5.2);
         doc.text(c.label, x+scw/2, 46, { align:"center" });
       });
-
       const lRows = statusLog.map(l => [l.ts, l.facility, l.field, l.oldVal, l.newVal]);
       autoTable(doc, {
-        startY: 52,
-        showHead: "everyPage",
-        tableWidth: TW,
-        margin: { left:PAD, right:PAD },
-        head: [["Timestamp", "Facility Name", "Field", "Previous Status", "New Status"]],
+        startY: 52, showHead: "everyPage", tableWidth: TW, margin: { left:PAD, right:PAD },
+        head: [["Timestamp","Facility Name","Field","Previous Status","New Status"]],
         body: lRows,
         styles: { fontSize:7.5, cellPadding:{top:3,bottom:3,left:3,right:3}, font:"helvetica", lineColor:border, lineWidth:0.22, textColor:ink, overflow:"linebreak", minCellHeight:8.5 },
         headStyles: { fillColor:navy, textColor:white, fontStyle:"bold", fontSize:7.5, halign:"center", cellPadding:{top:4,bottom:4,left:3,right:3}, lineColor:gold, lineWidth:0.5 },
-        alternateRowStyles: { fillColor:[249,251,253] },
-        rowPageBreak: "avoid",
-        columnStyles: {
-          0: { cellWidth:40 },
-          1: { cellWidth:55, fontStyle:"bold", textColor:navy },
-          2: { cellWidth:22, halign:"center", fontStyle:"bold" },
-          3: { cellWidth:76 },
-          4: { cellWidth:76, fontStyle:"bold" },
-        },
+        alternateRowStyles: { fillColor:[249,251,253] }, rowPageBreak: "avoid",
+        columnStyles: { 0:{cellWidth:40}, 1:{cellWidth:55,fontStyle:"bold",textColor:navy}, 2:{cellWidth:22,halign:"center",fontStyle:"bold"}, 3:{cellWidth:76}, 4:{cellWidth:76,fontStyle:"bold"} },
         didParseCell: (data:any) => {
           if (data.section !== "body") return;
           const row = lRows[data.row.index];
@@ -762,27 +671,21 @@ export default function Dashboard() {
             else if (isG) { data.cell.styles.fillColor=gF; data.cell.styles.textColor=gT; data.cell.styles.fontStyle="bold"; }
           }
         },
-        didDrawPage: (data:any) => {
-          try { drawFooter(); if(data.pageNumber>1) drawHeader("RAG Status Change Log",`${rl} — Continued`); } catch(e) {}
-        },
+        didDrawPage: (data:any) => { try { drawFooter(); if(data.pageNumber>1) drawHeader("RAG Status Change Log",`${rl} — Continued`); } catch {} },
       });
     }
 
-    // ══════════════════════════════════════════════════════
-    // PAGE 3 — IT SUPPORT TICKETS
-    // ══════════════════════════════════════════════════════
+    // PAGE 3 — tickets
     if (tickets.length > 0) {
       doc.addPage();
       drawHeader("IT Support Tickets","Helpdesk Issue Tracking  ·  All Reported Incidents");
       drawFooter();
-
-      // Ticket summary strip
       const tCards = [
-        { label:"TOTAL",       val:String(tickets.length),          f:[228,235,252] as [number,number,number], t:navy },
-        { label:"OPEN",        val:String(tCounts.open),            f:rF, t:rT },
-        { label:"IN PROGRESS", val:String(tCounts.inprogress),      f:aF, t:aT },
-        { label:"PENDING",     val:String(tCounts.pending),         f:[215,230,255] as [number,number,number], t:[22,60,170] as [number,number,number] },
-        { label:"RESOLVED",    val:String(tCounts.resolved),        f:gF, t:gT },
+        { label:"TOTAL",       val:String(tickets.length),     f:[228,235,252] as [number,number,number], t:navy },
+        { label:"OPEN",        val:String(tCounts.open),       f:rF, t:rT },
+        { label:"IN PROGRESS", val:String(tCounts.inprogress), f:aF, t:aT },
+        { label:"PENDING",     val:String(tCounts.pending),    f:[215,230,255] as [number,number,number], t:[22,60,170] as [number,number,number] },
+        { label:"RESOLVED",    val:String(tCounts.resolved),   f:gF, t:gT },
       ];
       const tcw = TW / tCards.length;
       tCards.forEach((c, i) => {
@@ -793,37 +696,19 @@ export default function Dashboard() {
         doc.setFont("helvetica","normal"); doc.setFontSize(5.5);
         doc.text(c.label, x+tcw/2, 46, { align:"center" });
       });
-
       const tRows = tickets.map(t => [
-        t.id, t.office, t.medium||"—", t.description,
-        t.reportedBy, t.assignedTo||"Unassigned",
+        t.id, t.office, t.medium||"—", t.description, t.reportedBy, t.assignedTo||"Unassigned",
         t.status==="open"?"Open":t.status==="inprogress"?"In Progress":t.status==="pending"?"Pending":"Resolved",
         t.resolvedBy||"—", t.ts, t.resolvedTs||"—",
       ]);
-
       autoTable(doc, {
-        startY: 52,
-        showHead: "everyPage",
-        tableWidth: TW,
-        margin: { left:PAD, right:PAD },
+        startY: 52, showHead: "everyPage", tableWidth: TW, margin: { left:PAD, right:PAD },
         head: [["Ticket ID","Office / Location","Via","Issue Description","Reported By","Assigned To","Status","Resolved By","Opened At","Closed At"]],
         body: tRows,
         styles: { fontSize:7, cellPadding:{top:2.8,bottom:2.8,left:2.5,right:2.5}, font:"helvetica", lineColor:border, lineWidth:0.22, textColor:ink, overflow:"linebreak", minCellHeight:8 },
         headStyles: { fillColor:navy, textColor:white, fontStyle:"bold", fontSize:7, halign:"center", cellPadding:{top:3.5,bottom:3.5,left:2.5,right:2.5}, lineColor:gold, lineWidth:0.5 },
-        alternateRowStyles: { fillColor:[249,251,253] },
-        rowPageBreak: "avoid",
-        columnStyles: {
-          0: { cellWidth:22, fontStyle:"bold", textColor:navy },
-          1: { cellWidth:26 },
-          2: { cellWidth:15, halign:"center" },
-          3: { cellWidth:52 },
-          4: { cellWidth:20 },
-          5: { cellWidth:22 },
-          6: { cellWidth:20, halign:"center", fontStyle:"bold" },
-          7: { cellWidth:18 },
-          8: { cellWidth:28, halign:"center" },
-          9: { cellWidth:28, halign:"center" },
-        },
+        alternateRowStyles: { fillColor:[249,251,253] }, rowPageBreak: "avoid",
+        columnStyles: { 0:{cellWidth:22,fontStyle:"bold",textColor:navy}, 1:{cellWidth:26}, 2:{cellWidth:15,halign:"center"}, 3:{cellWidth:52}, 4:{cellWidth:20}, 5:{cellWidth:22}, 6:{cellWidth:20,halign:"center",fontStyle:"bold"}, 7:{cellWidth:18}, 8:{cellWidth:28,halign:"center"}, 9:{cellWidth:28,halign:"center"} },
         didParseCell: (data:any) => {
           if (data.section !== "body") return;
           if (data.column.index === 6) {
@@ -838,14 +723,15 @@ export default function Dashboard() {
             if (mc[tRows[data.row.index][2]]) { data.cell.styles.textColor=mc[tRows[data.row.index][2]]; data.cell.styles.fontStyle="bold"; }
           }
         },
-        didDrawPage: (data:any) => {
-          try { drawFooter(); if(data.pageNumber>1) drawHeader("IT Support Tickets","Helpdesk Tracking — Continued"); } catch(e) {}
-        },
+        didDrawPage: (data:any) => { try { drawFooter(); if(data.pageNumber>1) drawHeader("IT Support Tickets","Helpdesk Tracking — Continued"); } catch {} },
       });
     }
 
     doc.save(`Imarat_RAG_${d.toISOString().slice(0,10)}.pdf`);
   };
+
+  // ── loading screen ───────────────────────────────────────────────────────────
+
   if (!mounted) return (
     <div style={{ minHeight:"100vh", background:"#0A1628", display:"flex", alignItems:"center", justifyContent:"center" }}>
       <div style={{ textAlign:"center" }}>
@@ -858,47 +744,36 @@ export default function Dashboard() {
             <div key={i} style={{ width:8, height:8, borderRadius:"50%", background:"#C9A84C", opacity:0.3+i*0.2, animation:`bounce 1.2s ease-in-out ${i*0.15}s infinite` }} />
           ))}
         </div>
-        <div style={{ color:"#4A6FA5", fontSize:13 }}>Connecting to live data...</div>
+        <div style={{ color:"#4A6FA5", fontSize:13 }}>Loading data...</div>
         <style>{`@keyframes bounce{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}`}</style>
       </div>
     </div>
   );
 
-  const fOpts: FilterMode[] = ["all","red","amber","green"];
-  const fLabels: Record<FilterMode,string> = { all:"All Facilities", red:"Critical Only", amber:"Warning Only", green:"Operational Only" };
+  // ── styles ───────────────────────────────────────────────────────────────────
 
   const S = {
-    bg: "#F0F4F8",
-    card: "#FFFFFF",
-    navy: "#0A1628",
-    navyLight: "#112240",
-    gold: "#C9A84C",
-    goldLight: "#F5E6C0",
-    border: "#E2E8F0",
-    text: "#1A202C",
-    textMuted: "#718096",
-    textLight: "#A0AEC0",
+    bg: "#F0F4F8", card: "#FFFFFF", navy: "#0A1628", navyLight: "#112240", gold: "#C9A84C",
+    border: "#E2E8F0", text: "#1A202C", textMuted: "#718096", textLight: "#A0AEC0",
     green: "#1a6b35", greenBg: "#edf7f0", greenBorder: "#a8d5b5",
     amber: "#7a5200", amberBg: "#fef8ec", amberBorder: "#f5d48a",
     red: "#8b1c1c", redBg: "#fdf0f0", redBorder: "#f5b8b8",
   };
-
   const inputBase: React.CSSProperties = {
     padding:"8px 12px", border:`1px solid ${S.border}`, borderRadius:8,
     fontSize:13, color:S.text, background:"#fff", outline:"none",
     transition:"border-color 0.2s", width:"100%", boxSizing:"border-box" as const,
   };
-
   const btnPrimary: React.CSSProperties = {
     padding:"8px 18px", background:S.navy, border:"none", borderRadius:8,
-    fontSize:12, color:"#fff", cursor:"pointer", fontWeight:600,
-    transition:"background 0.2s", letterSpacing:.3,
+    fontSize:12, color:"#fff", cursor:"pointer", fontWeight:600, letterSpacing:.3,
   };
-
   const card: React.CSSProperties = {
     background:S.card, borderRadius:12, border:`1px solid ${S.border}`,
-    boxShadow:"0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06)",
+    boxShadow:"0 1px 3px rgba(0,0,0,0.04)",
   };
+
+  // ── render ───────────────────────────────────────────────────────────────────
 
   return (
     <div style={{ minHeight:"100vh", background:S.bg, fontFamily:"'Inter','Segoe UI',Arial,sans-serif" }}>
@@ -914,7 +789,7 @@ export default function Dashboard() {
         @keyframes fadein { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
       `}</style>
 
-      {/* ── TOP NAV ─────────────────────────────────────── */}
+      {/* ── TOP NAV ── */}
       <nav style={{ background:S.navy, height:60, display:"flex", alignItems:"center", padding:"0 28px", position:"sticky" as const, top:0, zIndex:100, boxShadow:"0 2px 8px rgba(0,0,0,0.25)" }}>
         <div style={{ display:"flex", alignItems:"center", gap:14 }}>
           <div style={{ display:"flex", flexDirection:"column" as const }}>
@@ -927,7 +802,6 @@ export default function Dashboard() {
             <span style={{ fontSize:11, color:"#718096" }}>{syncing ? "Syncing..." : `Live · ${clock}`}</span>
           </div>
         </div>
-
         <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:8 }}>
           <span style={{ fontSize:11, color:"#4A6FA5", marginRight:4 }}>Export PDF range:</span>
           <input type="datetime-local" value={logFrom} onChange={e=>setLogFrom(e.target.value)}
@@ -947,7 +821,7 @@ export default function Dashboard() {
 
       <div style={{ padding:"24px 28px", maxWidth:1800, margin:"0 auto" }}>
 
-        {/* ── LIVE STATUS FEED ────────────────────────────── */}
+        {/* ── LIVE STATUS FEED ── */}
         <div style={{ ...card, marginBottom:20, overflow:"hidden", animation:"fadein 0.3s ease" }}>
           <div style={{ background:S.navyLight, padding:"12px 20px", display:"flex", alignItems:"center", gap:10 }}>
             <div style={{ width:8, height:8, borderRadius:"50%", background:"#22c55e", animation:"pulse2 2s infinite" }} />
@@ -955,6 +829,7 @@ export default function Dashboard() {
             <span style={{ background:"rgba(255,255,255,0.08)", color:"#A0AEC0", fontSize:11, padding:"2px 8px", borderRadius:20, marginLeft:4 }}>
               {activityLog.filter(l=>l.type==="status").length} changes
             </span>
+            <span style={{ marginLeft:"auto", color:"#4A6FA5", fontSize:10 }}>auto-refreshes every 5s · last: {lastSync}</span>
           </div>
           {(() => {
             const statusOnly = activityLog.filter(l => l.type === "status");
@@ -992,31 +867,31 @@ export default function Dashboard() {
           })()}
         </div>
 
-        {/* ── KPI ROW ─────────────────────────────────────── */}
+        {/* ── KPI ROW ── */}
         <div style={{ display:"grid", gridTemplateColumns:"repeat(8,1fr)", gap:14, marginBottom:20 }}>
           {[
-            { label:"Total Sites",      value:FACILITIES.length, color:S.navy,  bg:"#EEF2FF", accent:"#3b5bdb" },
-            { label:"Operational",      value:counts.green,      color:S.green, bg:S.greenBg, accent:S.green },
-            { label:"Warning",          value:counts.amber,      color:S.amber, bg:S.amberBg, accent:S.amber },
-            { label:"Critical",         value:counts.red,        color:S.red,   bg:S.redBg,   accent:S.red },
-            { label:"Queries Today",    value:autoStats.received,    color:"#1a4a8a", bg:"#EBF4FF", accent:"#2563eb" },
-            { label:"Resolved",         value:autoStats.resolved,    color:S.green, bg:S.greenBg, accent:S.green },
-            { label:"Pending",          value:autoStats.pending,     color:S.amber, bg:S.amberBg, accent:S.amber },
-            { label:"In Progress",      value:autoStats.inprogress,  color:"#6b21a8", bg:"#F5F3FF", accent:"#7c3aed" },
+            { label:"Total Sites",   value:FACILITIES.length,     color:S.navy,    bg:"#EEF2FF", accent:"#3b5bdb" },
+            { label:"Operational",   value:counts.green,           color:S.green,   bg:S.greenBg, accent:S.green },
+            { label:"Warning",       value:counts.amber,           color:S.amber,   bg:S.amberBg, accent:S.amber },
+            { label:"Critical",      value:counts.red,             color:S.red,     bg:S.redBg,   accent:S.red },
+            { label:"Queries Today", value:autoStats.received,     color:"#1a4a8a", bg:"#EBF4FF", accent:"#2563eb" },
+            { label:"Resolved",      value:autoStats.resolved,     color:S.green,   bg:S.greenBg, accent:S.green },
+            { label:"Pending",       value:autoStats.pending,      color:S.amber,   bg:S.amberBg, accent:S.amber },
+            { label:"In Progress",   value:autoStats.inprogress,   color:"#6b21a8", bg:"#F5F3FF", accent:"#7c3aed" },
           ].map(c => (
-            <div key={c.label} style={{ ...card, padding:"16px 18px", background:c.bg, borderLeft:`3px solid ${c.accent}`, position:"relative" as const }}>
+            <div key={c.label} style={{ ...card, padding:"16px 18px", background:c.bg, borderLeft:`3px solid ${c.accent}` }}>
               <div style={{ fontSize:10, color:S.textMuted, fontWeight:600, letterSpacing:.5, textTransform:"uppercase" as const, marginBottom:6 }}>{c.label}</div>
               <div style={{ fontSize:30, fontWeight:800, color:c.color, lineHeight:1 }}>{c.value}</div>
             </div>
           ))}
         </div>
 
-        {/* ── TODAY QUERY CONTROLS ────────────────────────── */}
-                <div style={{ ...card, padding:"18px 22px", marginBottom:20 }}>
+        {/* ── TODAY QUERY SUMMARY ── */}
+        <div style={{ ...card, padding:"18px 22px", marginBottom:20 }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
             <div>
               <div style={{ fontSize:14, fontWeight:700, color:S.text }}>{"Today's Query Summary"}</div>
-              <div style={{ fontSize:11, color:S.textMuted, marginTop:2 }}>Auto-calculated from tickets — updates instantly when ticket status changes</div>
+              <div style={{ fontSize:11, color:S.textMuted, marginTop:2 }}>Auto-calculated from tickets</div>
             </div>
             <span style={{ background:"#EEF2FF", border:"1px solid #C7D2FE", color:"#3730a3", padding:"4px 12px", borderRadius:20, fontSize:11, fontWeight:600 }}>Live from Tickets</span>
           </div>
@@ -1036,13 +911,13 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ── STATUS SUMMARY PANELS ───────────────────────── */}
+        {/* ── STATUS SUMMARY PANELS ── */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:14, marginBottom:20 }}>
           {[
-            { title:"Internet", icon:"🌐", rows:[{l:`${iC.green} Working`,s:"green"as RAGStatus},{l:`${iC.amber} Slow`,s:"amber"as RAGStatus},{l:`${iC.red} Down`,s:"red"as RAGStatus}] },
-            { title:"Biometric", icon:"👆", rows:[{l:`${bC.green} Syncing`,s:"green"as RAGStatus},{l:`${bC.amber} Delayed`,s:"amber"as RAGStatus},{l:`${bC.red} Offline`,s:"red"as RAGStatus}] },
-            { title:"Printing",  icon:"🖨️", rows:[{l:`${pC.green} Working`,s:"green"as RAGStatus},{l:`${pC.amber} Partial`,s:"amber"as RAGStatus},{l:`${pC.red} Down`,s:"red"as RAGStatus}] },
-            { title:"Overall RAG", icon:"📊", rows:[{l:"Operational",s:"green"as RAGStatus,c:counts.green},{l:"Degraded",s:"amber"as RAGStatus,c:counts.amber},{l:"Critical",s:"red"as RAGStatus,c:counts.red}] },
+            { title:"Internet",   icon:"🌐", rows:[{l:`${iC.green} Working`,s:"green"as RAGStatus},{l:`${iC.amber} Slow`,s:"amber"as RAGStatus},{l:`${iC.red} Down`,s:"red"as RAGStatus}] },
+            { title:"Biometric",  icon:"👆", rows:[{l:`${bC.green} Syncing`,s:"green"as RAGStatus},{l:`${bC.amber} Delayed`,s:"amber"as RAGStatus},{l:`${bC.red} Offline`,s:"red"as RAGStatus}] },
+            { title:"Printing",   icon:"🖨️", rows:[{l:`${pC.green} Working`,s:"green"as RAGStatus},{l:`${pC.amber} Partial`,s:"amber"as RAGStatus},{l:`${pC.red} Down`,s:"red"as RAGStatus}] },
+            { title:"Overall RAG",icon:"📊", rows:[{l:"Operational",s:"green"as RAGStatus,c:counts.green},{l:"Degraded",s:"amber"as RAGStatus,c:counts.amber},{l:"Critical",s:"red"as RAGStatus,c:counts.red}] },
           ].map(panel => (
             <div key={panel.title} style={{ ...card, padding:"16px 18px" }}>
               <div style={{ fontSize:13, fontWeight:700, color:S.text, marginBottom:12, display:"flex", alignItems:"center", gap:8 }}>
@@ -1072,7 +947,7 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* ── FACILITY TABLE ──────────────────────────────── */}
+        {/* ── FACILITY TABLE ── */}
         <div style={{ ...card, marginBottom:20, overflow:"hidden" }}>
           <div style={{ padding:"14px 20px", borderBottom:`1px solid ${S.border}`, display:"flex", alignItems:"center", gap:12 }}>
             <div>
@@ -1092,7 +967,7 @@ export default function Dashboard() {
                 const c2 = colors[f];
                 return (
                   <button key={f} onClick={()=>setFilter(f)}
-                    style={{ padding:"5px 12px", background:c2.bg, border:`1px solid ${c2.border}`, borderRadius:20, fontSize:11, color:c2.text, cursor:"pointer", fontWeight:active?700:400, transition:"all 0.15s" }}>
+                    style={{ padding:"5px 12px", background:c2.bg, border:`1px solid ${c2.border}`, borderRadius:20, fontSize:11, color:c2.text, cursor:"pointer", fontWeight:active?700:400 }}>
                     {labels[f]}
                   </button>
                 );
@@ -1115,7 +990,7 @@ export default function Dashboard() {
                   const bw=bwCompare(s.bandwidth,s.requiredBandwidth);
                   const ovR = RAG[ov];
                   return (
-                    <tr key={f.name} style={{ borderBottom:`1px solid ${S.border}`, transition:"background 0.1s" }}>
+                    <tr key={f.name} style={{ borderBottom:`1px solid ${S.border}` }}>
                       <td style={{ padding:"9px 12px", color:S.textLight, fontSize:11, fontWeight:600 }}>{i+1}</td>
                       <td style={{ padding:"9px 12px", fontWeight:700, color:S.navy, whiteSpace:"nowrap" }}>{f.name}</td>
                       <td style={{ padding:"9px 12px" }}>
@@ -1181,7 +1056,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ── DOWNTIME TRACKER ────────────────────────────── */}
+        {/* ── DOWNTIME TRACKER ── */}
         <div style={{ ...card, marginBottom:20, overflow:"hidden" }}>
           <div style={{ padding:"14px 20px", borderBottom:`1px solid ${S.border}`, display:"flex", alignItems:"center", gap:12 }}>
             <div>
@@ -1202,7 +1077,6 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
-
           {Object.entries(activeDowntime.current).length > 0 && (
             <div style={{ padding:"12px 20px", background:"#FEF2F2", borderBottom:`1px solid #FECACA` }}>
               <div style={{ fontSize:11, fontWeight:700, color:S.red, marginBottom:8, textTransform:"uppercase" as const, letterSpacing:.5 }}>Currently Active Downtimes</div>
@@ -1225,7 +1099,6 @@ export default function Dashboard() {
               </div>
             </div>
           )}
-
           {showDowntime && (
             downtimeRecords.length === 0
               ? <div style={{ padding:"28px", textAlign:"center", color:S.textLight, fontSize:13, fontStyle:"italic" }}>No downtime recorded yet.</div>
@@ -1240,7 +1113,7 @@ export default function Dashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {downtimeRecords.map((r,i) => {
+                      {downtimeRecords.map((r) => {
                         const hrs=Math.floor(r.durationMin/60), mins=r.durationMin%60;
                         const dur=hrs>0?`${hrs}h ${mins}m`:`${mins}m`;
                         const sev=r.durationMin>=60?{bg:S.redBg,text:S.red,label:"LONG"}:r.durationMin>=15?{bg:S.amberBg,text:S.amber,label:"MED"}:{bg:S.greenBg,text:S.green,label:"SHORT"};
@@ -1266,7 +1139,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* ── TICKETS ─────────────────────────────────────── */}
+        {/* ── TICKETS ── */}
         <div style={{ ...card, overflow:"hidden" }}>
           <div style={{ padding:"14px 20px", borderBottom:`1px solid ${S.border}`, display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" as const }}>
             <div>
@@ -1275,10 +1148,10 @@ export default function Dashboard() {
             </div>
             <div style={{ display:"flex", gap:8, marginLeft:"auto", alignItems:"center", flexWrap:"wrap" as const }}>
               {[
-                { label:`Open`,        count:tCounts.open,        bg:S.redBg,   text:S.red,   border:S.redBorder },
-                { label:`In Progress`, count:tCounts.inprogress,  bg:S.amberBg, text:S.amber, border:S.amberBorder },
-                { label:`Pending`,     count:tCounts.pending,     bg:"#EEF2FF", text:"#3730a3",border:"#C7D2FE" },
-                { label:`Resolved`,    count:tCounts.resolved,    bg:S.greenBg, text:S.green, border:S.greenBorder },
+                { label:"Open",        count:tCounts.open,       bg:S.redBg,   text:S.red,    border:S.redBorder },
+                { label:"In Progress", count:tCounts.inprogress, bg:S.amberBg, text:S.amber,  border:S.amberBorder },
+                { label:"Pending",     count:tCounts.pending,    bg:"#EEF2FF", text:"#3730a3", border:"#C7D2FE" },
+                { label:"Resolved",    count:tCounts.resolved,   bg:S.greenBg, text:S.green,  border:S.greenBorder },
               ].map(b=>(
                 <div key={b.label} style={{ background:b.bg, border:`1px solid ${b.border}`, color:b.text, padding:"5px 14px", borderRadius:20, fontSize:12, fontWeight:600, display:"flex", alignItems:"center", gap:6 }}>
                   <span style={{ fontSize:15, fontWeight:800 }}>{b.count}</span>
@@ -1344,10 +1217,10 @@ export default function Dashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {tickets.map((t,i)=>{
+                    {tickets.map((t)=>{
                       const ts2 = TICKET_STATUS[t.status];
                       return (
-                        <tr key={t.id} style={{ borderBottom:`1px solid ${S.border}`, transition:"background 0.1s" }}>
+                        <tr key={t.id} style={{ borderBottom:`1px solid ${S.border}` }}>
                           <td style={{ padding:"9px 12px", fontFamily:"monospace", fontSize:11, fontWeight:700, color:S.navy }}>{t.id}</td>
                           <td style={{ padding:"9px 12px", fontWeight:600, color:S.text, whiteSpace:"nowrap" }}>{t.office}</td>
                           <td style={{ padding:"9px 12px" }}>
