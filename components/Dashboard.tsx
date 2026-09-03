@@ -446,385 +446,354 @@ export default function Dashboard() {
 
   // ── PDF export — single page ────────────────────────────────────────────────
 
-  const exportPDF = () => {
-    const d = new Date();
-    const dateStr  = d.toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
-    const timeStr  = d.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
-    const refNo = `IGC-IT-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}-${String(d.getHours()).padStart(2,"0")}${String(d.getMinutes()).padStart(2,"0")}`;
+  const exportPDF = async () => {
+    const d       = new Date();
+    const dateStr = d.toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
+    const timeStr = d.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+    const refNo   = `IGC-IT-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}-${String(d.getHours()).padStart(2,"0")}${String(d.getMinutes()).padStart(2,"0")}`;
+
+    // ── Load logo ─────────────────────────────────────────────────────────────
+    let logoData = "";
+    try {
+      const resp = await fetch("/imarat-logo.png");
+      const blob = await resp.blob();
+      logoData   = await new Promise<string>(res => {
+        const fr = new FileReader();
+        fr.onload = () => res(fr.result as string);
+        fr.readAsDataURL(blob);
+      });
+    } catch { /* logo optional */ }
+
+    // ── Document ──────────────────────────────────────────────────────────────
     const doc = new jsPDF({ orientation:"landscape", unit:"mm", format:"a4" });
-    const PW = doc.internal.pageSize.getWidth();   // 297
-    const PH = doc.internal.pageSize.getHeight();  // 210
+    const PW  = doc.internal.pageSize.getWidth();   // 297
+    const PH  = doc.internal.pageSize.getHeight();  // 210
     const PAD = 11;
-    const TW  = PW - PAD * 2;                      // 275
+    const TW  = PW - PAD * 2;                       // 275
 
     // ── Palette ───────────────────────────────────────────────────────────────
+    type RGB = [number,number,number];
     const C = {
-      navy:   [7,  22, 52]  as [number,number,number],
-      navyD:  [4,  14, 36]  as [number,number,number],
-      navyL:  [18, 42, 88]  as [number,number,number],
-      slate:  [240,243,250] as [number,number,number],
-      white:  [255,255,255] as [number,number,number],
-      gold:   [240,172,  0] as [number,number,number],
-      ink:    [18,  26, 46] as [number,number,number],
-      muted:  [112,122,146] as [number,number,number],
-      border: [220,226,240] as [number,number,number],
-      shadow: [210,218,236] as [number,number,number],
-      gC:     [0,  155,132] as [number,number,number],  // teal – OK
-      gL:     [200,244,236] as [number,number,number],
-      gD:     [0,   96, 82] as [number,number,number],
-      aC:     [226,148,  0] as [number,number,number],  // amber
-      aL:     [255,237,170] as [number,number,number],
-      aD:     [108, 68,  0] as [number,number,number],
-      rC:     [210, 36, 48] as [number,number,number],  // red
-      rL:     [255,198,206] as [number,number,number],
-      rD:     [140, 12, 20] as [number,number,number],
-      nL:     [232,235,244] as [number,number,number],
-      nD:     [105,115,136] as [number,number,number],
-      iC:     [0,  155,132] as [number,number,number],  // Imarat = teal
-      pC:     [48,  82,220] as [number,number,number],  // Projects = blue
-      grC:    [118, 46,228] as [number,number,number],  // Graana = purple
-      a21C:   [216, 86, 16] as [number,number,number],  // Agency21 = orange
+      navy:   [7,  22,  54] as RGB,
+      navyM:  [12, 34,  78] as RGB,
+      navyL:  [22, 52, 110] as RGB,
+      gold:   [201,168,  76] as RGB,
+      goldL:  [245,225, 160] as RGB,
+      white:  [255,255, 255] as RGB,
+      bg:     [247,248, 252] as RGB,
+      bgCard: [255,255, 255] as RGB,
+      muted:  [107,122, 159] as RGB,
+      border: [221,227, 240] as RGB,
+      shadow: [205,213, 232] as RGB,
+      ink:    [18,  28,  60] as RGB,
+      // Status
+      gC: [0,  155, 130] as RGB,   gL: [208,246,238] as RGB,   gD: [0,  88,  72] as RGB,
+      aC: [218,148,  0] as RGB,    aL: [254,238,170] as RGB,   aD: [100, 62,  0] as RGB,
+      rC: [208, 34,  48] as RGB,   rL: [255,210,216] as RGB,   rD: [130, 10,  20] as RGB,
+      nC: [150,160, 185] as RGB,   nL: [234,237,246] as RGB,   nD: [80,  90, 115] as RGB,
+      // Division
+      dImarat:   [0,  155, 130] as RGB,
+      dProjects: [34,  80, 210] as RGB,
+      dGraana:   [110, 32, 210] as RGB,
+      dAgency21: [210, 80,  12] as RGB,
     };
+    const CAT_C:  Record<string,RGB> = { Imarat:C.dImarat, Projects:C.dProjects, Graana:C.dGraana, Agency21:C.dAgency21 };
+    const CAT_BG: Record<string,RGB> = { Imarat:[210,248,240], Projects:[218,228,255], Graana:[236,222,255], Agency21:[255,228,208] };
 
-    const CAT_C: Record<string,[number,number,number]> = {
-      Imarat:C.iC, Projects:C.pC, Graana:C.grC, Agency21:C.a21C,
-    };
-    const CAT_BG: Record<string,[number,number,number]> = {
-      Imarat:[208,248,242], Projects:[216,226,255], Graana:[238,222,255], Agency21:[255,226,208],
-    };
-
-    const ragFill = (s:RAGStatus) => s==="green"?C.gL:s==="amber"?C.aL:s==="red"?C.rL:C.nL;
-    const ragText = (s:RAGStatus) => s==="green"?C.gD:s==="amber"?C.aD:s==="red"?C.rD:C.nD;
-    const ragLabel= (s:RAGStatus) => s==="green"?"Operational":s==="amber"?"Degraded":s==="red"?"Critical":"Not Set";
-    const iLbl: Record<RAGStatus,string> = { green:"Working",  amber:"Unstable", red:"Down",    na:"—" };
-    const bLbl: Record<RAGStatus,string> = { green:"Syncing",  amber:"Delayed",  red:"Offline", na:"—" };
-    const pLbl: Record<RAGStatus,string> = { green:"OK",       amber:"Partial",  red:"Down",    na:"—" };
+    const ragC  = (s:RAGStatus):RGB => s==="green"?C.gC:s==="amber"?C.aC:s==="red"?C.rC:C.nC;
+    const ragL  = (s:RAGStatus):RGB => s==="green"?C.gL:s==="amber"?C.aL:s==="red"?C.rL:C.nL;
+    const ragD  = (s:RAGStatus):RGB => s==="green"?C.gD:s==="amber"?C.aD:s==="red"?C.rD:C.nD;
+    const ragTx = (s:RAGStatus) => s==="green"?"Operational":s==="amber"?"Degraded":s==="red"?"Critical":"Not Set";
+    const iLbl  = (s:RAGStatus) => ({green:"Active",   amber:"Unstable", red:"Down",    na:"—"})[s];
+    const bLbl  = (s:RAGStatus) => ({green:"Syncing",  amber:"Delayed",  red:"Offline", na:"—"})[s];
+    const pLbl  = (s:RAGStatus) => ({green:"Online",   amber:"Partial",  red:"Down",    na:"—"})[s];
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-    // White card with soft shadow
-    const card = (x:number, y:number, w:number, h:number) => {
-      doc.setFillColor(...C.shadow); doc.roundedRect(x+0.8, y+0.8, w, h, 2, 2, "F");
-      doc.setFillColor(...C.white);  doc.roundedRect(x,     y,     w, h, 2, 2, "F");
+    const fillRect = (x:number,y:number,w:number,h:number,c:RGB) => {
+      doc.setFillColor(...c); doc.rect(x,y,w,h,"F");
     };
-    // Filled rounded progress bar (track + fill)
-    const bar = (x:number, y:number, w:number, h:number, pct:number, col:[number,number,number]) => {
-      doc.setFillColor(...C.border); doc.roundedRect(x, y, w, h, h/2, h/2, "F");
-      if (pct > 0) {
-        doc.setFillColor(...col);
-        doc.roundedRect(x, y, Math.max(w*pct, h), h, h/2, h/2, "F");
-      }
+    const fillRR = (x:number,y:number,w:number,h:number,r:number,c:RGB) => {
+      doc.setFillColor(...c); doc.roundedRect(x,y,w,h,r,r,"F");
+    };
+    const card = (x:number,y:number,w:number,h:number,r=2) => {
+      doc.setFillColor(...C.shadow); doc.roundedRect(x+0.8,y+0.8,w,h,r,r,"F");
+      doc.setFillColor(...C.bgCard); doc.roundedRect(x,y,w,h,r,r,"F");
+    };
+    const progressBar = (x:number,y:number,w:number,h:number,pct:number,col:RGB) => {
+      fillRR(x,y,w,h,h/2,C.border);
+      if(pct>0) fillRR(x,y,Math.max(w*pct,h),h,h/2,col);
+    };
+    const txt = (t:string,x:number,y:number,size:number,col:RGB,style:"normal"|"bold"="normal",align:"left"|"center"|"right"="left") => {
+      doc.setFont("helvetica",style); doc.setFontSize(size); doc.setTextColor(...col);
+      doc.text(t,x,y,{align});
     };
 
     // ─────────────────────────────────────────────────────────────────────────
-    // LAYOUT CONSTANTS  (all Y values are absolute mm from top)
-    // Header   : 0   – 24
-    // KPI row  : 25  – 41   (height 16)
-    // Div row  : 42  – 58   (height 16)
-    // Bar      : 59  – 63   (separator + legend, height 4)
-    // Table    : 64  – 197  (height 133, row ~3.8mm × 31 + 7.5 header ≈ 125mm ✓)
-    // Footer   : 197 – 210  (height 13)
-    const H_HDR = 24;
-    const KY = 25,  KH = 16;   // KPI cards
-    const DY = 42,  DH = 16;   // Division cards
-    const SY = 59.5;            // Section separator Y
-    const TBL_Y = 64;
-    const FTR_Y = PH - 13;     // 197
+    // LAYOUT BANDS
+    // ─────────────────────────────────────────────────────────────────────────
+    // Header      Y: 0   – 27
+    // KPI band    Y: 28  – 44   (height 16, cards 28.5–43.5)
+    // Division    Y: 45  – 62   (height 17, cards 45.5–61.5)
+    // Section bar Y: 63  – 67
+    // Table       Y: 68  – 197  (usable 117mm; 31×3.5+7.5=116mm ✓)
+    // Footer      Y: 197 – 210
+    const HDR_H = 27;
+    const KY = 28.5, KH = 15;
+    const DY = 45.5, DH = 16;
+    const SY = 63;
+    const TBL_Y = 68;
+    const FTR_Y = PH - 13;   // 197
 
-    // ═════════════════════════════════════════════════════════════════════════
-    // PAGE BACKGROUND
-    doc.setFillColor(...C.slate); doc.rect(0, 0, PW, PH, "F");
+    // =========================================================================
+    // 1. PAGE BACKGROUND
+    fillRect(0,0,PW,PH,C.bg);
 
-    // ═════════════════════════════════════════════════════════════════════════
-    // HEADER  ────────────────────────────────────────────────────────────────
-    // Full-width navy bar
-    doc.setFillColor(...C.navy); doc.rect(0, 0, PW, H_HDR, "F");
-    // Gold top rule (2mm)
-    doc.setFillColor(...C.gold); doc.rect(0, 0, PW, 2, "F");
-    // Subtle darker sub-band at bottom
-    doc.setFillColor(...C.navyD); doc.rect(0, H_HDR-0.8, PW, 0.8, "F");
+    // =========================================================================
+    // 2. HEADER  (0–27mm)
+    // Left third: white panel with logo
+    // Right two-thirds: navy with title
+    const LOGO_W = 58;  // white panel width
 
-    // Left – organisation branding
-    doc.setFont("helvetica","bold"); doc.setFontSize(16); doc.setTextColor(...C.white);
-    doc.text("IMARAT", PAD, 12);
-    doc.setFont("helvetica","bold"); doc.setFontSize(6.8); doc.setTextColor(...C.gold);
-    doc.text("GROUP OF COMPANIES", PAD, 17);
-    doc.setFont("helvetica","normal"); doc.setFontSize(4.5); doc.setTextColor(110,140,190);
-    doc.text("IT Department  ·  it.support@imarat.com.pk", PAD, 21.5);
+    // Navy background full header
+    fillRect(0,0,PW,HDR_H,C.navy);
 
-    // Vertical separator
-    doc.setDrawColor(45,68,118); doc.setLineWidth(0.5);
-    doc.line(PAD+64, 3.5, PAD+64, 22);
+    // Gold top rule (2.5mm)
+    fillRect(0,0,PW,2.5,C.gold);
 
-    // Centre-left – report title block
-    const TX = PAD + 68;
-    doc.setFont("helvetica","bold"); doc.setFontSize(9.5); doc.setTextColor(210,225,255);
-    doc.text("IT FACILITIES RAG DASHBOARD", TX, 11);
-    doc.setFont("helvetica","normal"); doc.setFontSize(5); doc.setTextColor(125,152,200);
-    doc.text(`Daily Operational Status  ·  ${FACILITIES.length} Sites  ·  All Divisions`, TX, 16.5);
-    doc.setFontSize(4.2); doc.setTextColor(90,118,168);
-    doc.text(`Period: ${dateStr}  ·  Ref No: ${refNo}`, TX, 21.5);
+    // White logo panel
+    fillRR(PAD,3.5,LOGO_W,21,2,C.white);
 
-    // Right – date block
-    doc.setFont("helvetica","bold"); doc.setFontSize(9.5); doc.setTextColor(...C.gold);
-    doc.text(dateStr, PW-PAD, 12, { align:"right" });
-    doc.setFont("helvetica","normal"); doc.setFontSize(6); doc.setTextColor(140,165,210);
-    doc.text(timeStr, PW-PAD, 18.5, { align:"right" });
+    // Logo image inside white panel (centred, scaled to fit 50×14mm)
+    if (logoData) {
+      // Logo is ~560×187px ≈ 3:1 aspect. At w=46mm → h=15.3mm
+      const lw = 46, lh = 15;
+      const lx = PAD + (LOGO_W - lw) / 2;
+      const ly = 3.5 + (21 - lh) / 2;
+      doc.addImage(logoData, "PNG", lx, ly, lw, lh);
+    } else {
+      txt("IMARAT", PAD + LOGO_W/2, 3.5+13, 14, C.navy, "bold", "center");
+    }
 
-    // ═════════════════════════════════════════════════════════════════════════
-    // KPI CARDS  (Y:25 – Y:41, height 16mm each)
-    // 7 equal cards across full width
-    const totalSites = FACILITIES.length;
-    const healthPct  = totalSites > 0 ? Math.round((counts.green / totalSites) * 100) : 0;
-    const opPct      = totalSites > 0 ? Math.round((counts.green / totalSites) * 100) : 0;
+    // Vertical gold separator
+    doc.setDrawColor(...C.gold); doc.setLineWidth(0.6);
+    doc.line(PAD + LOGO_W + 5, 4, PAD + LOGO_W + 5, 24.5);
 
+    // Title block (starts after separator)
+    const TX = PAD + LOGO_W + 10;
+    txt("IT FACILITIES RAG DASHBOARD", TX, 13.5, 11.5, C.white, "bold");
+    txt("IMARAT GROUP OF COMPANIES", TX, 19.5, 6, C.gold, "bold");
+    txt(`Daily Operational Report  ·  ${FACILITIES.length} Sites Monitored`, TX, 24, 4.2, [100,130,180] as RGB);
+
+    // Right meta block
+    txt(dateStr, PW-PAD, 12, 10.5, C.gold, "bold", "right");
+    txt(timeStr, PW-PAD, 18.5, 5.5, [140,165,210] as RGB, "normal", "right");
+    txt(`Ref: ${refNo}`, PW-PAD, 23.5, 3.8, [90,118,165] as RGB, "normal", "right");
+
+    // =========================================================================
+    // 3. KPI CARDS  (Y:28.5–43.5)
     const kpis = [
-      { val:String(totalSites),         lbl:"TOTAL SITES",    ac:C.navyL,                               vc:C.navy  },
-      { val:String(counts.green),        lbl:"OPERATIONAL",    ac:C.gC,                                  vc:C.gD    },
-      { val:String(counts.amber),        lbl:"DEGRADED",       ac:C.aC,                                  vc:C.aD    },
-      { val:String(counts.red),          lbl:"CRITICAL",       ac:C.rC,                                  vc:C.rD    },
-      { val:String(autoStats.received),  lbl:"TICKETS TODAY",  ac:[48,80,218] as [number,number,number], vc:[18,48,165] as [number,number,number] },
-      { val:String(autoStats.resolved),  lbl:"RESOLVED",       ac:C.gC,                                  vc:C.gD    },
-      { val:String(autoStats.pending),   lbl:"PENDING",        ac:C.aC,                                  vc:C.aD    },
+      { val:String(FACILITIES.length),   lbl:"TOTAL SITES",   dot:C.navyL },
+      { val:String(counts.green),         lbl:"OPERATIONAL",   dot:C.gC    },
+      { val:String(counts.amber),         lbl:"DEGRADED",      dot:C.aC    },
+      { val:String(counts.red),           lbl:"CRITICAL",      dot:C.rC    },
+      { val:String(autoStats.received),   lbl:"TICKETS TODAY", dot:[48,80,218] as RGB },
+      { val:String(autoStats.resolved),   lbl:"RESOLVED",      dot:C.gC    },
+      { val:String(autoStats.pending),    lbl:"PENDING",       dot:C.aC    },
     ];
-    const kw = TW / kpis.length;
-    kpis.forEach((k, i) => {
-      const x = PAD + i * kw;
-      card(x + 0.5, KY, kw - 1, KH);
-      // Bottom accent line
-      doc.setFillColor(...k.ac);
-      doc.roundedRect(x+0.5, KY+KH-2, kw-1, 2, 0, 0, "F");
-      doc.roundedRect(x+0.5, KY+KH-2, kw-1, 2, 2, 2, "F");
-      // Value – vertically centered in top 12mm
-      doc.setFont("helvetica","bold"); doc.setFontSize(15); doc.setTextColor(...k.vc);
-      doc.text(k.val, x + kw/2, KY + 9.5, { align:"center" });
-      // Label – sits just above the accent line
-      doc.setFont("helvetica","bold"); doc.setFontSize(4.2); doc.setTextColor(...C.muted);
-      doc.text(k.lbl, x + kw/2, KY + 13.2, { align:"center" });
+    const KW = TW / kpis.length;
+    kpis.forEach((k,i) => {
+      const x = PAD + i*KW;
+      card(x+0.5, KY, KW-1, KH);
+      // Left accent stripe (3×KH mm coloured strip)
+      fillRR(x+0.5, KY, 2.5, KH, 1, k.dot);
+      // Value
+      txt(k.val, x+KW/2+1, KY+9.5, 14, k.dot, "bold", "center");
+      // Label
+      txt(k.lbl, x+KW/2+1, KY+13.3, 4.2, C.muted, "bold", "center");
     });
 
-    // ═════════════════════════════════════════════════════════════════════════
-    // DIVISION CARDS + HEALTH SCORE  (Y:42 – Y:58, height 16mm)
-    // Layout: [Health 48mm] [gap 3] [Imarat] [Projects] [Graana] [Agency21]
-    const HSW = 48;
-    const divW = (TW - HSW - 3) / 4;   // ~55mm each
+    // =========================================================================
+    // 4. DIVISION STRIP  (Y:45.5–61.5)
+    const totalSites = FACILITIES.length;
+    const healthPct  = totalSites>0 ? counts.green/totalSites : 0;
+    const hCol:RGB   = healthPct>=0.8?C.gC:healthPct>=0.5?C.aC:C.rC;
+    const HSW = 52;
+    const divGap = 2;
+    const divW   = (TW - HSW - divGap) / 4 - 0.5;
 
-    // ── Health score card ──────────────────────────────────────────────────
+    // ── Health card ──────────────────────────────────────────────────────────
     card(PAD, DY, HSW, DH);
-    // Top accent in health colour
-    const hCol: [number,number,number] = healthPct >= 80 ? C.gC : healthPct >= 50 ? C.aC : C.rC;
-    doc.setFillColor(...hCol);
-    doc.roundedRect(PAD, DY, HSW, 2, 2, 2, "F");
-    doc.rect(PAD, DY+1, HSW, 1, "F");
-    // Label
-    doc.setFont("helvetica","bold"); doc.setFontSize(5); doc.setTextColor(...C.muted);
-    doc.text("OVERALL HEALTH", PAD + HSW/2, DY + 5.5, { align:"center" });
-    // Big percentage (fits in 16mm card minus top bar 2mm minus bar 3mm = 11mm)
-    doc.setFont("helvetica","bold"); doc.setFontSize(20); doc.setTextColor(...hCol);
-    doc.text(`${healthPct}%`, PAD + HSW/2, DY + 12.5, { align:"center" });
-    // Progress bar (3mm from bottom of card)
-    bar(PAD + 4, DY + DH - 3.5, HSW - 8, 2, healthPct / 100, hCol);
+    fillRR(PAD, DY, HSW, 2, 1, hCol); fillRect(PAD, DY+1, HSW, 1, hCol); // coloured top strip
 
-    // ── Division cards ─────────────────────────────────────────────────────
-    const divCats = ["Imarat","Projects","Graana","Agency21"] as const;
-    divCats.forEach((cat, ci) => {
-      const facs  = FACILITIES.filter(f => f.cat === cat);
+    txt("OVERALL HEALTH", PAD+HSW/2, DY+5.8, 4.5, C.muted, "bold", "center");
+    txt(`${Math.round(healthPct*100)}%`, PAD+HSW/2, DY+12.5, 19, hCol, "bold", "center");
+    progressBar(PAD+4, DY+DH-2.8, HSW-8, 2, healthPct, hCol);
+
+    // ── Division cards ───────────────────────────────────────────────────────
+    (["Imarat","Projects","Graana","Agency21"] as const).forEach((cat,ci) => {
+      const facs  = FACILITIES.filter(f=>f.cat===cat);
       const total = facs.length;
-      const grn   = facs.filter(f => calcOverall(state[f.name] ?? defaultState()) === "green").length;
-      const amb   = facs.filter(f => calcOverall(state[f.name] ?? defaultState()) === "amber").length;
-      const red   = facs.filter(f => calcOverall(state[f.name] ?? defaultState()) === "red").length;
-      const cx    = PAD + HSW + 3 + ci * (divW + 1);
+      const grn   = facs.filter(f=>calcOverall(state[f.name]??defaultState())==="green").length;
+      const amb   = facs.filter(f=>calcOverall(state[f.name]??defaultState())==="amber").length;
+      const red   = facs.filter(f=>calcOverall(state[f.name]??defaultState())==="red").length;
+      const cx    = PAD + HSW + divGap + ci*(divW+1);
       const ac    = CAT_C[cat];
 
       card(cx, DY, divW, DH);
-      // Coloured top bar (2mm)
-      doc.setFillColor(...ac); doc.roundedRect(cx, DY, divW, 2, 2, 2, "F");
-      doc.rect(cx, DY+1, divW, 1, "F");
+      // Coloured top bar
+      fillRR(cx, DY, divW, 2, 1, ac); fillRect(cx, DY+1, divW, 1, ac);
 
-      // Division name + site count  (Y:DY+5 – DY+8)
-      doc.setFont("helvetica","bold"); doc.setFontSize(5.8); doc.setTextColor(...ac);
-      doc.text(cat.toUpperCase(), cx + 3.5, DY + 6);
-      doc.setFont("helvetica","normal"); doc.setFontSize(4); doc.setTextColor(...C.muted);
-      doc.text(`${total} sites`, cx + 3.5, DY + 9);
+      // Division name row
+      txt(cat.toUpperCase(), cx+3, DY+6, 5.8, ac, "bold");
+      txt(`${total} sites`, cx+divW-3, DY+6, 4, C.muted, "normal", "right");
 
-      // Stacked bar  (Y:DY+10 – DY+12.5)
-      const sbX = cx + 3; const sbW = divW - 6; const sbY = DY + 10; const sbH = 2;
-      doc.setFillColor(...C.border); doc.roundedRect(sbX, sbY, sbW, sbH, sbH/2, sbH/2, "F");
-      let bx = sbX;
-      if (grn > 0) { const bw = sbW*(grn/total); doc.setFillColor(...C.gC); doc.roundedRect(bx,sbY,bw,sbH,sbH/2,sbH/2,"F"); bx+=bw; }
-      if (amb > 0) { const bw = sbW*(amb/total); doc.setFillColor(...C.aC); doc.rect(bx,sbY,bw,sbH,"F"); bx+=bw; }
-      if (red > 0) { const bw = sbW*(red/total); doc.setFillColor(...C.rC); doc.rect(bx,sbY,bw,sbH,"F"); }
+      // Stacked bar (Y:DY+8 – DY+10.2)
+      const sbX=cx+3, sbW=divW-6, sbY=DY+8, sbH=2.2;
+      fillRR(sbX,sbY,sbW,sbH,sbH/2,C.border);
+      let bx=sbX;
+      if(grn>0){const bw=sbW*(grn/total);fillRR(bx,sbY,bw,sbH,sbH/2,C.gC);bx+=bw;}
+      if(amb>0){const bw=sbW*(amb/total);fillRect(bx,sbY,bw,sbH,C.aC);bx+=bw;}
+      if(red>0){const bw=sbW*(red/total);fillRR(bx,sbY,bw,sbH,sbH/2,C.rC);}
 
-      // Three count columns INSIDE card (Y:DY+13.5)
-      // Each column: grn / amb / red — must stay above DY+DH=DY+16
-      const cols = [{ v:grn, c:C.gC }, { v:amb, c:C.aC }, { v:red, c:C.rC }];
-      const colW = divW / 3;
-      cols.forEach((col, li) => {
-        const lx = cx + li * colW + colW / 2;
-        doc.setFont("helvetica","bold"); doc.setFontSize(7.5); doc.setTextColor(...col.c);
-        doc.text(String(col.v), lx, DY + 14.8, { align:"center" });
-      });
-      // Labels at very bottom: OK / WRN / CRT — Y:DY+15.8, inside DH=16
-      doc.setFont("helvetica","normal"); doc.setFontSize(3.2); doc.setTextColor(...C.muted);
-      ["OK","WRN","CRT"].forEach((lbl, li) => {
-        const lx = cx + li * colW + colW / 2;
-        // skip – no room; merged into count colour
+      // 3 count columns  — MUST stay inside DY+DH (DY+16)
+      const colW3 = divW/3;
+      ([
+        {v:grn,label:"OK",  c:C.gC},
+        {v:amb,label:"WRN", c:C.aC},
+        {v:red,label:"CRT", c:C.rC},
+      ] as {v:number;label:string;c:RGB}[]).forEach((col,li)=>{
+        const lx = cx + li*colW3 + colW3/2;
+        txt(String(col.v), lx, DY+14.2, 8, col.c, "bold", "center");
       });
     });
 
-    // ═════════════════════════════════════════════════════════════════════════
-    // SECTION BAR  (Y:59.5)
-    // Thin rule + title left, legend right
-    doc.setFillColor(...C.border); doc.rect(PAD, SY, TW, 0.4, "F");
-    doc.setFont("helvetica","bold"); doc.setFontSize(5.8); doc.setTextColor(...C.navy);
-    doc.text("FACILITY STATUS DETAIL", PAD, SY + 4);
+    // =========================================================================
+    // 5. SECTION BAR  (Y:63–67)
+    doc.setDrawColor(...C.border); doc.setLineWidth(0.35);
+    doc.line(PAD, SY+0.5, PW-PAD, SY+0.5);
+    txt("FACILITY STATUS DETAIL", PAD, SY+4.5, 5.8, C.navy, "bold");
 
-    // Legend – fixed positions, right-aligned from PW-PAD
-    const lgDefs = [
-      { lbl:"Operational", c:C.gC },
-      { lbl:"Degraded",    c:C.aC },
-      { lbl:"Critical",    c:C.rC },
-      { lbl:"Not Set",     c:[185,192,210] as [number,number,number] },
+    // Legend (right-aligned, precise spacing)
+    const lgItems = [
+      {lbl:"Operational",c:C.gC},{lbl:"Degraded",c:C.aC},
+      {lbl:"Critical",c:C.rC},{lbl:"Not Set",c:C.nC},
     ];
-    let lgCursor = PW - PAD;
-    [...lgDefs].reverse().forEach(lg => {
-      const tw = doc.getTextWidth(lg.lbl) * (4.8/12);   // approx width at 4.8pt
-      lgCursor -= (tw + 7);
-      doc.setFillColor(...lg.c); doc.circle(lgCursor + 1.5, SY + 2.5, 1.5, "F");
-      doc.setFont("helvetica","normal"); doc.setFontSize(4.8); doc.setTextColor(...C.ink);
-      doc.text(lg.lbl, lgCursor + 4.2, SY + 3.8);
+    let lgX = PW-PAD;
+    [...lgItems].reverse().forEach(lg=>{
+      doc.setFont("helvetica","normal"); doc.setFontSize(4.8);
+      const tw = doc.getTextWidth(lg.lbl);
+      lgX -= tw;
+      txt(lg.lbl, lgX, SY+4.5, 4.8, C.ink);
+      lgX -= 5;
+      doc.setFillColor(...lg.c); doc.circle(lgX, SY+3, 1.4, "F");
+      lgX -= 4;
     });
 
-    // ═════════════════════════════════════════════════════════════════════════
-    // FACILITY TABLE  (Y:64)
-    const ORDER: Record<string,number> = { Imarat:0, Projects:1, Graana:2, Agency21:3 };
-    const sorted = [...FACILITIES].sort((a,b)=>(ORDER[a.cat]??9)-(ORDER[b.cat]??9));
-    const facRows = sorted.map((f, i) => {
-      const s  = state[f.name] ?? defaultState();
+    // =========================================================================
+    // 6. TABLE  (Y:68)
+    const ORDER: Record<string,number> = {Imarat:0,Projects:1,Graana:2,Agency21:3};
+    const sorted  = [...FACILITIES].sort((a,b)=>(ORDER[a.cat]??9)-(ORDER[b.cat]??9));
+    const facRows = sorted.map((f,i)=>{
+      const s  = state[f.name]??defaultState();
       const ov = calcOverall(s);
-      const ts = s.ts ? s.ts.replace("T"," ").slice(5,16) : "—";
+      const ts = s.ts?s.ts.replace("T"," ").slice(5,16):"—";
       return {
-        d: [String(i+1), f.name, f.cat, iLbl[s.internet], bLbl[s.bio], pLbl[s.printing], ragLabel(ov), ts, s.issue||""],
+        d:[String(i+1), f.name, f.cat, iLbl(s.internet), bLbl(s.bio), pLbl(s.printing), ragTx(ov), ts, s.issue||""],
         internet:s.internet, bio:s.bio, printing:s.printing, overall:ov,
-        cat:f.cat, prevCat: i > 0 ? sorted[i-1].cat : "",
+        cat:f.cat, prevCat:i>0?sorted[i-1].cat:"",
       };
     });
 
-    autoTable(doc, {
+    autoTable(doc,{
       startY: TBL_Y,
       tableWidth: TW,
-      margin: { left:PAD, right:PAD, bottom: 14 },
-      head: [["#","Facility Name","Division","Internet","Biometric","Printing","Overall RAG","Updated","Issue / Notes"]],
-      body: facRows.map(r => r.d),
-      styles: {
-        fontSize: 5.2,
-        cellPadding: { top:1.5, bottom:1.5, left:2, right:2 },
-        font: "helvetica",
-        lineColor: C.border,
-        lineWidth: 0.1,
-        textColor: C.ink,
-        valign: "middle",
-        overflow: "ellipsize",
-        minCellHeight: 3.8,
-        fillColor: C.white,
+      margin:{ left:PAD, right:PAD, bottom:14 },
+      head:[["#","Facility","Division","Internet","Biometric","Printing","Status","Updated","Notes"]],
+      body: facRows.map(r=>r.d),
+      styles:{
+        font:"helvetica", fontSize:5.2,
+        cellPadding:{top:1.4,bottom:1.4,left:2,right:2},
+        minCellHeight:3.5,
+        valign:"middle", overflow:"ellipsize",
+        textColor:C.ink, fillColor:C.white,
+        lineColor:C.border, lineWidth:0.12,
       },
-      headStyles: {
-        fillColor: C.navy,
-        textColor: C.white,
-        fontStyle: "bold",
-        fontSize: 5.2,
-        halign: "center",
-        valign: "middle",
-        cellPadding: { top:2.5, bottom:2.5, left:2, right:2 },
-        lineWidth: 0,
-        minCellHeight: 7.5,
+      headStyles:{
+        fillColor:C.navy, textColor:C.white,
+        fontStyle:"bold", fontSize:5.2, halign:"center",
+        cellPadding:{top:2.5,bottom:2.5,left:2,right:2},
+        minCellHeight:7.5, lineWidth:0,
       },
-      alternateRowStyles: { fillColor:[244,247,253] },
-      pageBreak: "avoid",
-      columnStyles: {
-        0: { cellWidth:5.5,  halign:"center", fontStyle:"bold", textColor:C.muted },
-        1: { cellWidth:38,   fontStyle:"bold", textColor:C.navy },
-        2: { cellWidth:15,   halign:"center" },
-        3: { cellWidth:17,   halign:"center" },
-        4: { cellWidth:15,   halign:"center" },
-        5: { cellWidth:13,   halign:"center" },
-        6: { cellWidth:19,   halign:"center", fontStyle:"bold" },
-        7: { cellWidth:17,   halign:"center" },
-        8: { cellWidth:"auto" as any },
+      alternateRowStyles:{ fillColor:[244,246,252] as RGB },
+      columnStyles:{
+        0:{ cellWidth:5.5,  halign:"center", fontStyle:"bold", textColor:C.muted },
+        1:{ cellWidth:40,   fontStyle:"bold", textColor:C.navy },
+        2:{ cellWidth:16,   halign:"center" },
+        3:{ cellWidth:16,   halign:"center" },
+        4:{ cellWidth:15,   halign:"center" },
+        5:{ cellWidth:13,   halign:"center" },
+        6:{ cellWidth:20,   halign:"center", fontStyle:"bold" },
+        7:{ cellWidth:17,   halign:"center" },
+        8:{ cellWidth:"auto" as any },
       },
-      didParseCell: (data:any) => {
-        if (data.section !== "body") return;
-        const row = facRows[data.row.index]; if (!row) return;
-        // Status colour cells
-        const rm: Record<number,RAGStatus> = { 3:row.internet, 4:row.bio, 5:row.printing, 6:row.overall };
-        const st = rm[data.column.index];
-        if (st) {
-          data.cell.styles.fillColor = ragFill(st);
-          data.cell.styles.textColor = ragText(st);
-          data.cell.styles.fontStyle = "bold";
-        }
+      didParseCell:(data:any)=>{
+        if(data.section!=="body") return;
+        const row=facRows[data.row.index]; if(!row) return;
+        // Status badge colouring
+        const colMap: Record<number,RAGStatus> = {3:row.internet,4:row.bio,5:row.printing,6:row.overall};
+        const st=colMap[data.column.index];
+        if(st){ data.cell.styles.fillColor=ragL(st); data.cell.styles.textColor=ragD(st); data.cell.styles.fontStyle="bold"; }
         // Division badge
-        if (data.column.index === 2 && CAT_C[row.cat]) {
-          data.cell.styles.fillColor = CAT_BG[row.cat];
-          data.cell.styles.textColor = CAT_C[row.cat];
-          data.cell.styles.fontStyle = "bold";
+        if(data.column.index===2){
+          data.cell.styles.fillColor=CAT_BG[row.cat]??C.nL;
+          data.cell.styles.textColor=CAT_C[row.cat]??C.nC;
+          data.cell.styles.fontStyle="bold";
         }
-        // Updated column dim
-        if (data.column.index === 7) { data.cell.styles.textColor = C.muted; }
-        // Issue column – italic, muted red
-        if (data.column.index === 8 && row.d[8]) {
-          data.cell.styles.textColor = C.rD;
-          data.cell.styles.fontStyle = "italic";
+        // Updated dim
+        if(data.column.index===7){ data.cell.styles.textColor=C.muted; data.cell.styles.fontSize=4.5; }
+        // Notes italic
+        if(data.column.index===8&&row.d[8]){
+          data.cell.styles.textColor=C.rD; data.cell.styles.fontStyle="italic";
         }
-        // Category boundary: thicker top border in category colour
-        if (row.cat !== row.prevCat && data.row.index > 0) {
-          data.cell.styles.lineColor = CAT_C[row.cat] ?? C.border;
-          data.cell.styles.lineWidth = 0.45;
+        // Category boundary top rule
+        if(row.cat!==row.prevCat&&data.row.index>0){
+          data.cell.styles.lineColor=CAT_C[row.cat]??C.border;
+          data.cell.styles.lineWidth=0.5;
         }
       },
-      didDrawCell: (data:any) => {
-        // Left-edge coloured stripe on row number cell at each category change
-        if (data.section === "body" && data.column.index === 0) {
-          const row = facRows[data.row.index];
-          if (row && row.cat !== row.prevCat) {
-            doc.setFillColor(...(CAT_C[row.cat] ?? C.navy));
-            doc.rect(data.cell.x, data.cell.y, 1.4, data.cell.height, "F");
+      didDrawCell:(data:any)=>{
+        // Coloured left stripe on first column at category boundaries
+        if(data.section==="body"&&data.column.index===0){
+          const row=facRows[data.row.index];
+          if(row&&row.cat!==row.prevCat){
+            doc.setFillColor(...(CAT_C[row.cat]??C.navy));
+            doc.rect(data.cell.x, data.cell.y, 1.6, data.cell.height,"F");
           }
         }
       },
     });
 
-    // ═════════════════════════════════════════════════════════════════════════
-    // FOOTER  (Y:197 – Y:210)
-    doc.setFillColor(...C.navy);  doc.rect(0, FTR_Y, PW, PH-FTR_Y, "F");
-    doc.setFillColor(...C.gold);  doc.rect(0, FTR_Y, PW, 0.7, "F");
+    // =========================================================================
+    // 7. FOOTER  (Y:197–210)
+    fillRect(0,FTR_Y,PW,PH-FTR_Y,C.navy);
+    fillRect(0,FTR_Y,PW,0.6,C.gold);   // gold rule
 
-    const fY1 = FTR_Y + 4.5;   // first text line
-    const fY2 = FTR_Y + 8;     // second text line
-    const fY3 = FTR_Y + 11;    // third text line
+    const fY1=FTR_Y+4.2, fY2=FTR_Y+7.8, fY3=FTR_Y+10.8;
 
-    // Left column
-    doc.setFont("helvetica","bold"); doc.setFontSize(5.8); doc.setTextColor(...C.gold);
-    doc.text("IMARAT GROUP OF COMPANIES", PAD, fY1);
-    doc.setFont("helvetica","normal"); doc.setFontSize(4.2); doc.setTextColor(105,132,175);
-    doc.text("IT Department  ·  it.support@imarat.com.pk", PAD, fY2);
-    doc.setFontSize(3.6); doc.setTextColor(78,104,150);
-    doc.text("CONFIDENTIAL — AUTHORISED PERSONNEL ONLY", PAD, fY3);
+    // Left
+    txt("IMARAT GROUP OF COMPANIES", PAD, fY1, 5.8, C.gold, "bold");
+    txt("IT Department  ·  it.support@imarat.com.pk", PAD, fY2, 4, [105,130,175] as RGB);
+    txt("CONFIDENTIAL — FOR AUTHORISED PERSONNEL ONLY", PAD, fY3, 3.5, [78,104,150] as RGB);
 
-    // Centre column
-    doc.setFont("helvetica","bold"); doc.setFontSize(5.5); doc.setTextColor(188,208,245);
-    doc.text("SYSTEM GENERATED REPORT", PW/2, fY1, { align:"center" });
-    doc.setFont("helvetica","normal"); doc.setFontSize(4.2); doc.setTextColor(105,132,175);
-    doc.text("RAG Dashboard Automation  ·  Do Not Alter", PW/2, fY2, { align:"center" });
-    doc.setFontSize(3.6); doc.setTextColor(78,104,150);
-    doc.text(`Ref: ${refNo}`, PW/2, fY3, { align:"center" });
+    // Centre
+    txt("SYSTEM GENERATED REPORT", PW/2, fY1, 5.5, [190,210,248] as RGB, "bold", "center");
+    txt(`RAG Dashboard Automation  ·  Ref: ${refNo}`, PW/2, fY2, 4, [105,130,175] as RGB, "normal", "center");
+    txt("Powered by Imarat IT — Do Not Distribute", PW/2, fY3, 3.5, [78,104,150] as RGB, "normal", "center");
 
-    // Right column
-    doc.setFont("helvetica","bold"); doc.setFontSize(5.8); doc.setTextColor(...C.gold);
-    doc.text(`${dateStr}  ·  ${timeStr}`, PW-PAD, fY1, { align:"right" });
-    doc.setFont("helvetica","normal"); doc.setFontSize(4.2); doc.setTextColor(105,132,175);
-    doc.text(`${FACILITIES.length} Sites Monitored`, PW-PAD, fY2, { align:"right" });
-    doc.setFontSize(3.6); doc.setTextColor(78,104,150);
-    doc.text("imarat.com.pk", PW-PAD, fY3, { align:"right" });
+    // Right
+    txt(`${dateStr}  ·  ${timeStr}`, PW-PAD, fY1, 5.8, C.gold, "bold", "right");
+    txt(`${FACILITIES.length} Sites  ·  All Divisions`, PW-PAD, fY2, 4, [105,130,175] as RGB, "normal", "right");
+    txt("imarat.com.pk", PW-PAD, fY3, 3.5, [78,104,150] as RGB, "normal", "right");
 
     doc.save(`Imarat_IT_RAG_${d.toISOString().slice(0,10)}.pdf`);
   };
