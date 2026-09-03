@@ -479,7 +479,7 @@ function ExportSuccess({ fileName, onClose, onAgain }: { fileName: string; onClo
   );
 }
 
-// ─── PDF Generator ────────────────────────────────────────────────────────────
+// ─── PDF Generator — 4-page executive report ──────────────────────────────────
 async function generatePDF(
   cfg: ReportConfig,
   facilities: { name: string; cat: string }[],
@@ -489,7 +489,6 @@ async function generatePDF(
   calcOverall: (s: FacilityState) => RAGStatus,
   defaultState: () => FacilityState,
 ): Promise<string> {
-  // Load & invert logo
   let logoData = "";
   try {
     const img = await new Promise<HTMLImageElement>((res, rej) => {
@@ -508,313 +507,360 @@ async function generatePDF(
     logoData = cv.toDataURL("image/png");
   } catch { /* skip */ }
 
-  const d = new Date();
+  const d       = new Date();
   const dateStr = d.toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
   const timeStr = d.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
   const refNo   = `IGC-IT-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}-${String(d.getHours()).padStart(2,"0")}${String(d.getMinutes()).padStart(2,"0")}`;
   const fileName = `Imarat_IT_RAG_${d.toISOString().slice(0,10)}.pdf`;
 
-  const doc = new jsPDF({ orientation: cfg.orientation, unit: "mm", format: "a4" });
-  const PW = doc.internal.pageSize.getWidth();
-  const PH = doc.internal.pageSize.getHeight();
-  const PAD = 11;
-  const TW  = PW - PAD * 2;
+  const doc  = new jsPDF({ orientation: cfg.orientation, unit: "mm", format: "a4" });
+  const PW   = doc.internal.pageSize.getWidth();
+  const PH   = doc.internal.pageSize.getHeight();
+  const PAD  = 11;
+  const TW   = PW - PAD*2;
+  const HDR  = 26;
+  const FTR_Y= PH - 11;
+  const BODY_TOP = HDR + 4;
 
-  // Filtered + sorted facilities
-  const filtered = facilities.filter(f => cfg.divFilter === "all" || f.cat === cfg.divFilter);
+  const filtered  = facilities.filter(f => cfg.divFilter==="all" || f.cat===cfg.divFilter);
   const ORDER: Record<string,number> = { Imarat:0, Projects:1, Graana:2, Agency21:3 };
-  const sorted  = [...filtered].sort((a,b) => (ORDER[a.cat]??9)-(ORDER[b.cat]??9));
-  const total   = facilities.length;
-  const healthPct = total > 0 ? counts.green / total : 0;
+  const sorted    = [...filtered].sort((a,b)=>(ORDER[a.cat]??9)-(ORDER[b.cat]??9));
+  const total     = facilities.length;
+  const grnN      = counts.green;
+  const ambN      = counts.amber;
+  const redN      = counts.red;
+  const healthPct = total>0 ? grnN/total : 0;
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  const NAVY:RGB=[12,26,46], NAVYM:RGB=[18,40,72], GOLD:RGB=[196,154,30];
+  const WHITE:RGB=[255,255,255], INK:RGB=[18,28,54], MUTED:RGB=[100,120,158];
+  const BDR:RGB=[218,226,240], BGLT:RGB=[248,250,254];
+
   const fr  = (x:number,y:number,w:number,h:number,c:RGB) => { doc.setFillColor(...c); doc.rect(x,y,w,h,"F"); };
   const frr = (x:number,y:number,w:number,h:number,r:number,c:RGB) => { doc.setFillColor(...c); doc.roundedRect(x,y,w,h,r,r,"F"); };
   const txt = (s:string,x:number,y:number,sz:number,c:RGB,b:"bold"|"normal"="normal",a:"left"|"center"|"right"="left") => {
     doc.setFont("helvetica",b); doc.setFontSize(sz); doc.setTextColor(...c); doc.text(s,x,y,{align:a});
   };
-  const card = (x:number,y:number,w:number,h:number) => {
-    doc.setFillColor(205,213,230); doc.roundedRect(x+0.8,y+0.8,w,h,2,2,"F");
-    doc.setFillColor(255,255,255); doc.roundedRect(x,y,w,h,2,2,"F");
-  };
   const pbar = (x:number,y:number,w:number,h:number,pct:number,c:RGB) => {
-    frr(x,y,w,h,h/2,[218,224,238]); if(pct>0) frr(x,y,Math.max(w*pct,h),h,h/2,c);
+    frr(x,y,w,h,h/2,[218,224,238] as RGB);
+    if(pct>0) frr(x,y,Math.max(w*pct,h),h,h/2,c);
+  };
+  // Filled donut arc segment via polygon approximation
+  const drawArc = (cx:number,cy:number,ro:number,ri:number,a1d:number,a2d:number,c:RGB) => {
+    const steps = Math.max(4, Math.ceil(Math.abs(a2d-a1d)/3));
+    const pts:[number,number][] = [];
+    for(let i=0;i<=steps;i++){const a=(a1d+i*(a2d-a1d)/steps)*Math.PI/180; pts.push([cx+ro*Math.cos(a),cy+ro*Math.sin(a)]);}
+    for(let i=steps;i>=0;i--){const a=(a1d+i*(a2d-a1d)/steps)*Math.PI/180; pts.push([cx+ri*Math.cos(a),cy+ri*Math.sin(a)]);}
+    const lines:[number,number][]=[];
+    for(let i=1;i<pts.length;i++) lines.push([pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]]);
+    doc.setFillColor(...c);
+    (doc as any).lines(lines,pts[0][0],pts[0][1],[1,1],"F",true);
   };
 
-  // Navy, Gold, White
-  const NAVY: RGB = [12,26,46];
-  const NAVYM: RGB = [18,40,72];
-  const GOLD: RGB = [196,154,30];
-  const GOLDL: RGB = [232,200,96];
-  const WHITE: RGB = [255,255,255];
-  const INK: RGB   = [18,28,54];
-  const MUTED: RGB = [100,120,158];
-  const BDR: RGB   = [218,226,240];
-  const BG: RGB    = [242,245,252];
+  const TOTPG = 4;
+  const drawShell = (pg:number, subtitle="") => {
+    fr(0,0,PW,PH,BGLT);
+    fr(0,0,PW,HDR,NAVY); fr(0,0,PW,2.5,GOLD); fr(0,HDR-0.6,PW,0.6,NAVYM);
+    if(cfg.includeLogo&&logoData) doc.addImage(logoData,"PNG",PAD,5,36,12);
+    else txt("IMARAT",PAD,15,13,WHITE,"bold");
+    doc.setDrawColor(...GOLD); doc.setLineWidth(0.5);
+    doc.line(PAD+42,4,PAD+42,22);
+    txt(cfg.title,PAD+47,11.5,10,WHITE,"bold");
+    txt(subtitle||cfg.subtitle,PAD+47,17,5,GOLD,"bold");
+    txt(`${cfg.org}  ·  ${cfg.period||dateStr}`,PAD+47,21.5,3.8,MUTED);
+    txt(dateStr,PW-PAD,11,10,GOLD,"bold","right");
+    txt(timeStr,PW-PAD,17,5,MUTED,"normal","right");
+    if(cfg.includeRef) txt(`Ref: ${refNo}`,PW-PAD,22,3.5,[60,90,135] as RGB,"normal","right");
+    fr(0,FTR_Y,PW,PH-FTR_Y,NAVY); fr(0,FTR_Y,PW,0.6,GOLD);
+    const fy=FTR_Y+4;
+    txt(cfg.org,PAD,fy,5,GOLD,"bold");
+    txt("IT Department  ·  it.support@imarat.com.pk",PAD,fy+4,3.5,MUTED);
+    if(cfg.includeTs){txt("SYSTEM GENERATED REPORT",PW/2,fy,5,WHITE,"bold","center"); txt(`Ref: ${refNo}`,PW/2,fy+4,3.5,MUTED,"normal","center");}
+    txt(`Page ${pg} of ${TOTPG}`,PW-PAD,fy,5,GOLD,"bold","right");
+    txt(`${sorted.length} sites monitored`,PW-PAD,fy+4,3.5,MUTED,"normal","right");
+  };
 
-  // Layout
-  const HDR = 26;
-  const KY = 27.5, KH = 15;
-  const DY = 43.5, DH = 16;
-  const SY = 61;
-  const TBL_START = 66;
-  const FTR_Y = PH - 12;
+  const insight = (() => {
+    if(redN>0&&ambN>0) return `${redN} critical and ${ambN} degraded sites detected — immediate IT response required across the estate.`;
+    if(redN>0) return `${redN} site${redN>1?"s":""} currently critical — service restoration is the top operational priority.`;
+    if(ambN>0) return `${ambN} site${ambN>1?"s":""} operating in a degraded state. No critical failures detected at this time.`;
+    return `All ${grnN} monitored facilities are fully operational. Internet, biometric, and print services are healthy across all divisions.`;
+  })();
+  const drawInsight = (y:number) => {
+    frr(PAD,y,TW,10,2,[228,236,252] as RGB);
+    doc.setDrawColor(...[44,94,232] as RGB); doc.setLineWidth(2.5); doc.line(PAD,y,PAD,y+10);
+    txt("OPERATIONAL INSIGHT",PAD+6,y+3.8,4.5,MUTED,"bold");
+    txt(insight,PAD+6,y+8.5,4.8,INK,"normal");
+  };
 
-  // PAGE BG
-  fr(0,0,PW,PH,BG);
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAGE 1 — EXECUTIVE COMMAND CENTER
+  // ══════════════════════════════════════════════════════════════════════════
+  drawShell(1,"Executive Intelligence Overview");
+  const CT = BODY_TOP+3;
 
-  // ── HEADER ─────────────────────────────────────────────────────────────────
-  fr(0,0,PW,HDR,NAVY);
-  fr(0,0,PW,2.5,GOLD);     // gold top rule
-  fr(0,HDR-0.7,PW,0.7,NAVYM);
+  // ── Health ring (left column, cx≈67) ─────────────────────────────────────
+  const RCX=PAD+57, RCY=CT+52, RO=36, RI=26;
+  drawArc(RCX,RCY,RO,RI,-90,270,[228,234,246] as RGB);
+  const hC:RGB = healthPct>=0.8?gC:healthPct>=0.5?aC:rC;
+  if(healthPct>0) drawArc(RCX,RCY,RO,RI,-90,-90+360*healthPct,hC);
+  doc.setFillColor(...BGLT); doc.circle(RCX,RCY,RI-0.5,"F");
+  // Tick mark per facility
+  facilities.forEach((_,ti)=>{
+    const ang=(-90+ti*(360/total))*Math.PI/180;
+    const sv=state[facilities[ti].name]??defaultState();
+    doc.setDrawColor(...ragAccent(calcOverall(sv))); doc.setLineWidth(1);
+    doc.line(RCX+(RO+1)*Math.cos(ang),RCY+(RO+1)*Math.sin(ang),RCX+(RO+4)*Math.cos(ang),RCY+(RO+4)*Math.sin(ang));
+  });
+  txt(`${Math.round(healthPct*100)}%`,RCX,RCY+4,20,hC,"bold","center");
+  txt("HEALTH",RCX,RCY+10,5,MUTED,"bold","center");
+  txt("OVERALL IT HEALTH",RCX,CT+4,6,NAVY,"bold","center");
+  txt(`${total} SITES MONITORED`,RCX,CT+10,4,MUTED,"normal","center");
 
-  // Logo (white on navy)
-  if (cfg.includeLogo && logoData) {
-    doc.addImage(logoData, "PNG", PAD, 5, 38, 13);
-  } else {
-    txt("IMARAT", PAD, 15, 13, WHITE, "bold");
-  }
-  doc.setDrawColor(...GOLD); doc.setLineWidth(0.5);
-  doc.line(PAD+44, 4, PAD+44, 23);
+  // Stat badges below ring
+  const stY=RCY+RO+10;
+  ([{v:grnN,l:"OPERATIONAL",c:gC,bg:gL},{v:ambN,l:"DEGRADED",c:aC,bg:aL},{v:redN,l:"CRITICAL",c:rC,bg:rL}] as {v:number;l:string;c:RGB;bg:RGB}[]).forEach((st,si)=>{
+    const sx=RCX-28+si*28;
+    frr(sx-12,stY-5,24,16,2,st.bg);
+    txt(String(st.v),sx,stY+4,12,st.c,"bold","center");
+    txt(st.l,sx,stY+9.5,3.2,MUTED,"bold","center");
+  });
+  const tkY=stY+24;
+  txt("SUPPORT TICKETS",RCX,tkY,4.5,MUTED,"bold","center");
+  ([{v:autoStats.received,l:"Total"},{v:autoStats.resolved,l:"Resolved"},{v:autoStats.pending,l:"Pending"}]).forEach((tk,ti)=>{
+    const tx=RCX-28+ti*28;
+    txt(String(tk.v),tx,tkY+8,10,[44,94,232] as RGB,"bold","center");
+    txt(tk.l,tx,tkY+13.5,3.5,MUTED,"normal","center");
+  });
 
-  txt(cfg.title,    PAD+49, 11.5, 11, WHITE,  "bold");
-  txt(cfg.subtitle, PAD+49, 17,   5.5, GOLD,   "bold");
-  txt(`${cfg.org}  ·  ${cfg.period||dateStr}`, PAD+49, 22, 4, MUTED);
-  txt(dateStr,  PW-PAD, 11, 10.5, GOLD,  "bold",   "right");
-  txt(timeStr,  PW-PAD, 17.5, 5.5, MUTED, "normal", "right");
-  if(cfg.includeRef) txt(`Ref: ${refNo}`, PW-PAD, 22.5, 3.8, [60,90,135] as RGB, "normal", "right");
+  // ── Key Metrics strip (centre column) ────────────────────────────────────
+  const MX=PAD+118, MW=46, MY=CT;
+  frr(MX,MY,MW,104,3,WHITE);
+  doc.setDrawColor(...BDR); doc.setLineWidth(0.2); doc.roundedRect(MX,MY,MW,104,3,3,"S");
+  txt("KEY METRICS",MX+MW/2,MY+7,5,NAVY,"bold","center");
+  const kpis=[
+    {v:String(total),l:"Total Sites",c:NAVY},
+    {v:String(grnN),l:"Operational",c:gC},
+    {v:String(ambN),l:"Degraded",c:aC},
+    {v:String(redN),l:"Critical",c:rC},
+    {v:String(autoStats.received),l:"Tickets",c:[44,94,232] as RGB},
+    {v:String(autoStats.pending),l:"Pending",c:aC},
+  ];
+  kpis.forEach((k,ki)=>{
+    const ky=MY+13+ki*14;
+    if(ki>0){doc.setDrawColor(...BDR);doc.setLineWidth(0.15);doc.line(MX+3,ky-1,MX+MW-3,ky-1);}
+    frr(MX+3,ky+1,3.5,9,1,k.c as RGB);
+    txt(k.v,MX+MW-3,ky+10,11,k.c as RGB,"bold","right");
+    txt(k.l,MX+9,ky+10,4.5,MUTED,"normal");
+  });
 
-  // ── KPI ROW ────────────────────────────────────────────────────────────────
-  if (cfg.includeKPIs) {
-    fr(0,KY-1,PW,KH+2,[230,236,250] as RGB);
-    const kpis = [
-      { val:String(total),               lbl:"TOTAL SITES",  c:NAVY },
-      { val:String(counts.green),        lbl:"OPERATIONAL",  c:gC   },
-      { val:String(counts.amber),        lbl:"DEGRADED",     c:aC   },
-      { val:String(counts.red),          lbl:"CRITICAL",     c:rC   },
-      { val:String(autoStats.received),  lbl:"TICKETS",      c:[44,94,232] as RGB },
-      { val:String(autoStats.resolved),  lbl:"RESOLVED",     c:gC   },
-      { val:String(autoStats.pending),   lbl:"PENDING",      c:aC   },
-    ];
-    const KW = TW / kpis.length;
-    kpis.forEach((k,i) => {
-      const x = PAD + i*KW;
-      card(x+0.5, KY, KW-1, KH);
-      frr(x+0.5,KY,KW-1,2,1,k.c); fr(x+0.5,KY+1,KW-1,1,k.c);
-      txt(k.val, x+KW/2, KY+9.5, 14, k.c, "bold", "center");
-      txt(k.lbl, x+KW/2, KY+13.2, 4, MUTED, "bold", "center");
+  // ── Facility constellation (right column) ────────────────────────────────
+  const CNX=PAD+170;
+  txt("FACILITY STATUS",CNX,CT+4,6,NAVY,"bold");
+  txt("CONSTELLATION",CNX,CT+10,6,NAVY,"bold");
+  txt("Each node = one monitored site",CNX,CT+16,3.8,MUTED);
+  let legX2=CNX;
+  (["Imarat","Projects","Graana","Agency21"] as const).forEach(cat=>{
+    doc.setFillColor(...CAT_C[cat]); doc.circle(legX2+2.5,CT+22,2.5,"F");
+    txt(cat,legX2+7,CT+24,3.8,INK); legX2+=30;
+  });
+  const DCOLS=4, DGAP=11, GRID_Y=CT+29;
+  sorted.forEach((f,fi)=>{
+    const col=fi%DCOLS, row=Math.floor(fi/DCOLS);
+    const dx=CNX+col*DGAP+5.5, dy=GRID_Y+row*DGAP+5.5;
+    const sv=state[f.name]??defaultState(); const ov=calcOverall(sv);
+    doc.setFillColor(...ragFill(ov)); doc.circle(dx,dy,5.5,"F");
+    doc.setFillColor(...ragAccent(ov)); doc.circle(dx,dy,4.5,"F");
+    doc.setDrawColor(...CAT_C[f.cat]); doc.setLineWidth(0.8); doc.circle(dx,dy,4.5,"S");
+    txt(String(fi+1),dx,dy+1.5,3.5,WHITE,"bold","center");
+  });
+  const legY2=GRID_Y+Math.ceil(sorted.length/DCOLS)*DGAP+6;
+  let lkX=CNX;
+  ([{l:"Operational",c:gC},{l:"Degraded",c:aC},{l:"Critical",c:rC}] as {l:string;c:RGB}[]).forEach(lk=>{
+    doc.setFillColor(...lk.c); doc.circle(lkX+2.5,legY2,2.5,"F");
+    txt(lk.l,lkX+7,legY2+1.5,3.8,INK); lkX+=30;
+  });
+
+  drawInsight(FTR_Y-14);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAGE 2 — DIVISION PERFORMANCE LANDSCAPE
+  // ══════════════════════════════════════════════════════════════════════════
+  doc.addPage();
+  drawShell(2,"Division Performance Landscape");
+  const D2Y=BODY_TOP+3;
+  txt("DIVISION HEALTH COMPARISON",PAD,D2Y+5,7,NAVY,"bold");
+  doc.setDrawColor(...GOLD); doc.setLineWidth(0.8); doc.line(PAD,D2Y+9,PW-PAD,D2Y+9);
+
+  const CATS=["Imarat","Projects","Graana","Agency21"] as const;
+  const DCW=(TW-6)/2, DCH=60, DCY1=D2Y+13, DCY2=DCY1+DCH+5;
+
+  CATS.forEach((cat,ci)=>{
+    const dcol=ci%2, drow=Math.floor(ci/2);
+    const cx=PAD+dcol*(DCW+6), cy=drow===0?DCY1:DCY2;
+    const facs=facilities.filter(f=>f.cat===cat);
+    const tot=facs.length;
+    const grn=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="green").length;
+    const amb=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="amber").length;
+    const red=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="red").length;
+    const cc=CAT_C[cat], cbg=CAT_BG[cat];
+    const hlth=tot>0?grn/tot:0;
+    frr(cx,cy,DCW,DCH,3,cbg);
+    frr(cx,cy,4,DCH,2,cc); frr(cx+4,cy,DCW-4,2.5,1,cc);
+    txt(cat.toUpperCase(),cx+12,cy+10,8,cc,"bold");
+    txt(`${tot} SITES`,cx+DCW-4,cy+10,5.5,cc,"bold","right");
+    txt(`${Math.round(hlth*100)}%`,cx+12,cy+23,17,cc,"bold");
+    txt("OPERATIONAL",cx+12,cy+29,4,cc,"normal");
+    pbar(cx+12,cy+33,DCW-24,5,hlth,cc);
+    const ckY=cy+43;
+    ([{v:grn,l:"Operational",c:gC,bg:gL},{v:amb,l:"Degraded",c:aC,bg:aL},{v:red,l:"Critical",c:rC,bg:rL}] as {v:number;l:string;c:RGB;bg:RGB}[]).forEach((ck,cki)=>{
+      const ckx=cx+12+cki*(DCW-24)/3;
+      frr(ckx,ckY-4,(DCW-24)/3-2,18,2,ck.bg);
+      txt(String(ck.v),ckx+(DCW-24)/6-1,ckY+6,13,ck.c,"bold","center");
+      txt(ck.l,ckx+(DCW-24)/6-1,ckY+11,3.5,MUTED,"normal","center");
     });
-  }
-
-  // ── DIVISION ROW ───────────────────────────────────────────────────────────
-  if (cfg.includeDivs) {
-    fr(0,DY-0.5,PW,DH+1.5,WHITE);
-    const hCol: RGB = healthPct>=0.8?gC:healthPct>=0.5?aC:rC;
-    const HSW = 50;
-    const dGap = 2;
-    const dW   = (TW-HSW-dGap)/4-0.8;
-
-    // Health card
-    frr(PAD,DY,HSW,DH,2,NAVY);
-    txt("OVERALL HEALTH", PAD+HSW/2, DY+4.5, 4.5, MUTED, "bold", "center");
-    txt(`${Math.round(healthPct*100)}%`, PAD+HSW/2, DY+12.5, 18, hCol, "bold", "center");
-    frr(PAD+4,DY+DH-3,HSW-8,2,1,[22,40,72] as RGB);
-    if(healthPct>0) frr(PAD+4,DY+DH-3,Math.max((HSW-8)*healthPct,2),2,1,hCol);
-
-    // Division cards
-    (["Imarat","Projects","Graana","Agency21"] as const).forEach((cat,ci) => {
-      const facs  = facilities.filter(f=>f.cat===cat);
-      const tot   = facs.length;
-      const grn   = facs.filter(f=>calcOverall(state[f.name]??defaultState())==="green").length;
-      const amb   = facs.filter(f=>calcOverall(state[f.name]??defaultState())==="amber").length;
-      const red   = facs.filter(f=>calcOverall(state[f.name]??defaultState())==="red").length;
-      const cx    = PAD+HSW+dGap+ci*(dW+1);
-      const ac    = CAT_C[cat];
-      const bgc   = CAT_BG[cat];
-
-      frr(cx,DY,dW,DH,2,bgc);
-      frr(cx,DY,dW,2,1,ac); fr(cx,DY+1,dW,1,ac);
-      txt(cat.toUpperCase(),cx+3,DY+6,5.5,ac,"bold");
-      txt(`${tot}`,cx+dW-3,DY+6,5.5,ac,"bold","right");
-      const sbX=cx+3,sbW=dW-6,sbY=DY+8,sbH=2.2;
-      frr(sbX,sbY,sbW,sbH,sbH/2,[200,215,232] as RGB);
-      let bx=sbX;
-      if(grn>0){const bw=sbW*(grn/tot);frr(bx,sbY,bw,sbH,sbH/2,gC);bx+=bw;}
-      if(amb>0){const bw=sbW*(amb/tot);fr(bx,sbY,bw,sbH,aC);bx+=bw;}
-      if(red>0) frr(bx,sbY,sbW*(red/tot),sbH,sbH/2,rC);
-      const cw=dW/3;
-      ([{v:grn,c:gC},{v:amb,c:aC},{v:red,c:rC}] as {v:number;c:RGB}[]).forEach((col,li)=>{
-        txt(String(col.v),cx+li*cw+cw/2,DY+14.5,8,col.c,"bold","center");
-      });
-    });
-  }
-
-  // ── SECTION DIVIDER ────────────────────────────────────────────────────────
-  doc.setDrawColor(...BDR); doc.setLineWidth(0.3);
-  doc.line(PAD,SY,PW-PAD,SY);
-  txt("FACILITY STATUS DETAIL", PAD, SY+4.5, 5.5, NAVY, "bold");
-  // Legend
-  const lgDefs = [{lbl:"Operational",c:gC},{lbl:"Degraded",c:aC},{lbl:"Critical",c:rC},{lbl:"Not Set",c:nC}];
-  let lgX=PW-PAD;
-  [...lgDefs].reverse().forEach(lg=>{
-    doc.setFont("helvetica","normal"); doc.setFontSize(4.8);
-    const tw=doc.getTextWidth(lg.lbl); lgX-=tw;
-    txt(lg.lbl,lgX,SY+4.5,4.8,INK);
-    lgX-=5.5; doc.setFillColor(...lg.c); doc.circle(lgX,SY+3,1.4,"F"); lgX-=3.5;
+    const fnY=cy+DCH-10;
+    doc.setDrawColor(...cc); doc.setLineWidth(0.2); doc.line(cx+8,fnY,cx+DCW-4,fnY);
+    const names=facs.map(f=>f.name).join(" · ");
+    txt(names.length>72?names.slice(0,70)+"…":names,cx+12,fnY+5.5,3.5,cc,"normal");
   });
 
-  // ── FACILITY ANALYTICS — ranked chart + service heatmap ───────────────────
-  // Layout: Y:TBL_START – FTR_Y (66–198 = 132mm)
-  // Left block (chart): PAD … PAD+157  (157mm)
-  // Right block (heat):  PAD+160 … PW-PAD (115mm)
-  // Headers: 14mm  →  data rows: 132-14 = 118mm → 31 rows × 3.8mm = 117.8mm ✓
-
-  const facData = sorted.map((f,i)=>{
-    const s  = state[f.name]??defaultState();
-    const ov = calcOverall(s);
-    return { f, s, ov, i,
-      score:   ov==="green"?100:ov==="amber"?62:ov==="red"?28:8,
-      prevCat: i>0?sorted[i-1].cat:"",
-    };
+  const CBAR_Y=DCY2+DCH+8;
+  txt("COMPARATIVE SITE DISTRIBUTION",PAD,CBAR_Y,5.5,NAVY,"bold");
+  doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.line(PAD,CBAR_Y+3,PW-PAD,CBAR_Y+3);
+  const maxF=Math.max(...CATS.map(c=>facilities.filter(f=>f.cat===c).length));
+  CATS.forEach((cat,ci)=>{
+    const facs=facilities.filter(f=>f.cat===cat);
+    const bW=Math.max((TW-36)*(facs.length/maxF),4);
+    const by=CBAR_Y+7+ci*10;
+    txt(cat,PAD,by+6.5,5,CAT_C[cat],"bold");
+    frr(PAD+32,by,TW-36,7.5,3.5,[228,234,246] as RGB);
+    frr(PAD+32,by,bW,7.5,3.5,CAT_C[cat]);
+    const grn=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="green").length;
+    const hlth=facs.length>0?Math.round(grn/facs.length*100):0;
+    if(bW>40) txt(`${hlth}% operational`,PAD+32+bW-44,by+5.5,3.5,WHITE,"bold");
+    txt(`${facs.length} sites`,PAD+32+bW+4,by+6,4.5,MUTED);
   });
 
-  const LX  = PAD;          // left block X
-  const LW  = 157;          // left block width
-  const RX  = PAD+160;      // right block X
-  const RW  = TW-160;       // right block width ≈ 115mm
-  const HDR_ROW  = TBL_START;          // section header band
-  const COL_ROW  = TBL_START + 8;      // column label row
-  const DATA_Y   = TBL_START + 14;     // first data row Y
-  const ROW_H    = (FTR_Y - DATA_Y - 2) / facData.length;  // ~3.8mm
+  drawInsight(FTR_Y-14);
 
-  // ── Section header ─────────────────────────────────────────────────────────
-  fr(0,HDR_ROW-0.5,PW,9,BG);
-  doc.setDrawColor(...BDR); doc.setLineWidth(0.3);
-  doc.line(PAD,HDR_ROW,PW-PAD,HDR_ROW);
-  txt("FACILITY PERFORMANCE ANALYTICS", PAD, HDR_ROW+5.5, 5.5, NAVY, "bold");
-  txt(`${sorted.length} sites · all divisions`, PAD, HDR_ROW+5.5, 5.5, NAVY, "normal");  // overwritten below
-  txt(`${sorted.length} SITES MONITORED`, PW-PAD, HDR_ROW+5.5, 4.5, MUTED, "normal", "right");
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAGE 3 — FACILITY OPERATIONAL MATRIX
+  // ══════════════════════════════════════════════════════════════════════════
+  doc.addPage();
+  drawShell(3,"Facility Operational Matrix");
+  const D3Y=BODY_TOP+2;
+  txt("OPERATIONAL STATUS MATRIX",PAD,D3Y+5,7,NAVY,"bold");
+  txt("All monitored facilities  ·  Internet · Biometric · Printing",PAD,D3Y+11,4.5,MUTED);
+  doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.line(PAD,D3Y+14,PW-PAD,D3Y+14);
 
-  // Legend chips (right of section title)
-  const lgR: {lbl:string;c:RGB}[] = [{lbl:"Operational",c:gC},{lbl:"Degraded",c:aC},{lbl:"Critical",c:rC}];
-  let lgRX = PW - PAD - 80;
-  lgR.forEach(lg=>{
-    doc.setFillColor(...lg.c); doc.circle(lgRX,HDR_ROW+4.5,1.2,"F");
-    txt(lg.lbl,lgRX+3,HDR_ROW+5.5,4,INK); lgRX+=27;
-  });
+  const MCOLS=5, MAT_Y=D3Y+18;
+  const MCW=TW/MCOLS;
+  const MROWS=Math.ceil(sorted.length/MCOLS);
+  const MRH=Math.min(20,(FTR_Y-18-MAT_Y)/MROWS);
 
-  // ── Column headers ─────────────────────────────────────────────────────────
-  fr(LX,COL_ROW,LW,6,NAVY); fr(RX,COL_ROW,RW,6,NAVY);
-
-  // Left headers
-  txt("#",      LX+3.5,         COL_ROW+4.2, 4.5, WHITE, "bold", "center");
-  txt("FACILITY NAME",   LX+10,          COL_ROW+4.2, 4.5, WHITE, "bold");
-  txt("PERFORMANCE",     LX+65,          COL_ROW+4.2, 4.5, WHITE, "bold");
-  txt("SCORE", LX+128,          COL_ROW+4.2, 4.5, WHITE, "bold", "center");
-  txt("STATUS", LX+140,         COL_ROW+4.2, 4.5, WHITE, "bold", "center");
-
-  // Right headers
-  const cellW = RW / 3;
-  ["INTERNET","BIOMETRIC","PRINTING"].forEach((h,hi)=>{
-    txt(h, RX+hi*cellW+cellW/2, COL_ROW+4.2, 4.5, WHITE, "bold", "center");
-  });
-
-  // ── Data rows ──────────────────────────────────────────────────────────────
-  const BAR_X  = LX + 62;   // bar track starts
-  const BAR_W  = 62;         // bar track total width
-  const SCORE_X= LX + 127;  // score % label X
-  const STATUS_X= LX+140;   // status badge centre
-
-  facData.forEach(({f,s,ov,score,prevCat,i})=>{
-    const y   = DATA_Y + i*ROW_H;
-    const rowBg: RGB = i%2===0?WHITE:[244,247,253];
-    const stC  = ragAccent(ov);
-    const stL  = ragFill(ov);
-    const stD  = ragText(ov);
-
-    // Row background
-    fr(LX,y,LW,ROW_H,rowBg); fr(RX,y,RW,ROW_H,rowBg);
-
-    // Category boundary: coloured top rule + left stripe
-    if(prevCat!==f.cat&&i>0){
-      const divC = CAT_C[f.cat]??NAVY;
-      doc.setDrawColor(...divC); doc.setLineWidth(0.5);
-      doc.line(LX,y,LX+LW,y); doc.line(RX,y,RX+RW,y);
-      doc.setLineWidth(0.1);
-    }
-
-    // Left stripe (category colour)
-    frr(LX,y,2,ROW_H,0,CAT_C[f.cat]??NAVY);
-
-    // Row number
-    txt(String(i+1), LX+4.5, y+ROW_H*0.68, 4, MUTED, "normal", "center");
-
-    // Facility name (truncate to ~53mm)
-    const name = f.name.length>24?f.name.slice(0,22)+"…":f.name;
-    doc.setFont("helvetica","bold"); doc.setFontSize(4.8); doc.setTextColor(...NAVY);
-    doc.text(name, LX+9, y+ROW_H*0.68);
-
-    // Performance bar track
-    frr(BAR_X, y+ROW_H*0.25, BAR_W, ROW_H*0.5, ROW_H*0.25, [220,228,242] as RGB);
-    // Bar fill
-    const barFill = Math.max(BAR_W*score/100, ROW_H*0.5);
-    frr(BAR_X, y+ROW_H*0.25, barFill, ROW_H*0.5, ROW_H*0.25, stC);
-
-    // Score %
-    txt(`${score}%`, SCORE_X, y+ROW_H*0.68, 4, MUTED, "normal", "center");
-
-    // Status badge
-    frr(STATUS_X-11, y+ROW_H*0.15, 22, ROW_H*0.7, 1, stL);
-    txt(ragLabel(ov), STATUS_X, y+ROW_H*0.68, 4, stD, "bold", "center");
-
-    // Right heatmap cells (Internet, Biometric, Printing)
-    ([s.internet,s.bio,s.printing] as RAGStatus[]).forEach((st,si)=>{
-      const cx  = RX + si*cellW;
-      const cBg = ragFill(st);
-      const cAc = ragAccent(st);
-      fr(cx+0.5, y+0.5, cellW-1, ROW_H-1, cBg);
-      doc.setFillColor(...cAc); doc.circle(cx+cellW/2, y+ROW_H/2, 1.2,"F");
+  sorted.forEach((f,fi)=>{
+    const col=fi%MCOLS, row=Math.floor(fi/MCOLS);
+    const cx=PAD+col*MCW, cy=MAT_Y+row*MRH;
+    const sv=state[f.name]??defaultState(); const ov=calcOverall(sv);
+    frr(cx+1,cy+1,MCW-2,MRH-2,2,ragFill(ov));
+    frr(cx+1,cy+1,3.5,MRH-2,1.5,CAT_C[f.cat]);
+    doc.setFillColor(...ragAccent(ov)); doc.circle(cx+MCW-7,cy+MRH/2,3.5,"F");
+    doc.setFillColor(...WHITE); doc.circle(cx+MCW-7,cy+MRH/2,1.5,"F");
+    txt(f.name.length>20?f.name.slice(0,18)+"…":f.name,cx+7,cy+MRH*0.42,4.5,INK,"bold");
+    const dotY=cy+MRH*0.73;
+    ([sv.internet,sv.bio,sv.printing] as RAGStatus[]).forEach((st,si)=>{
+      const dotX=cx+7+si*18;
+      doc.setFillColor(...ragAccent(st)); doc.circle(dotX+2.5,dotY,2.8,"F");
+      txt(["NET","BIO","PRT"][si],dotX+7,dotY+1.5,3.8,ragText(st),"normal");
     });
   });
 
-  // Right block outer border
-  doc.setDrawColor(...BDR); doc.setLineWidth(0.2);
-  doc.rect(RX, COL_ROW, RW, DATA_Y+facData.length*ROW_H-COL_ROW);
+  const LEGY=MAT_Y+MROWS*MRH+4;
+  frr(PAD,LEGY,TW,12,2,[228,236,252] as RGB);
+  doc.setDrawColor(...[44,94,232] as RGB); doc.setLineWidth(2); doc.line(PAD,LEGY,PAD,LEGY+12);
+  txt("STATUS LEGEND",PAD+5,LEGY+4.5,4.5,MUTED,"bold");
+  let llX=PAD+40;
+  ([{l:"Operational",c:gC},{l:"Degraded",c:aC},{l:"Critical",c:rC}] as {l:string;c:RGB}[]).forEach(ll=>{
+    doc.setFillColor(...ll.c); doc.circle(llX+2.5,LEGY+5,2.5,"F");
+    txt(ll.l,llX+7,LEGY+6.5,4,INK); llX+=34;
+  });
+  txt("Left stripe = Division colour  ·  Right ring = Overall health  ·  NET / BIO / PRT = individual service status",PAD+5,LEGY+10.5,3.5,MUTED);
 
-  // ── Distribution summary below chart (if space allows) ─────────────────────
-  const chartBottom = DATA_Y + facData.length*ROW_H;
-  if(chartBottom + 6 < FTR_Y - 2){
-    const grnN = facData.filter(r=>r.ov==="green").length;
-    const ambN = facData.filter(r=>r.ov==="amber").length;
-    const redN = facData.filter(r=>r.ov==="red").length;
-    const tot  = facData.length;
-    fr(LX, chartBottom+1, LW+RW+3, FTR_Y-chartBottom-3, [244,247,252] as RGB);
-    txt("DISTRIBUTION SUMMARY", LX+3, chartBottom+5.5, 4.5, MUTED, "bold");
-    const distItems = [{lbl:`Operational (${grnN})`,pct:grnN/tot,c:gC},{lbl:`Degraded (${ambN})`,pct:ambN/tot,c:aC},{lbl:`Critical (${redN})`,pct:redN/tot,c:rC}];
-    let distX = LX+50;
-    distItems.forEach(d=>{
-      const bw = 55*d.pct;
-      txt(d.lbl, distX, chartBottom+5.5, 4, d.c, "bold");
-      frr(distX, chartBottom+7, 55, 2.5, 1.25, [220,228,242] as RGB);
-      if(bw>0) frr(distX, chartBottom+7, bw, 2.5, 1.25, d.c);
-      txt(`${Math.round(d.pct*100)}%`, distX+57, chartBottom+5.5, 4, d.c);
-      distX += 75;
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAGE 4 — INFRASTRUCTURE SERVICE HEALTH + APPENDIX
+  // ══════════════════════════════════════════════════════════════════════════
+  doc.addPage();
+  drawShell(4,"Infrastructure Service Analysis");
+  const D4Y=BODY_TOP+2;
+  txt("INFRASTRUCTURE SERVICE HEALTH",PAD,D4Y+5,7,NAVY,"bold");
+  doc.setDrawColor(...GOLD); doc.setLineWidth(0.8); doc.line(PAD,D4Y+9,PW-PAD,D4Y+9);
+
+  const SVC_Y=D4Y+13, SVC_W=(TW-8)/3, SVC_H=44;
+  const svcDefs=[
+    {lbl:"INTERNET CONNECTIVITY",key:"internet" as keyof FacilityState,icon:"◉"},
+    {lbl:"BIOMETRIC SYSTEMS",key:"bio" as keyof FacilityState,icon:"◈"},
+    {lbl:"PRINTING SERVICES",key:"printing" as keyof FacilityState,icon:"◎"},
+  ];
+  svcDefs.forEach((svc,si)=>{
+    const sx=PAD+si*(SVC_W+4);
+    const vals=sorted.map(f=>(state[f.name]??defaultState())[svc.key] as RAGStatus);
+    const sg=vals.filter(v=>v==="green").length, sa=vals.filter(v=>v==="amber").length;
+    const sr=vals.filter(v=>v==="red").length, sn=vals.filter(v=>v==="na").length;
+    const sh=vals.length>0?sg/vals.length:0;
+    const shC:RGB=sh>=0.8?gC:sh>=0.5?aC:rC;
+    frr(sx,SVC_Y,SVC_W,SVC_H,3,WHITE);
+    doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.roundedRect(sx,SVC_Y,SVC_W,SVC_H,3,3,"S");
+    frr(sx,SVC_Y,SVC_W,2.5,1.5,shC);
+    txt(svc.icon,sx+SVC_W/2,SVC_Y+10,9,shC,"bold","center");
+    txt(svc.lbl,sx+SVC_W/2,SVC_Y+16,5,NAVY,"bold","center");
+    txt(`${Math.round(sh*100)}%`,sx+SVC_W/2,SVC_Y+26,15,shC,"bold","center");
+    txt("AVAILABILITY",sx+SVC_W/2,SVC_Y+31,4,MUTED,"bold","center");
+    pbar(sx+6,SVC_Y+33,SVC_W-12,4,sh,shC);
+    const ckY=SVC_Y+40;
+    ([{v:sg,l:"Active",c:gC},{v:sa,l:"Partial",c:aC},{v:sr,l:"Down",c:rC},{v:sn,l:"N/A",c:nC}] as {v:number;l:string;c:RGB}[]).forEach((ck,cki)=>{
+      const ckx=sx+4+cki*(SVC_W/4);
+      txt(String(ck.v),ckx+SVC_W/8,ckY+5,9,ck.c,"bold","center");
+      txt(ck.l,ckx+SVC_W/8,ckY+9.5,3.5,MUTED,"normal","center");
     });
-  }
+  });
 
-  // ── FOOTER ─────────────────────────────────────────────────────────────────
-  fr(0,FTR_Y,PW,PH-FTR_Y,NAVY); fr(0,FTR_Y,PW,0.6,GOLD);
-  const f1=FTR_Y+4, f2=FTR_Y+7.6, f3=FTR_Y+10.8;
-  txt(cfg.org, PAD, f1, 5.5, GOLD, "bold");
-  txt("IT Department  ·  it.support@imarat.com.pk", PAD, f2, 4, MUTED);
-  txt("CONFIDENTIAL — AUTHORISED PERSONNEL ONLY", PAD, f3, 3.5, [60,90,135] as RGB);
-  if(cfg.includeTs) {
-    txt("SYSTEM GENERATED REPORT", PW/2, f1, 5.5, WHITE, "bold", "center");
-    txt(`RAG Dashboard  ·  Ref: ${refNo}`, PW/2, f2, 4, MUTED, "normal", "center");
-  }
-  txt(`${dateStr}  ·  ${timeStr}`, PW-PAD, f1, 5.5, GOLD, "bold", "right");
-  txt(`${filtered.length} Sites Monitored`, PW-PAD, f2, 4, MUTED, "normal", "right");
-  txt("imarat.com.pk", PW-PAD, f3, 3.5, [60,90,135] as RGB, "normal", "right");
+  // Compact facility appendix
+  const APP_Y=SVC_Y+SVC_H+8;
+  txt("FACILITY DETAIL APPENDIX",PAD,APP_Y,6,NAVY,"bold");
+  doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.line(PAD,APP_Y+3,PW-PAD,APP_Y+3);
+  const ACOLS=[
+    {h:"#",        w:7,  x:PAD},
+    {h:"FACILITY", w:65, x:PAD+7},
+    {h:"DIV",      w:25, x:PAD+72},
+    {h:"INTERNET", w:25, x:PAD+97},
+    {h:"BIOMETRIC",w:25, x:PAD+122},
+    {h:"PRINTING", w:25, x:PAD+147},
+    {h:"OVERALL",  w:28, x:PAD+172},
+    {h:"BANDWIDTH",w:28, x:PAD+200},
+  ];
+  const ATH_Y=APP_Y+6;
+  fr(0,ATH_Y,PW,6,NAVY);
+  ACOLS.forEach(col=>txt(col.h,col.x+col.w/2,ATH_Y+4.2,3.8,WHITE,"bold","center"));
+  const ARWH=Math.min(5.5,(FTR_Y-16-ATH_Y-6)/sorted.length);
+  sorted.forEach((f,fi)=>{
+    const sv=state[f.name]??defaultState(); const ov=calcOverall(sv);
+    const ry=ATH_Y+6+fi*ARWH;
+    fr(0,ry,PW,ARWH,fi%2===0?WHITE:[244,247,252] as RGB);
+    frr(PAD,ry,2.5,ARWH,0,CAT_C[f.cat]??NAVY);
+    const tc=ry+ARWH*0.72;
+    txt(String(fi+1),PAD+3.5,tc,3.5,MUTED,"normal","center");
+    txt(f.name.length>22?f.name.slice(0,20)+"…":f.name,PAD+9,tc,3.8,INK,"bold");
+    txt(f.cat,PAD+84.5,tc,3.5,CAT_C[f.cat]??NAVY,"bold","center");
+    ([sv.internet,sv.bio,sv.printing] as RAGStatus[]).forEach((st,sti)=>{
+      const lx=[PAD+109.5,PAD+134.5,PAD+159.5][sti];
+      doc.setFillColor(...ragAccent(st)); doc.circle(lx,ry+ARWH/2,2.5,"F");
+    });
+    frr(PAD+174,ry+1,24,ARWH-2,1,ragFill(ov));
+    txt(ragLabel(ov),PAD+186,tc,3.5,ragText(ov),"bold","center");
+    if(sv.bandwidth) txt(sv.bandwidth,PAD+214,tc,3.5,MUTED,"normal","center");
+  });
+
+  drawInsight(FTR_Y-14);
 
   doc.save(fileName);
   return fileName;
