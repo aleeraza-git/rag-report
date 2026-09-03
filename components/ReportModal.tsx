@@ -294,9 +294,6 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
             </div>
           )}
 
-          {/* TABLE */}
-          {cfg.includeTable && (
-            <div style={{ padding: "6px 20px 10px" }}>
           {/* FACILITY ANALYTICS — all facilities, no truncation */}
           {cfg.includeTable && (
             <div style={{ padding: "6px 20px 10px" }}>
