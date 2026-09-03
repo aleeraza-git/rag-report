@@ -166,7 +166,7 @@ function OrientBtn({ active, onClick, icon, label }: { active: boolean; onClick:
   );
 }
 
-// ─── Live preview canvas (HTML mockup of the PDF) ─────────────────────────────
+// ─── Live preview canvas — BI Dashboard layout ───────────────────────────────
 function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall, defaultState: defState }: {
   cfg: ReportConfig;
   facilities: { name: string; cat: string }[];
@@ -193,227 +193,277 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
   }, []);
 
   const total = facilities.length;
-  const healthPct = total > 0 ? Math.round(counts.green / total * 100) : 0;
-  const hCol = healthPct >= 80 ? "#10B981" : healthPct >= 50 ? "#F59E0B" : "#EF4444";
-
+  const healthPct = total > 0 ? counts.green / total : 0;
+  const hCol = healthPct >= 0.8 ? "#10B981" : healthPct >= 0.5 ? "#F59E0B" : "#EF4444";
   const filtered = facilities.filter(f => cfg.divFilter === "all" || f.cat === cfg.divFilter);
   const ORDER: Record<string, number> = { Imarat:0, Projects:1, Graana:2, Agency21:3 };
   const sorted = [...filtered].sort((a,b) => (ORDER[a.cat]??9) - (ORDER[b.cat]??9));
+  const dateStr = new Date().toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
+  const timeStr = new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
 
-  // Page is 930×658 (A4 landscape at ~3.1px/mm), scaled to fit container
+  // SVG donut helpers
+  const R35 = 35, C35 = 2*Math.PI*R35;
+  const R30 = 30, C30 = 2*Math.PI*R30;
+  const R20 = 20, C20 = 2*Math.PI*R20;
+
+  // Single-fill donut (for health ring)
+  const Donut1 = ({ pct, color, r=35, sz=90 }: { pct: number; color: string; r?: number; sz?: number }) => {
+    const circ = 2*Math.PI*r;
+    return (
+      <svg width={sz} height={sz} viewBox={`0 0 ${sz} ${sz}`}>
+        <circle cx={sz/2} cy={sz/2} r={r} fill="none" stroke="#E4EAF6" strokeWidth="11"/>
+        {pct>0 && <circle cx={sz/2} cy={sz/2} r={r} fill="none" stroke={color} strokeWidth="11"
+          strokeDasharray={`${circ*pct} ${circ*(1-pct)}`} strokeDashoffset={0}
+          style={{ transform:`rotate(-90deg)`, transformOrigin:`${sz/2}px ${sz/2}px` }} strokeLinecap="butt"/>}
+      </svg>
+    );
+  };
+
+  // Multi-segment donut (for status distribution)
+  const MultiDonut = () => {
+    const segs = [{v:counts.green,c:"#059669"},{v:counts.amber,c:"#D97706"},{v:counts.red,c:"#DC2626"},{v:counts.na||0,c:"#9CA3AF"}];
+    const tot = segs.reduce((s,r)=>s+r.v,0)||1;
+    let cum = 0;
+    return (
+      <svg width="90" height="90" viewBox="0 0 90 90">
+        <circle cx="45" cy="45" r={R30} fill="none" stroke="#E4EAF6" strokeWidth="11"/>
+        {segs.map((seg,si) => {
+          if(!seg.v) { return null; }
+          const len=C30*(seg.v/tot), off=-C30*cum;
+          cum+=seg.v/tot;
+          return <circle key={si} cx="45" cy="45" r={R30} fill="none" stroke={seg.c} strokeWidth="11"
+            strokeDasharray={`${len} ${C30-len}`} strokeDashoffset={off}
+            style={{ transform:"rotate(-90deg)", transformOrigin:"45px 45px" }} strokeLinecap="butt"/>;
+        })}
+      </svg>
+    );
+  };
+
+  // Mini service donut
+  const MiniDonut = ({ pct, color }: { pct: number; color: string }) => (
+    <svg width="50" height="50" viewBox="0 0 50 50">
+      <circle cx="25" cy="25" r={R20} fill="none" stroke="#E4EAF6" strokeWidth="8"/>
+      {pct>0 && <circle cx="25" cy="25" r={R20} fill="none" stroke={color} strokeWidth="8"
+        strokeDasharray={`${C20*pct} ${C20*(1-pct)}`} strokeDashoffset={0}
+        style={{ transform:"rotate(-90deg)", transformOrigin:"25px 25px" }} strokeLinecap="butt"/>}
+    </svg>
+  );
+
+  // Panel widget wrapper
+  const Panel = ({ title, accent="#C49A1E", children, style }: { title:string; accent?:string; children:React.ReactNode; style?:React.CSSProperties }) => (
+    <div style={{ background:"#fff", borderRadius:3, overflow:"hidden", border:"1px solid #DDE4EF", display:"flex", flexDirection:"column" as const, ...style }}>
+      <div style={{ background:"#060E1C", padding:"4px 10px", borderLeft:`3px solid ${accent}` }}>
+        <span style={{ color:accent, fontSize:7.5, fontWeight:800, letterSpacing:0.8 }}>{title}</span>
+      </div>
+      <div style={{ flex:1, padding:"8px 10px", overflow:"hidden" }}>{children}</div>
+    </div>
+  );
+
   return (
-    <div ref={containerRef} style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center" }}>
-      {/* Page shadow wrapper */}
-      <div style={{ transform: `scale(${scale})`, transformOrigin: "top center", width: 930, transition: "transform 0.15s" }}>
-        <div style={{ width: 930, background: "#fff", boxShadow: "0 4px 32px rgba(0,0,0,0.22)", borderRadius: 3, overflow: "hidden", fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
+    <div ref={containerRef} style={{ width:"100%", display:"flex", flexDirection:"column" as const, alignItems:"center" }}>
+      <div style={{ transform:`scale(${scale})`, transformOrigin:"top center", width:930, transition:"transform 0.15s" }}>
+        <div style={{ width:930, background:"#EEF3FB", boxShadow:"0 4px 32px rgba(0,0,0,0.22)", borderRadius:3, overflow:"hidden", fontFamily:"'Helvetica Neue',Helvetica,Arial,sans-serif" }}>
 
           {/* HEADER */}
-          <div style={{ background: "#0C1A2E", padding: "14px 28px", display: "flex", alignItems: "center", gap: 0 }}>
-            {/* Gold top bar */}
-            <div style={{ position: "absolute" as const, top: 0, left: 0, right: 0, height: 4, background: "#C49A1E" }} />
-            {/* Logo area */}
-            <div style={{ display: "flex", flexDirection: "column" as const, minWidth: 160 }}>
-              {cfg.includeLogo && (
-                <div style={{ fontSize: 22, fontWeight: 900, color: "#fff", letterSpacing: 4, fontFamily: "Georgia, serif", lineHeight: 1 }}>IMARAT</div>
-              )}
-              <div style={{ fontSize: 8.5, color: "#C49A1E", fontWeight: 700, letterSpacing: 1.5, marginTop: 2 }}>GROUP OF COMPANIES</div>
-              <div style={{ fontSize: 7.5, color: "#4A6A98", marginTop: 1 }}>IT Department</div>
+          <div style={{ background:"#0C1A2E", padding:"12px 24px", display:"flex", alignItems:"center", borderTop:"3px solid #C49A1E" }}>
+            <div style={{ display:"flex", flexDirection:"column" as const, minWidth:150 }}>
+              {cfg.includeLogo && <div style={{ fontSize:20, fontWeight:900, color:"#fff", letterSpacing:4, fontFamily:"Georgia,serif" }}>IMARAT</div>}
+              <div style={{ fontSize:7.5, color:"#C49A1E", fontWeight:700, letterSpacing:1.5, marginTop:2 }}>GROUP OF COMPANIES</div>
+              <div style={{ fontSize:7, color:"#4A6A98" }}>IT Department</div>
             </div>
-            <div style={{ width: 1, background: "#1E3050", alignSelf: "stretch", margin: "0 20px" }} />
-            {/* Title */}
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", letterSpacing: 0.5 }}>{cfg.title || "IT Facilities RAG Dashboard"}</div>
-              <div style={{ fontSize: 9, color: "#C49A1E", fontWeight: 600, marginTop: 2 }}>{cfg.subtitle || "Daily Operational Status"}</div>
-              <div style={{ fontSize: 8, color: "#4A6A98", marginTop: 2 }}>{cfg.org} · {cfg.period || new Date().toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" })}</div>
+            <div style={{ width:1, background:"#1E3050", alignSelf:"stretch", margin:"0 16px" }}/>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:13, fontWeight:800, color:"#fff" }}>{cfg.title}</div>
+              <div style={{ fontSize:8, color:"#C49A1E", fontWeight:600, marginTop:1 }}>Executive IT Operations Dashboard · Page 1 of 3</div>
+              <div style={{ fontSize:7, color:"#4A6A98", marginTop:1 }}>{cfg.org} · {cfg.period||dateStr}</div>
             </div>
-            {/* Meta */}
-            <div style={{ textAlign: "right" as const }}>
-              <div style={{ fontSize: 14, color: "#C49A1E", fontWeight: 700 }}>{new Date().toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" })}</div>
-              <div style={{ fontSize: 9, color: "#4A6A98", marginTop: 2 }}>{new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" })}</div>
-              {cfg.includeRef && <div style={{ fontSize: 7.5, color: "#2A4060", marginTop: 2 }}>REF: IGC-IT-PREVIEW</div>}
+            <div style={{ textAlign:"right" as const }}>
+              <div style={{ fontSize:12, color:"#C49A1E", fontWeight:700 }}>{dateStr}</div>
+              <div style={{ fontSize:7.5, color:"#4A6A98", marginTop:2 }}>{timeStr}</div>
             </div>
           </div>
 
-          {/* KPI CARDS */}
-          {cfg.includeKPIs && (
-            <div style={{ background: "#EBF0F8", padding: "8px 20px", display: "flex", gap: 6 }}>
-              {[
-                { val: total,              lbl: "Total Sites",   col: "#0C1A2E" },
-                { val: counts.green,       lbl: "Operational",   col: "#059669" },
-                { val: counts.amber,       lbl: "Degraded",      col: "#D97706" },
-                { val: counts.red,         lbl: "Critical",      col: "#DC2626" },
-                { val: autoStats.received, lbl: "Tickets",       col: "#2C5EE8" },
-                { val: autoStats.resolved, lbl: "Resolved",      col: "#059669" },
-                { val: autoStats.pending,  lbl: "Pending",       col: "#D97706" },
-              ].map((k, i) => (
-                <div key={i} style={{ flex: 1, background: "#fff", borderRadius: 4, padding: "7px 8px", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", borderTop: `2.5px solid ${k.col}` }}>
-                  <div style={{ fontSize: 17, fontWeight: 800, color: k.col, lineHeight: 1 }}>{k.val}</div>
-                  <div style={{ fontSize: 7.5, color: "#8A9AB8", fontWeight: 600, marginTop: 3, letterSpacing: 0.4 }}>{k.lbl.toUpperCase()}</div>
+          {/* DASHBOARD GRID */}
+          <div style={{ padding:"8px 10px", display:"flex", flexDirection:"column" as const, gap:7 }}>
+
+            {/* ROW 1 — 3 panels */}
+            <div style={{ display:"flex", gap:7, height:148 }}>
+
+              {/* A: Health Ring */}
+              <Panel title="OVERALL IT HEALTH" accent="#C49A1E" style={{ width:192 }}>
+                <div style={{ display:"flex", flexDirection:"column" as const, alignItems:"center" }}>
+                  <div style={{ position:"relative" as const, width:90, height:90 }}>
+                    <Donut1 pct={healthPct} color={hCol} r={R35} sz={90}/>
+                    <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column" as const, alignItems:"center", justifyContent:"center" }}>
+                      <div style={{ fontSize:20, fontWeight:800, color:hCol, lineHeight:1 }}>{Math.round(healthPct*100)}%</div>
+                      <div style={{ fontSize:6.5, color:"#8A9AB8", fontWeight:700 }}>HEALTH</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize:11, fontWeight:800, color:hCol, marginTop:2 }}>{counts.green}/{total}</div>
+                  <div style={{ fontSize:6.5, color:"#8A9AB8", fontWeight:600 }}>SITES OPERATIONAL</div>
                 </div>
-              ))}
-            </div>
-          )}
+              </Panel>
 
-          {/* DIVISION OVERVIEW */}
-          {cfg.includeDivs && (
-            <div style={{ background: "#fff", padding: "8px 20px", display: "flex", gap: 6 }}>
-              {/* Health */}
-              <div style={{ width: 150, background: "#0C1A2E", borderRadius: 4, padding: "10px 12px" }}>
-                <div style={{ fontSize: 7.5, color: "#4A6A98", fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>OVERALL HEALTH</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: hCol, lineHeight: 1 }}>{healthPct}%</div>
-                <div style={{ marginTop: 6, height: 4, background: "#1A3050", borderRadius: 2 }}>
-                  <div style={{ height: 4, background: hCol, borderRadius: 2, width: `${healthPct}%` }} />
+              {/* B: Status Donut */}
+              <Panel title="STATUS DISTRIBUTION" accent="#C49A1E" style={{ width:218 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <div style={{ position:"relative" as const, flexShrink:0 }}>
+                    <MultiDonut/>
+                    <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column" as const, alignItems:"center", justifyContent:"center" }}>
+                      <div style={{ fontSize:12, fontWeight:800, color:"#0C1A2E" }}>{total}</div>
+                      <div style={{ fontSize:5.5, color:"#8A9AB8" }}>TOTAL</div>
+                    </div>
+                  </div>
+                  <div style={{ display:"flex", flexDirection:"column" as const, gap:5 }}>
+                    {[{v:counts.green,l:"Operational",c:"#059669"},{v:counts.amber,l:"Degraded",c:"#D97706"},{v:counts.red,l:"Critical",c:"#DC2626"},{v:counts.na||0,l:"N/A",c:"#9CA3AF"}].map(s=>(
+                      <div key={s.l} style={{ display:"flex", alignItems:"center", gap:5 }}>
+                        <div style={{ width:18, height:7, borderRadius:2, background:s.c, flexShrink:0 }}/>
+                        <span style={{ fontSize:7, color:"#1A2540", flex:1 }}>{s.l}</span>
+                        <span style={{ fontSize:8, fontWeight:800, color:s.c }}>{s.v}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-              {/* Division cards */}
-              {(["Imarat","Projects","Graana","Agency21"] as const).map(cat => {
-                const facs = facilities.filter(f => f.cat === cat);
-                const tot = facs.length;
-                const grn = facs.filter(f => calcOverall(state[f.name] ?? defState()) === "green").length;
-                const amb = facs.filter(f => calcOverall(state[f.name] ?? defState()) === "amber").length;
-                const red = facs.filter(f => calcOverall(state[f.name] ?? defState()) === "red").length;
-                const hex = CAT_HEX[cat];
-                const bgHex = CAT_BGHEX[cat];
-                return (
-                  <div key={cat} style={{ flex: 1, background: bgHex, borderRadius: 4, padding: "8px 10px", borderTop: `2.5px solid ${hex}` }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                      <div style={{ fontSize: 9, fontWeight: 800, color: hex, letterSpacing: 0.5 }}>{cat.toUpperCase()}</div>
-                      <div style={{ fontSize: 9, color: hex }}>{tot}</div>
-                    </div>
-                    <div style={{ height: 3, background: "rgba(0,0,0,0.1)", borderRadius: 2, margin: "5px 0" }}>
-                      {tot > 0 && <div style={{ height: 3, background: hex, borderRadius: 2, width: `${(grn/tot)*100}%` }} />}
-                    </div>
-                    <div style={{ display: "flex", gap: 4 }}>
-                      <span style={{ flex: 1, textAlign: "center" as const, fontSize: 12, fontWeight: 800, color: "#059669" }}>{grn}</span>
-                      <span style={{ flex: 1, textAlign: "center" as const, fontSize: 12, fontWeight: 800, color: "#D97706" }}>{amb}</span>
-                      <span style={{ flex: 1, textAlign: "center" as const, fontSize: 12, fontWeight: 800, color: "#DC2626" }}>{red}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+              </Panel>
 
-          {/* FACILITY ANALYTICS — all facilities, no truncation */}
-          {cfg.includeTable && (
-            <div style={{ padding: "6px 20px 10px" }}>
-              {/* Section header */}
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", borderTop:"1px solid #DDE4EF", paddingTop:6, marginBottom:7 }}>
-                <span style={{ fontSize:8, fontWeight:700, color:"#8A9AB8", letterSpacing:1 }}>
-                  FACILITY PERFORMANCE ANALYTICS — {sorted.length} SITES
-                </span>
-                <span style={{ display:"flex", gap:8, fontSize:6.5 }}>
-                  {[{l:"Operational",c:"#059669"},{l:"Degraded",c:"#D97706"},{l:"Critical",c:"#DC2626"},{l:"N/A",c:"#9CA3AF"}].map(s=>(
-                    <span key={s.l} style={{ display:"flex", alignItems:"center", gap:3, color:s.c, fontWeight:700 }}>
-                      <span style={{ width:6,height:6,borderRadius:"50%",background:s.c,display:"inline-block" }} />{s.l}
-                    </span>
-                  ))}
-                </span>
-              </div>
-
-              <div style={{ display:"flex", gap:10 }}>
-
-                {/* LEFT: Ranked performance bar chart */}
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:7, fontWeight:800, color:"#0C1A2E", letterSpacing:0.8, marginBottom:5, textTransform:"uppercase" as const }}>
-                    Performance Ranking
-                  </div>
-                  {/* Chart header */}
-                  <div style={{ display:"flex", alignItems:"center", gap:4, marginBottom:4, paddingBottom:3, borderBottom:"1px solid #EEF2F8" }}>
-                    <div style={{ width:12, fontSize:5.5, color:"#C0CAD8", fontWeight:700 }}>#</div>
-                    <div style={{ width:88, fontSize:5.5, color:"#8A9AB8", fontWeight:700 }}>FACILITY</div>
-                    <div style={{ flex:1, fontSize:5.5, color:"#8A9AB8", fontWeight:700 }}>SCORE</div>
-                    <div style={{ width:44, fontSize:5.5, color:"#8A9AB8", fontWeight:700, textAlign:"center" as const }}>STATUS</div>
-                  </div>
-                  {sorted.map((f,i)=>{
-                    const s   = state[f.name]??defState();
-                    const ov  = calcOverall(s);
-                    const sc  = ov==="green"?100:ov==="amber"?62:ov==="red"?28:8;
-                    const bc  = ov==="green"?"#059669":ov==="amber"?"#D97706":ov==="red"?"#DC2626":"#9CA3AF";
-                    const bbg = ov==="green"?"#ECFDF5":ov==="amber"?"#FFFBEB":ov==="red"?"#FEF2F2":"#F4F7FC";
-                    const catBdr = (i===0||sorted[i-1].cat!==f.cat) ? `2px solid ${CAT_HEX[f.cat]}` : undefined;
+              {/* C: Division Performance */}
+              <Panel title="DIVISION PERFORMANCE" accent="#2C5EE8" style={{ flex:1 }}>
+                <div style={{ display:"flex", flexDirection:"column" as const, gap:6, marginTop:2 }}>
+                  {(["Imarat","Projects","Graana","Agency21"] as const).map(cat=>{
+                    const facs=facilities.filter(f=>f.cat===cat);
+                    const grn=facs.filter(f=>calcOverall(state[f.name]??defState())==="green").length;
+                    const hlth=facs.length>0?grn/facs.length:0;
+                    const cc=CAT_HEX[cat];
+                    const maxF=Math.max(...(["Imarat","Projects","Graana","Agency21"] as const).map(c=>facilities.filter(f=>f.cat===c).length),1);
                     return (
-                      <div key={f.name} style={{ display:"flex", alignItems:"center", gap:4, padding:"1.6px 0", background:i%2===0?"#fff":"#F7FAFF", borderTop:catBdr }}>
-                        <div style={{ width:12, fontSize:6, color:"#C0CAD8", fontWeight:700, textAlign:"right" as const, flexShrink:0 }}>{i+1}</div>
-                        <div style={{ width:88, fontSize:6.5, color:"#0C1A2E", fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const, flexShrink:0 }}>{f.name}</div>
-                        <div style={{ flex:1, height:5, background:"#EEF2F8", borderRadius:3, position:"relative" as const }}>
-                          <div style={{ position:"absolute" as const, left:0, top:0, height:5, width:`${sc}%`, background:bc, borderRadius:3, transition:"width 0.3s" }} />
+                      <div key={cat} style={{ display:"flex", alignItems:"center", gap:6 }}>
+                        <div style={{ width:52, fontSize:8, fontWeight:800, color:cc, flexShrink:0 }}>{cat}</div>
+                        <div style={{ flex:1, height:14, background:"#E8EDF6", borderRadius:3, position:"relative" as const, overflow:"hidden" }}>
+                          <div style={{ position:"absolute" as const, left:0, top:0, bottom:0, width:`${(facs.length/maxF)*100}%`, background:`${cc}33` }}/>
+                          <div style={{ position:"absolute" as const, left:0, top:0, bottom:0, width:`${hlth*100}%`, background:cc, borderRadius:3 }}/>
+                          {hlth>0.12&&<div style={{ position:"absolute" as const, left:5, top:0, bottom:0, display:"flex", alignItems:"center", fontSize:6.5, fontWeight:800, color:"#fff" }}>{Math.round(hlth*100)}%</div>}
                         </div>
-                        <div style={{ width:10, fontSize:6, color:"#8A9AB8", textAlign:"right" as const, flexShrink:0 }}>{sc}%</div>
-                        <div style={{ width:44, flexShrink:0, textAlign:"center" as const }}>
-                          <span style={{ fontSize:6, fontWeight:700, color:bc, background:bbg, padding:"1px 5px", borderRadius:8 }}>{ragLabel(ov)}</span>
-                        </div>
+                        <div style={{ width:22, fontSize:9, fontWeight:800, color:cc, textAlign:"right" as const, flexShrink:0 }}>{facs.length}</div>
                       </div>
                     );
                   })}
                 </div>
+              </Panel>
+            </div>
 
-                {/* RIGHT: Service availability heatmap */}
-                <div style={{ width:138, flexShrink:0 }}>
-                  <div style={{ fontSize:7, fontWeight:800, color:"#0C1A2E", letterSpacing:0.8, marginBottom:5, textTransform:"uppercase" as const }}>
-                    Service Matrix
-                  </div>
-                  {/* Column headers */}
-                  <div style={{ display:"flex", gap:2, marginBottom:4, paddingBottom:3, borderBottom:"1px solid #EEF2F8" }}>
-                    {["INTERNET","BIOMETRIC","PRINTING"].map(h=>(
-                      <div key={h} style={{ flex:1, fontSize:5, color:"#8A9AB8", fontWeight:700, textAlign:"center" as const }}>{h}</div>
-                    ))}
-                  </div>
-                  {sorted.map((f,i)=>{
-                    const s = state[f.name]??defState();
-                    const catBdr = (i===0||sorted[i-1].cat!==f.cat) ? `2px solid ${CAT_HEX[f.cat]}` : undefined;
-                    return (
-                      <div key={f.name} style={{ display:"flex", gap:2, padding:"1.6px 0", background:i%2===0?"#fff":"#F7FAFF", borderTop:catBdr }}>
-                        {([s.internet,s.bio,s.printing] as RAGStatus[]).map((st,j)=>{
-                          const dc = st==="green"?"#059669":st==="amber"?"#D97706":st==="red"?"#DC2626":"#9CA3AF";
-                          const db = st==="green"?"#ECFDF5":st==="amber"?"#FFFBEB":st==="red"?"#FEF2F2":"#F4F7FC";
-                          return (
-                            <div key={j} style={{ flex:1, height:7, background:db, borderRadius:2, display:"flex", alignItems:"center", justifyContent:"center", gap:2 }}>
-                              <div style={{ width:4,height:4,borderRadius:"50%",background:dc,flexShrink:0 }} />
+            {/* ROW 2 — Facility Matrix + Service Intelligence */}
+            <div style={{ display:"flex", gap:7 }}>
+
+              {/* D: Facility Health Matrix */}
+              <Panel title={`FACILITY HEALTH MATRIX — ALL ${sorted.length} FACILITIES`} accent="#0E9870" style={{ flex:1 }}>
+                {/* Col headers */}
+                <div style={{ display:"flex", alignItems:"center", background:"#0C1728", borderRadius:2, padding:"2px 4px", marginBottom:1 }}>
+                  <div style={{ width:13, fontSize:5.5, color:"#5A7AA8", fontWeight:700, textAlign:"center" as const }}>#</div>
+                  <div style={{ flex:1, fontSize:5.5, color:"#8A9AB8", fontWeight:700, paddingLeft:3 }}>FACILITY</div>
+                  {["NET","BIO","PRT"].map(h=><div key={h} style={{ width:22, fontSize:5.5, color:"#8A9AB8", fontWeight:700, textAlign:"center" as const }}>{h}</div>)}
+                  <div style={{ width:52, fontSize:5.5, color:"#8A9AB8", fontWeight:700, textAlign:"center" as const }}>PERFORMANCE</div>
+                  <div style={{ width:52, fontSize:5.5, color:"#8A9AB8", fontWeight:700, textAlign:"center" as const }}>STATUS</div>
+                </div>
+                {/* Facility rows */}
+                {sorted.map((f,fi)=>{
+                  const sv=state[f.name]??defState();
+                  const ov=calcOverall(sv);
+                  const bc=ov==="green"?"#059669":ov==="amber"?"#D97706":ov==="red"?"#DC2626":"#9CA3AF";
+                  const bbg=ov==="green"?"#ECFDF5":ov==="amber"?"#FFFBEB":ov==="red"?"#FEF2F2":"#F4F7FC";
+                  const score=ov==="green"?1:ov==="amber"?0.62:ov==="red"?0.28:0.08;
+                  const catBdr=fi>0&&sorted[fi-1].cat!==f.cat?`1.5px solid ${CAT_HEX[f.cat]}`:undefined;
+                  return (
+                    <div key={f.name} style={{ display:"flex", alignItems:"center", padding:"1.2px 4px 1.2px 0", background:fi%2===0?"#fff":"#F6F9FF", borderTop:catBdr }}>
+                      <div style={{ width:3, alignSelf:"stretch", background:CAT_HEX[f.cat], flexShrink:0, borderRadius:1, marginRight:3 }}/>
+                      <div style={{ width:12, fontSize:5.5, color:"#C0CAD8", fontWeight:700, textAlign:"center" as const, flexShrink:0 }}>{fi+1}</div>
+                      <div style={{ flex:1, fontSize:6.5, color:"#0C1A2E", fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const, paddingLeft:2 }}>{f.name}</div>
+                      {([sv.internet,sv.bio,sv.printing] as RAGStatus[]).map((st,si)=>{
+                        const dc=st==="green"?"#059669":st==="amber"?"#D97706":st==="red"?"#DC2626":"#9CA3AF";
+                        return <div key={si} style={{ width:22, display:"flex", justifyContent:"center", flexShrink:0 }}><div style={{ width:8, height:8, borderRadius:"50%", background:dc }}/></div>;
+                      })}
+                      <div style={{ width:52, flexShrink:0, padding:"0 4px" }}>
+                        <div style={{ height:6, background:"#EEF2F8", borderRadius:3, position:"relative" as const, overflow:"hidden" }}>
+                          <div style={{ position:"absolute" as const, left:0, top:0, height:6, width:`${score*100}%`, background:bc, borderRadius:3 }}/>
+                        </div>
+                      </div>
+                      <div style={{ width:52, flexShrink:0, textAlign:"center" as const }}>
+                        <span style={{ fontSize:5.5, fontWeight:700, color:bc, background:bbg, padding:"1px 5px", borderRadius:6 }}>{ragLabel(ov)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </Panel>
+
+              {/* E: Service Intelligence + Tickets */}
+              <div style={{ width:256, display:"flex", flexDirection:"column" as const, gap:7 }}>
+                <Panel title="SERVICE INTELLIGENCE" accent="#2C5EE8" style={{ flex:1 }}>
+                  <div style={{ display:"flex", flexDirection:"column" as const, gap:7 }}>
+                    {(["internet","bio","printing"] as const).map((key,ki)=>{
+                      const lbl=["INTERNET","BIOMETRIC","PRINTING"][ki];
+                      const vals=sorted.map(f=>(state[f.name]??defState())[key]);
+                      const sg=vals.filter(v=>v==="green").length;
+                      const sh=vals.length>0?sg/vals.length:0;
+                      const shC=sh>=0.8?"#059669":sh>=0.5?"#D97706":"#DC2626";
+                      return (
+                        <div key={key} style={{ display:"flex", alignItems:"center", gap:8 }}>
+                          <div style={{ position:"relative" as const, flexShrink:0 }}>
+                            <MiniDonut pct={sh} color={shC}/>
+                            <div style={{ position:"absolute" as const, inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                              <span style={{ fontSize:9, fontWeight:800, color:shC }}>{Math.round(sh*100)}</span>
                             </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-
-                  {/* Summary footer */}
-                  <div style={{ marginTop:6, padding:"5px 6px", background:"#F4F7FC", borderRadius:4 }}>
-                    <div style={{ fontSize:5.5, color:"#8A9AB8", fontWeight:700, marginBottom:3 }}>DISTRIBUTION</div>
-                    {[{l:"Operational",v:sorted.filter(f=>calcOverall(state[f.name]??defState())==="green").length,c:"#059669"},
-                      {l:"Degraded",v:sorted.filter(f=>calcOverall(state[f.name]??defState())==="amber").length,c:"#D97706"},
-                      {l:"Critical",v:sorted.filter(f=>calcOverall(state[f.name]??defState())==="red").length,c:"#DC2626"}
-                    ].map(r=>(
-                      <div key={r.l} style={{ display:"flex", justifyContent:"space-between", fontSize:5.5, marginBottom:1.5 }}>
-                        <span style={{ color:"#8A9AB8" }}>{r.l}</span>
-                        <span style={{ color:r.c, fontWeight:700 }}>{r.v} <span style={{ color:"#C0CAD8" }}>({sorted.length>0?Math.round(r.v/sorted.length*100):0}%)</span></span>
+                          </div>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:8, fontWeight:800, color:"#0C1A2E" }}>{lbl}</div>
+                            <div style={{ height:5, background:"#EEF2F8", borderRadius:2, margin:"3px 0", position:"relative" as const, overflow:"hidden" }}>
+                              <div style={{ position:"absolute" as const, left:0, top:0, height:5, width:`${sh*100}%`, background:shC }}/>
+                            </div>
+                            <div style={{ fontSize:6, color:"#8A9AB8" }}>{sg}/{vals.length} sites active</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Panel>
+                <Panel title="SUPPORT TICKETS" accent="#C49A1E">
+                  <div style={{ display:"flex", justifyContent:"space-around", paddingTop:4 }}>
+                    {[{v:autoStats.received,l:"Received",c:"#2C5EE8"},{v:autoStats.resolved,l:"Resolved",c:"#059669"},{v:autoStats.pending,l:"Pending",c:"#D97706"}].map(tk=>(
+                      <div key={tk.l} style={{ textAlign:"center" as const }}>
+                        <div style={{ fontSize:20, fontWeight:800, color:tk.c, lineHeight:1 }}>{tk.v}</div>
+                        <div style={{ fontSize:7, color:"#8A9AB8", marginTop:3, fontWeight:600 }}>{tk.l.toUpperCase()}</div>
                       </div>
                     ))}
                   </div>
-                </div>
-
+                </Panel>
               </div>
             </div>
-          )}
-          {/* FOOTER */}
-          <div style={{ background: "#0C1A2E", padding: "8px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "2px solid #C49A1E" }}>
-            <div>
-              <div style={{ fontSize: 8, fontWeight: 700, color: "#C49A1E" }}>{cfg.org}</div>
-              <div style={{ fontSize: 7, color: "#3A5A88" }}>IT Department · it.support@imarat.com.pk</div>
+
+            {/* INSIGHT STRIP */}
+            <div style={{ background:"#0B1D3E", borderRadius:3, padding:"6px 12px", borderLeft:"3px solid #C49A1E", display:"flex", alignItems:"center", gap:8 }}>
+              <span style={{ fontSize:8, fontWeight:800, color:"#C49A1E", flexShrink:0 }}>▸ INSIGHT</span>
+              <span style={{ fontSize:8, color:"#E0E8F8" }}>
+                {counts.red>0&&counts.amber>0?`${counts.red} critical and ${counts.amber} degraded sites require immediate attention.`:counts.red>0?`${counts.red} site${counts.red>1?"s":""} critical — service restoration is the top priority.`:counts.amber>0?`${counts.amber} site${counts.amber>1?"s":""} operating in a degraded state.`:`All ${counts.green} monitored facilities are fully operational across all divisions and services.`}
+              </span>
             </div>
-            {cfg.includeTs && (
-              <div style={{ fontSize: 7.5, fontWeight: 700, color: "#8A9AB8", letterSpacing: 0.5 }}>SYSTEM GENERATED REPORT</div>
-            )}
-            <div style={{ textAlign: "right" as const }}>
-              <div style={{ fontSize: 7.5, color: "#C49A1E" }}>{new Date().toLocaleDateString("en-GB")}</div>
-              <div style={{ fontSize: 7, color: "#3A5A88" }}>imarat.com.pk</div>
+
+          </div>
+
+          {/* FOOTER */}
+          <div style={{ background:"#0C1A2E", padding:"7px 24px", display:"flex", justifyContent:"space-between", alignItems:"center", borderTop:"1px solid #C49A1E" }}>
+            <div>
+              <div style={{ fontSize:7.5, fontWeight:700, color:"#C49A1E" }}>{cfg.org}</div>
+              <div style={{ fontSize:6.5, color:"#3A5A88" }}>IT Department · it.support@imarat.com.pk</div>
+            </div>
+            {cfg.includeTs && <div style={{ fontSize:7, color:"#8A9AB8", fontWeight:700 }}>SYSTEM GENERATED · Page 1 of 3</div>}
+            <div style={{ textAlign:"right" as const }}>
+              <div style={{ fontSize:7.5, color:"#C49A1E" }}>{new Date().toLocaleDateString("en-GB")}</div>
+              <div style={{ fontSize:6.5, color:"#3A5A88" }}>imarat.com.pk</div>
             </div>
           </div>
+
         </div>
       </div>
-      <div style={{ fontSize: 11, color: "#8A9AB8", marginTop: 12, fontStyle: "italic" }}>
-        Page 1 of 1 · {cfg.orientation === "landscape" ? "A4 Landscape" : "A4 Portrait"}
-        {cfg.divFilter !== "all" && ` · Filtered: ${cfg.divFilter} only`}
+      <div style={{ fontSize:11, color:"#8A9AB8", marginTop:12, fontStyle:"italic" }}>
+        Page 1 of 3 · Executive BI Dashboard · {cfg.orientation==="landscape"?"A4 Landscape":"A4 Portrait"}
       </div>
     </div>
   );
@@ -479,7 +529,7 @@ function ExportSuccess({ fileName, onClose, onAgain }: { fileName: string; onClo
   );
 }
 
-// ─── PDF Generator — 4-page executive report ──────────────────────────────────
+// ─── PDF Generator — 3-page BI dashboard ──────────────────────────────────────
 async function generatePDF(
   cfg: ReportConfig,
   facilities: { name: string; cat: string }[],
@@ -516,24 +566,24 @@ async function generatePDF(
   const doc  = new jsPDF({ orientation: cfg.orientation, unit: "mm", format: "a4" });
   const PW   = doc.internal.pageSize.getWidth();
   const PH   = doc.internal.pageSize.getHeight();
-  const PAD  = 11;
+  const PAD  = 10;
   const TW   = PW - PAD*2;
-  const HDR  = 26;
-  const FTR_Y= PH - 11;
-  const BODY_TOP = HDR + 4;
+  const HDR  = 24;
+  const FTR_Y= PH - 10;
+  const BODY_TOP = HDR + 3;
 
   const filtered  = facilities.filter(f => cfg.divFilter==="all" || f.cat===cfg.divFilter);
   const ORDER: Record<string,number> = { Imarat:0, Projects:1, Graana:2, Agency21:3 };
   const sorted    = [...filtered].sort((a,b)=>(ORDER[a.cat]??9)-(ORDER[b.cat]??9));
-  const total     = facilities.length;
+  const total     = sorted.length || 1;
   const grnN      = counts.green;
   const ambN      = counts.amber;
   const redN      = counts.red;
   const healthPct = total>0 ? grnN/total : 0;
 
-  const NAVY:RGB=[12,26,46], NAVYM:RGB=[18,40,72], GOLD:RGB=[196,154,30];
-  const WHITE:RGB=[255,255,255], INK:RGB=[18,28,54], MUTED:RGB=[100,120,158];
-  const BDR:RGB=[218,226,240], BGLT:RGB=[248,250,254];
+  const NAVY:RGB=[6,14,28], NAVYM:RGB=[12,24,50], GOLD:RGB=[196,154,30];
+  const WHITE:RGB=[255,255,255], INK:RGB=[18,28,54], MUTED:RGB=[100,116,150];
+  const BDR:RGB=[218,226,240], BGLT:RGB=[246,249,254];
 
   const fr  = (x:number,y:number,w:number,h:number,c:RGB) => { doc.setFillColor(...c); doc.rect(x,y,w,h,"F"); };
   const frr = (x:number,y:number,w:number,h:number,r:number,c:RGB) => { doc.setFillColor(...c); doc.roundedRect(x,y,w,h,r,r,"F"); };
@@ -544,7 +594,6 @@ async function generatePDF(
     frr(x,y,w,h,h/2,[218,224,238] as RGB);
     if(pct>0) frr(x,y,Math.max(w*pct,h),h,h/2,c);
   };
-  // Filled donut arc segment via polygon approximation
   const drawArc = (cx:number,cy:number,ro:number,ri:number,a1d:number,a2d:number,c:RGB) => {
     const steps = Math.max(4, Math.ceil(Math.abs(a2d-a1d)/3));
     const pts:[number,number][] = [];
@@ -556,311 +605,484 @@ async function generatePDF(
     (doc as any).lines(lines,pts[0][0],pts[0][1],[1,1],"F",true);
   };
 
-  const TOTPG = 4;
+  // Panel: dark title bar + white content area
+  const panel = (x:number,y:number,w:number,h:number,title:string,accent:RGB=GOLD) => {
+    frr(x,y,w,h,2,WHITE);
+    doc.setDrawColor(...BDR); doc.setLineWidth(0.2); doc.roundedRect(x,y,w,h,2,2,"S");
+    fr(x,y,w,6.5,NAVY);
+    frr(x,y,2.5,6.5,0,accent);
+    txt(title,x+5,y+4.5,4,GOLD,"bold");
+  };
+
+  const TOTPG = 3;
   const drawShell = (pg:number, subtitle="") => {
     fr(0,0,PW,PH,BGLT);
-    fr(0,0,PW,HDR,NAVY); fr(0,0,PW,2.5,GOLD); fr(0,HDR-0.6,PW,0.6,NAVYM);
-    if(cfg.includeLogo&&logoData) doc.addImage(logoData,"PNG",PAD,5,36,12);
-    else txt("IMARAT",PAD,15,13,WHITE,"bold");
-    doc.setDrawColor(...GOLD); doc.setLineWidth(0.5);
-    doc.line(PAD+42,4,PAD+42,22);
-    txt(cfg.title,PAD+47,11.5,10,WHITE,"bold");
-    txt(subtitle||cfg.subtitle,PAD+47,17,5,GOLD,"bold");
-    txt(`${cfg.org}  ·  ${cfg.period||dateStr}`,PAD+47,21.5,3.8,MUTED);
-    txt(dateStr,PW-PAD,11,10,GOLD,"bold","right");
-    txt(timeStr,PW-PAD,17,5,MUTED,"normal","right");
-    if(cfg.includeRef) txt(`Ref: ${refNo}`,PW-PAD,22,3.5,[60,90,135] as RGB,"normal","right");
-    fr(0,FTR_Y,PW,PH-FTR_Y,NAVY); fr(0,FTR_Y,PW,0.6,GOLD);
+    fr(0,0,PW,HDR,NAVY);
+    fr(0,0,PW,1.8,GOLD);
+    if(cfg.includeLogo&&logoData) doc.addImage(logoData,"PNG",PAD,4,32,11);
+    else txt("IMARAT",PAD,13,12,WHITE,"bold");
+    doc.setDrawColor(...GOLD); doc.setLineWidth(0.4);
+    doc.line(PAD+38,3,PAD+38,20);
+    txt(cfg.title,PAD+42,10,9,WHITE,"bold");
+    txt(subtitle||cfg.subtitle,PAD+42,16,4.5,GOLD,"bold");
+    txt(`${cfg.org}  ·  ${cfg.period||dateStr}`,PAD+42,20.5,3.5,MUTED);
+    txt(dateStr,PW-PAD,10,9,GOLD,"bold","right");
+    txt(timeStr,PW-PAD,16,4.5,MUTED,"normal","right");
+    if(cfg.includeRef) txt(`Ref: ${refNo}`,PW-PAD,21,3.2,[60,90,135] as RGB,"normal","right");
+    fr(0,FTR_Y,PW,PH-FTR_Y,NAVY);
+    fr(0,FTR_Y,PW,0.5,GOLD);
     const fy=FTR_Y+4;
-    txt(cfg.org,PAD,fy,5,GOLD,"bold");
-    txt("IT Department  ·  it.support@imarat.com.pk",PAD,fy+4,3.5,MUTED);
-    if(cfg.includeTs){txt("SYSTEM GENERATED REPORT",PW/2,fy,5,WHITE,"bold","center"); txt(`Ref: ${refNo}`,PW/2,fy+4,3.5,MUTED,"normal","center");}
-    txt(`Page ${pg} of ${TOTPG}`,PW-PAD,fy,5,GOLD,"bold","right");
-    txt(`${sorted.length} sites monitored`,PW-PAD,fy+4,3.5,MUTED,"normal","right");
+    txt(cfg.org,PAD,fy,4.5,GOLD,"bold");
+    txt("IT Department  ·  it.support@imarat.com.pk",PAD,fy+3.5,3.2,MUTED);
+    if(cfg.includeTs){txt("SYSTEM GENERATED",PW/2,fy,4.5,WHITE,"bold","center"); txt(`Ref: ${refNo}`,PW/2,fy+3.5,3.2,MUTED,"normal","center");}
+    txt(`Page ${pg} of ${TOTPG}`,PW-PAD,fy,4.5,GOLD,"bold","right");
+    txt(`${sorted.length} facilities`,PW-PAD,fy+3.5,3.2,MUTED,"normal","right");
   };
 
   const insight = (() => {
-    if(redN>0&&ambN>0) return `${redN} critical and ${ambN} degraded sites detected — immediate IT response required across the estate.`;
-    if(redN>0) return `${redN} site${redN>1?"s":""} currently critical — service restoration is the top operational priority.`;
-    if(ambN>0) return `${ambN} site${ambN>1?"s":""} operating in a degraded state. No critical failures detected at this time.`;
-    return `All ${grnN} monitored facilities are fully operational. Internet, biometric, and print services are healthy across all divisions.`;
+    if(redN>0&&ambN>0) return `${redN} critical + ${ambN} degraded sites — immediate IT response required across the estate.`;
+    if(redN>0) return `${redN} site${redN>1?"s":""} critical — service restoration is the top operational priority.`;
+    if(ambN>0) return `${ambN} site${ambN>1?"s":""} in degraded state. No critical failures detected at this time.`;
+    return `All ${grnN} facilities fully operational. Internet, biometric, and print services healthy across all divisions.`;
   })();
-  const drawInsight = (y:number) => {
-    frr(PAD,y,TW,10,2,[228,236,252] as RGB);
-    doc.setDrawColor(...[44,94,232] as RGB); doc.setLineWidth(2.5); doc.line(PAD,y,PAD,y+10);
-    txt("OPERATIONAL INSIGHT",PAD+6,y+3.8,4.5,MUTED,"bold");
-    txt(insight,PAD+6,y+8.5,4.8,INK,"normal");
-  };
+
+  const CATS = ["Imarat","Projects","Graana","Agency21"] as const;
 
   // ══════════════════════════════════════════════════════════════════════════
-  // PAGE 1 — EXECUTIVE COMMAND CENTER
+  // PAGE 1 — EXECUTIVE BI DASHBOARD
   // ══════════════════════════════════════════════════════════════════════════
-  drawShell(1,"Executive Intelligence Overview");
-  const CT = BODY_TOP+3;
+  drawShell(1,"Executive BI Dashboard");
+  const BT = BODY_TOP + 1;
 
-  // ── Health ring (left column, cx≈67) ─────────────────────────────────────
-  const RCX=PAD+57, RCY=CT+52, RO=36, RI=26;
-  drawArc(RCX,RCY,RO,RI,-90,270,[228,234,246] as RGB);
-  const hC:RGB = healthPct>=0.8?gC:healthPct>=0.5?aC:rC;
-  if(healthPct>0) drawArc(RCX,RCY,RO,RI,-90,-90+360*healthPct,hC);
-  doc.setFillColor(...BGLT); doc.circle(RCX,RCY,RI-0.5,"F");
-  // Tick mark per facility
-  facilities.forEach((_,ti)=>{
-    const ang=(-90+ti*(360/total))*Math.PI/180;
-    const sv=state[facilities[ti].name]??defaultState();
-    doc.setDrawColor(...ragAccent(calcOverall(sv))); doc.setLineWidth(1);
-    doc.line(RCX+(RO+1)*Math.cos(ang),RCY+(RO+1)*Math.sin(ang),RCX+(RO+4)*Math.cos(ang),RCY+(RO+4)*Math.sin(ang));
-  });
-  txt(`${Math.round(healthPct*100)}%`,RCX,RCY+4,20,hC,"bold","center");
-  txt("HEALTH",RCX,RCY+10,5,MUTED,"bold","center");
-  txt("OVERALL IT HEALTH",RCX,CT+4,6,NAVY,"bold","center");
-  txt(`${total} SITES MONITORED`,RCX,CT+10,4,MUTED,"normal","center");
+  // Row 1 layout: Panel A (health ring) w=64 | Panel B (status donut) w=74 | Panel C (division bars) flex
+  const R1H = 66, R1Y = BT;
+  const PA_W=63, PB_W=73, PC_W=TW-PA_W-PB_W-4;
+  const PA_X=PAD, PB_X=PAD+PA_W+2, PC_X=PAD+PA_W+PB_W+4;
 
-  // Stat badges below ring
-  const stY=RCY+RO+10;
-  ([{v:grnN,l:"OPERATIONAL",c:gC,bg:gL},{v:ambN,l:"DEGRADED",c:aC,bg:aL},{v:redN,l:"CRITICAL",c:rC,bg:rL}] as {v:number;l:string;c:RGB;bg:RGB}[]).forEach((st,si)=>{
-    const sx=RCX-28+si*28;
-    frr(sx-12,stY-5,24,16,2,st.bg);
-    txt(String(st.v),sx,stY+4,12,st.c,"bold","center");
-    txt(st.l,sx,stY+9.5,3.2,MUTED,"bold","center");
-  });
-  const tkY=stY+24;
-  txt("SUPPORT TICKETS",RCX,tkY,4.5,MUTED,"bold","center");
-  ([{v:autoStats.received,l:"Total"},{v:autoStats.resolved,l:"Resolved"},{v:autoStats.pending,l:"Pending"}]).forEach((tk,ti)=>{
-    const tx=RCX-28+ti*28;
-    txt(String(tk.v),tx,tkY+8,10,[44,94,232] as RGB,"bold","center");
-    txt(tk.l,tx,tkY+13.5,3.5,MUTED,"normal","center");
-  });
-
-  // ── Key Metrics strip (centre column) ────────────────────────────────────
-  const MX=PAD+118, MW=46, MY=CT;
-  frr(MX,MY,MW,104,3,WHITE);
-  doc.setDrawColor(...BDR); doc.setLineWidth(0.2); doc.roundedRect(MX,MY,MW,104,3,3,"S");
-  txt("KEY METRICS",MX+MW/2,MY+7,5,NAVY,"bold","center");
-  const kpis=[
-    {v:String(total),l:"Total Sites",c:NAVY},
-    {v:String(grnN),l:"Operational",c:gC},
-    {v:String(ambN),l:"Degraded",c:aC},
-    {v:String(redN),l:"Critical",c:rC},
-    {v:String(autoStats.received),l:"Tickets",c:[44,94,232] as RGB},
-    {v:String(autoStats.pending),l:"Pending",c:aC},
-  ];
-  kpis.forEach((k,ki)=>{
-    const ky=MY+13+ki*14;
-    if(ki>0){doc.setDrawColor(...BDR);doc.setLineWidth(0.15);doc.line(MX+3,ky-1,MX+MW-3,ky-1);}
-    frr(MX+3,ky+1,3.5,9,1,k.c as RGB);
-    txt(k.v,MX+MW-3,ky+10,11,k.c as RGB,"bold","right");
-    txt(k.l,MX+9,ky+10,4.5,MUTED,"normal");
-  });
-
-  // ── Facility constellation (right column) ────────────────────────────────
-  const CNX=PAD+170;
-  txt("FACILITY STATUS",CNX,CT+4,6,NAVY,"bold");
-  txt("CONSTELLATION",CNX,CT+10,6,NAVY,"bold");
-  txt("Each node = one monitored site",CNX,CT+16,3.8,MUTED);
-  let legX2=CNX;
-  (["Imarat","Projects","Graana","Agency21"] as const).forEach(cat=>{
-    doc.setFillColor(...CAT_C[cat]); doc.circle(legX2+2.5,CT+22,2.5,"F");
-    txt(cat,legX2+7,CT+24,3.8,INK); legX2+=30;
-  });
-  const DCOLS=4, DGAP=11, GRID_Y=CT+29;
-  sorted.forEach((f,fi)=>{
-    const col=fi%DCOLS, row=Math.floor(fi/DCOLS);
-    const dx=CNX+col*DGAP+5.5, dy=GRID_Y+row*DGAP+5.5;
-    const sv=state[f.name]??defaultState(); const ov=calcOverall(sv);
-    doc.setFillColor(...ragFill(ov)); doc.circle(dx,dy,5.5,"F");
-    doc.setFillColor(...ragAccent(ov)); doc.circle(dx,dy,4.5,"F");
-    doc.setDrawColor(...CAT_C[f.cat]); doc.setLineWidth(0.8); doc.circle(dx,dy,4.5,"S");
-    txt(String(fi+1),dx,dy+1.5,3.5,WHITE,"bold","center");
-  });
-  const legY2=GRID_Y+Math.ceil(sorted.length/DCOLS)*DGAP+6;
-  let lkX=CNX;
-  ([{l:"Operational",c:gC},{l:"Degraded",c:aC},{l:"Critical",c:rC}] as {l:string;c:RGB}[]).forEach(lk=>{
-    doc.setFillColor(...lk.c); doc.circle(lkX+2.5,legY2,2.5,"F");
-    txt(lk.l,lkX+7,legY2+1.5,3.8,INK); lkX+=30;
-  });
-
-  drawInsight(FTR_Y-14);
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // PAGE 2 — DIVISION PERFORMANCE LANDSCAPE
-  // ══════════════════════════════════════════════════════════════════════════
-  doc.addPage();
-  drawShell(2,"Division Performance Landscape");
-  const D2Y=BODY_TOP+3;
-  txt("DIVISION HEALTH COMPARISON",PAD,D2Y+5,7,NAVY,"bold");
-  doc.setDrawColor(...GOLD); doc.setLineWidth(0.8); doc.line(PAD,D2Y+9,PW-PAD,D2Y+9);
-
-  const CATS=["Imarat","Projects","Graana","Agency21"] as const;
-  const DCW=(TW-6)/2, DCH=60, DCY1=D2Y+13, DCY2=DCY1+DCH+5;
-
-  CATS.forEach((cat,ci)=>{
-    const dcol=ci%2, drow=Math.floor(ci/2);
-    const cx=PAD+dcol*(DCW+6), cy=drow===0?DCY1:DCY2;
-    const facs=facilities.filter(f=>f.cat===cat);
-    const tot=facs.length;
-    const grn=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="green").length;
-    const amb=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="amber").length;
-    const red=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="red").length;
-    const cc=CAT_C[cat], cbg=CAT_BG[cat];
-    const hlth=tot>0?grn/tot:0;
-    frr(cx,cy,DCW,DCH,3,cbg);
-    frr(cx,cy,4,DCH,2,cc); frr(cx+4,cy,DCW-4,2.5,1,cc);
-    txt(cat.toUpperCase(),cx+12,cy+10,8,cc,"bold");
-    txt(`${tot} SITES`,cx+DCW-4,cy+10,5.5,cc,"bold","right");
-    txt(`${Math.round(hlth*100)}%`,cx+12,cy+23,17,cc,"bold");
-    txt("OPERATIONAL",cx+12,cy+29,4,cc,"normal");
-    pbar(cx+12,cy+33,DCW-24,5,hlth,cc);
-    const ckY=cy+43;
-    ([{v:grn,l:"Operational",c:gC,bg:gL},{v:amb,l:"Degraded",c:aC,bg:aL},{v:red,l:"Critical",c:rC,bg:rL}] as {v:number;l:string;c:RGB;bg:RGB}[]).forEach((ck,cki)=>{
-      const ckx=cx+12+cki*(DCW-24)/3;
-      frr(ckx,ckY-4,(DCW-24)/3-2,18,2,ck.bg);
-      txt(String(ck.v),ckx+(DCW-24)/6-1,ckY+6,13,ck.c,"bold","center");
-      txt(ck.l,ckx+(DCW-24)/6-1,ckY+11,3.5,MUTED,"normal","center");
+  // ── Panel A: Overall Health Ring ─────────────────────────────────────────
+  panel(PA_X,R1Y,PA_W,R1H,"OVERALL IT HEALTH");
+  {
+    const cx=PA_X+PA_W/2, cy=R1Y+38, RO=18, RI=12;
+    const hC:RGB = healthPct>=0.8?gC:healthPct>=0.5?aC:rC;
+    drawArc(cx,cy,RO,RI,-90,270,[228,234,246] as RGB);
+    if(healthPct>0) drawArc(cx,cy,RO,RI,-90,-90+360*healthPct,hC);
+    doc.setFillColor(...WHITE); doc.circle(cx,cy,RI-0.3,"F");
+    txt(`${Math.round(healthPct*100)}%`,cx,cy+2.5,10,hC,"bold","center");
+    txt("HEALTH",cx,cy+7,3.5,MUTED,"bold","center");
+    // stat strip below ring
+    const stY=R1Y+R1H-14;
+    ([{v:grnN,l:"OK",c:gC,bg:gL},{v:ambN,l:"DEG",c:aC,bg:aL},{v:redN,l:"CRIT",c:rC,bg:rL}] as {v:number;l:string;c:RGB;bg:RGB}[]).forEach((st,si)=>{
+      const sx=PA_X+4+si*19;
+      frr(sx,stY,17,11,1.5,st.bg);
+      txt(String(st.v),sx+8.5,stY+7,8,st.c,"bold","center");
+      txt(st.l,sx+8.5,stY+11.5,3,MUTED,"bold","center");
     });
-    const fnY=cy+DCH-10;
-    doc.setDrawColor(...cc); doc.setLineWidth(0.2); doc.line(cx+8,fnY,cx+DCW-4,fnY);
-    const names=facs.map(f=>f.name).join(" · ");
-    txt(names.length>72?names.slice(0,70)+"…":names,cx+12,fnY+5.5,3.5,cc,"normal");
-  });
+    txt(`${sorted.length} SITES`,cx,R1Y+11.5,3.5,MUTED,"bold","center");
+  }
 
-  const CBAR_Y=DCY2+DCH+8;
-  txt("COMPARATIVE SITE DISTRIBUTION",PAD,CBAR_Y,5.5,NAVY,"bold");
-  doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.line(PAD,CBAR_Y+3,PW-PAD,CBAR_Y+3);
-  const maxF=Math.max(...CATS.map(c=>facilities.filter(f=>f.cat===c).length));
-  CATS.forEach((cat,ci)=>{
-    const facs=facilities.filter(f=>f.cat===cat);
-    const bW=Math.max((TW-36)*(facs.length/maxF),4);
-    const by=CBAR_Y+7+ci*10;
-    txt(cat,PAD,by+6.5,5,CAT_C[cat],"bold");
-    frr(PAD+32,by,TW-36,7.5,3.5,[228,234,246] as RGB);
-    frr(PAD+32,by,bW,7.5,3.5,CAT_C[cat]);
-    const grn=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="green").length;
-    const hlth=facs.length>0?Math.round(grn/facs.length*100):0;
-    if(bW>40) txt(`${hlth}% operational`,PAD+32+bW-44,by+5.5,3.5,WHITE,"bold");
-    txt(`${facs.length} sites`,PAD+32+bW+4,by+6,4.5,MUTED);
-  });
-
-  drawInsight(FTR_Y-14);
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // PAGE 3 — FACILITY OPERATIONAL MATRIX
-  // ══════════════════════════════════════════════════════════════════════════
-  doc.addPage();
-  drawShell(3,"Facility Operational Matrix");
-  const D3Y=BODY_TOP+2;
-  txt("OPERATIONAL STATUS MATRIX",PAD,D3Y+5,7,NAVY,"bold");
-  txt("All monitored facilities  ·  Internet · Biometric · Printing",PAD,D3Y+11,4.5,MUTED);
-  doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.line(PAD,D3Y+14,PW-PAD,D3Y+14);
-
-  const MCOLS=5, MAT_Y=D3Y+18;
-  const MCW=TW/MCOLS;
-  const MROWS=Math.ceil(sorted.length/MCOLS);
-  const MRH=Math.min(20,(FTR_Y-18-MAT_Y)/MROWS);
-
-  sorted.forEach((f,fi)=>{
-    const col=fi%MCOLS, row=Math.floor(fi/MCOLS);
-    const cx=PAD+col*MCW, cy=MAT_Y+row*MRH;
-    const sv=state[f.name]??defaultState(); const ov=calcOverall(sv);
-    frr(cx+1,cy+1,MCW-2,MRH-2,2,ragFill(ov));
-    frr(cx+1,cy+1,3.5,MRH-2,1.5,CAT_C[f.cat]);
-    doc.setFillColor(...ragAccent(ov)); doc.circle(cx+MCW-7,cy+MRH/2,3.5,"F");
-    doc.setFillColor(...WHITE); doc.circle(cx+MCW-7,cy+MRH/2,1.5,"F");
-    txt(f.name.length>20?f.name.slice(0,18)+"…":f.name,cx+7,cy+MRH*0.42,4.5,INK,"bold");
-    const dotY=cy+MRH*0.73;
-    ([sv.internet,sv.bio,sv.printing] as RAGStatus[]).forEach((st,si)=>{
-      const dotX=cx+7+si*18;
-      doc.setFillColor(...ragAccent(st)); doc.circle(dotX+2.5,dotY,2.8,"F");
-      txt(["NET","BIO","PRT"][si],dotX+7,dotY+1.5,3.8,ragText(st),"normal");
+  // ── Panel B: Status Distribution Donut ──────────────────────────────────
+  panel(PB_X,R1Y,PB_W,R1H,"STATUS DISTRIBUTION");
+  {
+    const cx=PB_X+30, cy=R1Y+37, RO=18, RI=12;
+    const segs=[
+      {v:grnN,c:gC},{v:ambN,c:aC},{v:redN,c:rC},{v:counts.na||0,c:nC}
+    ] as {v:number;c:RGB}[];
+    const tot=segs.reduce((s,r)=>s+r.v,0)||1;
+    drawArc(cx,cy,RO,RI,-90,270,[228,234,246] as RGB);
+    let cumAngle=-90;
+    segs.forEach(seg=>{
+      if(!seg.v) return;
+      const span=360*seg.v/tot;
+      drawArc(cx,cy,RO,RI,cumAngle,cumAngle+span,seg.c);
+      cumAngle+=span;
     });
-  });
+    doc.setFillColor(...WHITE); doc.circle(cx,cy,RI-0.3,"F");
+    txt(String(grnN+ambN+redN),cx,cy+2,8,INK,"bold","center");
+    txt("TOTAL",cx,cy+6.5,3.5,MUTED,"bold","center");
+    // legend
+    const legX=PB_X+42, legY=R1Y+12;
+    ([{l:"Operational",v:grnN,c:gC},{l:"Degraded",v:ambN,c:aC},{l:"Critical",v:redN,c:rC},{l:"Not Set",v:counts.na||0,c:nC}] as {l:string;v:number;c:RGB}[]).forEach((lk,li)=>{
+      const ly=legY+li*10;
+      doc.setFillColor(...lk.c); doc.circle(legX+2,ly,2.2,"F");
+      txt(lk.l,legX+6,ly+1.2,3.8,INK);
+      txt(String(lk.v),PB_X+PB_W-3,ly+1.2,4,lk.c,"bold","right");
+    });
+    // pct bar across bottom
+    const barX=PB_X+4, barW=PB_W-8, barY=R1Y+R1H-9;
+    let bx=barX;
+    segs.forEach(seg=>{
+      const bw=(barW*seg.v/tot);
+      if(bw>0){ frr(bx,barY,bw,4.5,0,seg.c); bx+=bw; }
+    });
+    doc.setDrawColor(...BDR); doc.setLineWidth(0.15); doc.roundedRect(barX,barY,barW,4.5,0,0,"S");
+  }
 
-  const LEGY=MAT_Y+MROWS*MRH+4;
-  frr(PAD,LEGY,TW,12,2,[228,236,252] as RGB);
-  doc.setDrawColor(...[44,94,232] as RGB); doc.setLineWidth(2); doc.line(PAD,LEGY,PAD,LEGY+12);
-  txt("STATUS LEGEND",PAD+5,LEGY+4.5,4.5,MUTED,"bold");
-  let llX=PAD+40;
-  ([{l:"Operational",c:gC},{l:"Degraded",c:aC},{l:"Critical",c:rC}] as {l:string;c:RGB}[]).forEach(ll=>{
-    doc.setFillColor(...ll.c); doc.circle(llX+2.5,LEGY+5,2.5,"F");
-    txt(ll.l,llX+7,LEGY+6.5,4,INK); llX+=34;
-  });
-  txt("Left stripe = Division colour  ·  Right ring = Overall health  ·  NET / BIO / PRT = individual service status",PAD+5,LEGY+10.5,3.5,MUTED);
+  // ── Panel C: Division Performance Bars ──────────────────────────────────
+  panel(PC_X,R1Y,PC_W,R1H,"DIVISION PERFORMANCE");
+  {
+    const maxFacs=Math.max(...CATS.map(c=>sorted.filter(f=>f.cat===c).length),1);
+    CATS.forEach((cat,ci)=>{
+      const facs=sorted.filter(f=>f.cat===cat);
+      const grn=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="green").length;
+      const hlth=facs.length>0?grn/facs.length:0;
+      const cc=CAT_C[cat];
+      const barY=R1Y+9+ci*13;
+      txt(cat,PC_X+4,barY+6,4,cc,"bold");
+      const barX=PC_X+30, barW=PC_W-44;
+      frr(barX,barY+1,barW,6,3,[228,234,246] as RGB);
+      if(hlth>0) frr(barX,barY+1,Math.max(barW*hlth,4),6,3,cc);
+      txt(`${Math.round(hlth*100)}%`,PC_X+PC_W-4,barY+6.5,4.5,cc,"bold","right");
+      txt(`${facs.length}`,barX-6,barY+6.5,3.8,MUTED,"normal","center");
+    });
+    // tickets strip
+    const tkY=R1Y+R1H-11;
+    doc.setDrawColor(...BDR); doc.setLineWidth(0.15); doc.line(PC_X+3,tkY-1,PC_X+PC_W-3,tkY-1);
+    txt("TICKETS",PC_X+4,tkY+3.5,3.5,MUTED,"bold");
+    ([{v:autoStats.received,l:"Received"},{v:autoStats.resolved,l:"Resolved"},{v:autoStats.pending,l:"Pending"}]).forEach((tk,ti)=>{
+      const tx=PC_X+PC_W-54+ti*18;
+      frr(tx,tkY-0.5,16,9,1.5,ti===2?aL:gL);
+      txt(String(tk.v),tx+8,tkY+5.5,6,ti===2?aC:gC,"bold","center");
+    });
+  }
+
+  // Row 2 layout: Panel D (facility matrix) flex | Panel E (service intel) w=78
+  const R2Y = R1Y + R1H + 3;
+  const PE_W=78, PD_W=TW-PE_W-2;
+  const PD_X=PAD, PE_X=PAD+PD_W+2;
+  const R2H = FTR_Y - R2Y - 14;
+
+  // ── Panel D: Facility Health Matrix ─────────────────────────────────────
+  panel(PD_X,R2Y,PD_W,R2H,"FACILITY HEALTH MATRIX");
+  {
+    const rowH = Math.min(6, (R2H-8)/sorted.length);
+    const dotSz=1.5;
+    // column header
+    const hdrY=R2Y+8.5;
+    txt("FACILITY",PD_X+14,hdrY,3,MUTED,"bold");
+    txt("NET",PD_X+PD_W-47,hdrY,3,MUTED,"bold","center");
+    txt("BIO",PD_X+PD_W-37,hdrY,3,MUTED,"bold","center");
+    txt("PRT",PD_X+PD_W-27,hdrY,3,MUTED,"bold","center");
+    txt("HEALTH",PD_X+PD_W-15,hdrY,3,MUTED,"bold","center");
+    txt("STATUS",PD_X+PD_W-3,hdrY,3,MUTED,"bold","right");
+    sorted.forEach((f,fi)=>{
+      const sv=state[f.name]??defaultState();
+      const ov=calcOverall(sv);
+      const ry=R2Y+12+fi*rowH;
+      fr(PD_X,ry,PD_W,rowH,fi%2===0?WHITE:[244,247,252] as RGB);
+      // div stripe
+      fr(PD_X,ry,2,rowH,CAT_C[f.cat]??NAVY);
+      // rank
+      txt(String(fi+1),PD_X+6,ry+rowH*0.72,3,MUTED,"normal","center");
+      // name
+      const nm=f.name.length>22?f.name.slice(0,20)+"…":f.name;
+      txt(nm,PD_X+12,ry+rowH*0.72,3.5,INK,"bold");
+      // service dots
+      ([sv.internet,sv.bio,sv.printing] as RAGStatus[]).forEach((st,si)=>{
+        const dx=PD_X+PD_W-47+si*10;
+        doc.setFillColor(...ragAccent(st)); doc.circle(dx,ry+rowH/2,dotSz,"F");
+      });
+      // mini health bar
+      const score=ov==="green"?1:ov==="amber"?0.6:ov==="red"?0.25:0.05;
+      pbar(PD_X+PD_W-24,ry+rowH/2-1.5,18,3,score,ragAccent(ov));
+      // status badge
+      frr(PD_X+PD_W-5,ry+rowH/2-2,4,4,2,ragAccent(ov));
+    });
+  }
+
+  // ── Panel E: Service Intelligence + Tickets ──────────────────────────────
+  panel(PE_X,R2Y,PE_W,R2H,"SERVICE INTELLIGENCE");
+  {
+    const svcDefs=[
+      {lbl:"INTERNET",key:"internet" as keyof FacilityState,c:gC},
+      {lbl:"BIOMETRIC",key:"bio" as keyof FacilityState,c:[44,94,232] as RGB},
+      {lbl:"PRINTING",key:"printing" as keyof FacilityState,c:[110,40,210] as RGB},
+    ];
+    const svcH = (R2H-24)/3;
+    svcDefs.forEach((svc,si)=>{
+      const vals=sorted.map(f=>(state[f.name]??defaultState())[svc.key] as RAGStatus);
+      const sg=vals.filter(v=>v==="green").length;
+      const sa=vals.filter(v=>v==="amber").length;
+      const sr=vals.filter(v=>v==="red").length;
+      const sh=vals.length>0?sg/vals.length:0;
+      const shC:RGB=sh>=0.8?gC:sh>=0.5?aC:rC;
+      const sy=R2Y+8+si*(svcH+2);
+      frr(PE_X+3,sy,PE_W-6,svcH,1.5,BGLT);
+      // donut
+      const cx=PE_X+16, cy=sy+svcH/2, RO=8, RI=5;
+      drawArc(cx,cy,RO,RI,-90,270,[218,226,240] as RGB);
+      if(sh>0) drawArc(cx,cy,RO,RI,-90,-90+360*sh,shC);
+      doc.setFillColor(...[246,249,254] as RGB); doc.circle(cx,cy,RI-0.2,"F");
+      txt(`${Math.round(sh*100)}`,cx,cy+1.5,4.5,shC,"bold","center");
+      // label + bars
+      txt(svc.lbl,PE_X+27,sy+5,4,MUTED,"bold");
+      txt(`${sg}/${vals.length}`,PE_X+PE_W-5,sy+5,4,shC,"bold","right");
+      const bY=sy+8;
+      ([{v:sg,c:gC,l:"OK"},{v:sa,c:aC,l:"DEG"},{v:sr,c:rC,l:"CRIT"}] as {v:number;c:RGB;l:string}[]).forEach((bk,bi)=>{
+        const bW=(PE_W-36)*bk.v/(vals.length||1);
+        const bX=PE_X+27+bi*(PE_W-36)/3;
+        frr(bX,bY,PE_W-36-2,4,2,[228,234,246] as RGB);
+        if(bk.v>0) frr(bX,bY,Math.max(bW,2),4,2,bk.c);
+        txt(bk.l,bX+1,bY+3,2.8,MUTED);
+      });
+    });
+
+    // Tickets mini panel
+    const tkY=R2Y+R2H-22;
+    doc.setDrawColor(...BDR); doc.setLineWidth(0.15); doc.line(PE_X+3,tkY,PE_X+PE_W-3,tkY);
+    txt("SUPPORT TICKETS",PE_X+PE_W/2,tkY+4.5,4,MUTED,"bold","center");
+    ([{v:autoStats.received,l:"Received",c:[44,94,232] as RGB},{v:autoStats.resolved,l:"Resolved",c:gC},{v:autoStats.pending,l:"Pending",c:aC}] as {v:number;l:string;c:RGB}[]).forEach((tk,ti)=>{
+      const tx=PE_X+12+ti*22;
+      txt(String(tk.v),tx,tkY+13,11,tk.c,"bold","center");
+      txt(tk.l,tx,tkY+17.5,3.2,MUTED,"normal","center");
+    });
+  }
+
+  // ── Insight strip ────────────────────────────────────────────────────────
+  {
+    const iY=FTR_Y-12;
+    fr(0,iY,PW,12,NAVYM);
+    fr(0,iY,3,12,GOLD);
+    txt("OPERATIONAL INSIGHT",PAD+6,iY+4.5,4.5,GOLD,"bold");
+    txt(insight,PAD+54,iY+4.5,4.5,WHITE,"normal");
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // PAGE 4 — INFRASTRUCTURE SERVICE HEALTH + APPENDIX
+  // PAGE 2 — FACILITY INTELLIGENCE
   // ══════════════════════════════════════════════════════════════════════════
   doc.addPage();
-  drawShell(4,"Infrastructure Service Analysis");
-  const D4Y=BODY_TOP+2;
-  txt("INFRASTRUCTURE SERVICE HEALTH",PAD,D4Y+5,7,NAVY,"bold");
-  doc.setDrawColor(...GOLD); doc.setLineWidth(0.8); doc.line(PAD,D4Y+9,PW-PAD,D4Y+9);
+  drawShell(2,"Facility Intelligence");
+  const D2Y=BODY_TOP;
 
-  const SVC_Y=D4Y+13, SVC_W=(TW-8)/3, SVC_H=44;
+  // Full-width heatmap panel
+  const HM_H = Math.min(FTR_Y - D2Y - 55, sorted.length * 5.5 + 14);
+  panel(PAD,D2Y,TW,HM_H,"FACILITY × SERVICE HEALTH MATRIX");
+  {
+    const rowH=Math.min(5.5,(HM_H-11)/sorted.length);
+    const colW=(TW-80)/3;
+    // header row
+    const hY=D2Y+9;
+    txt("FACILITY",PAD+14,hY,3.5,MUTED,"bold");
+    txt("DIV",PAD+64,hY,3.5,MUTED,"bold","center");
+    (["INTERNET","BIOMETRIC","PRINTING"] as const).forEach((lbl,li)=>{
+      const cx2=PAD+78+li*colW+colW/2;
+      txt(lbl,cx2,hY,3.5,MUTED,"bold","center");
+    });
+    txt("OVERALL",PAD+TW-3,hY,3.5,MUTED,"bold","right");
+
+    sorted.forEach((f,fi)=>{
+      const sv=state[f.name]??defaultState();
+      const ov=calcOverall(sv);
+      const ry=D2Y+12+fi*rowH;
+      fr(PAD,ry,TW,rowH,fi%2===0?WHITE:[244,247,252] as RGB);
+      fr(PAD,ry,2,rowH,CAT_C[f.cat]??NAVY);
+      txt(String(fi+1),PAD+6,ry+rowH*0.72,3,MUTED,"normal","center");
+      txt(f.name.length>24?f.name.slice(0,22)+"…":f.name,PAD+12,ry+rowH*0.72,3.8,INK,"bold");
+      frr(PAD+62,ry+0.5,14,rowH-1,1,CAT_BG[f.cat]??BGLT);
+      txt(f.cat.slice(0,7),PAD+69,ry+rowH*0.72,3.2,CAT_C[f.cat]??NAVY,"bold","center");
+      ([sv.internet,sv.bio,sv.printing] as RAGStatus[]).forEach((st,si)=>{
+        const cx2=PAD+78+si*colW;
+        const cellC=st==="green"?gL:st==="amber"?aL:st==="red"?rL:nL;
+        const txtC=ragText(st);
+        frr(cx2+1,ry+0.5,colW-2,rowH-1,1,cellC);
+        txt(ragLabel(st),cx2+colW/2,ry+rowH*0.72,3.2,txtC,"bold","center");
+      });
+      frr(PAD+TW-22,ry+0.5,20,rowH-1,1,ragFill(ov));
+      txt(ragLabel(ov),PAD+TW-12,ry+rowH*0.72,3.2,ragText(ov),"bold","center");
+    });
+  }
+
+  // Division comparison + coverage below heatmap
+  const D2B = D2Y + HM_H + 3;
+  const DIV_H = FTR_Y - D2B - 13;
+  const DIV_W = (TW-2)/2;
+
+  // Division Comparison bars
+  panel(PAD,D2B,DIV_W,DIV_H,"DIVISION COMPARISON");
+  {
+    const maxFacs=Math.max(...CATS.map(c=>sorted.filter(f=>f.cat===c).length),1);
+    CATS.forEach((cat,ci)=>{
+      const facs=sorted.filter(f=>f.cat===cat);
+      const grn=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="green").length;
+      const amb=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="amber").length;
+      const red=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="red").length;
+      const cc=CAT_C[cat];
+      const rY=D2B+9+ci*((DIV_H-11)/4);
+      frr(PAD+3,rY,DIV_W-6,(DIV_H-11)/4-2,1.5,CAT_BG[cat]);
+      frr(PAD+3,rY,3,(DIV_H-11)/4-2,0,cc);
+      txt(cat,PAD+9,rY+5,5,cc,"bold");
+      txt(`${facs.length} sites`,PAD+9,rY+9.5,3.5,MUTED);
+      // stacked bar
+      const barX=PAD+DIV_W/2, barW=DIV_W/2-8, barY=rY+3, barH=5;
+      const tot=facs.length||1;
+      let bx=barX;
+      ([{v:grn,c:gC},{v:amb,c:aC},{v:red,c:rC}] as {v:number;c:RGB}[]).forEach(bk=>{
+        const bw=barW*bk.v/tot;
+        if(bk.v>0){frr(bx,barY,bw,barH,0,bk.c); bx+=bw;}
+      });
+      doc.setDrawColor(...BDR); doc.setLineWidth(0.15); doc.rect(barX,barY,barW,barH,"S");
+      txt(`${Math.round(grn/tot*100)}%`,PAD+DIV_W-4,rY+6,5,cc,"bold","right");
+    });
+  }
+
+  // Operational Coverage dots
+  panel(PAD+DIV_W+2,D2B,DIV_W,DIV_H,"OPERATIONAL COVERAGE");
+  {
+    const ox=PAD+DIV_W+2;
+    const DCOLS=6, DROWS=Math.ceil(sorted.length/DCOLS);
+    const dotSz=Math.min(5,(DIV_H-14)/(DROWS*2));
+    const gapX=(DIV_W-8)/DCOLS, gapY=(DIV_H-14)/DROWS;
+    sorted.forEach((f,fi)=>{
+      const col=fi%DCOLS, row=Math.floor(fi/DCOLS);
+      const dx=ox+5+col*gapX+dotSz, dy=D2B+10+row*gapY+dotSz;
+      const sv=state[f.name]??defaultState(); const ov=calcOverall(sv);
+      doc.setFillColor(...ragFill(ov)); doc.circle(dx,dy,dotSz+1,"F");
+      doc.setFillColor(...ragAccent(ov)); doc.circle(dx,dy,dotSz,"F");
+      doc.setDrawColor(...CAT_C[f.cat]); doc.setLineWidth(0.5); doc.circle(dx,dy,dotSz,"S");
+      txt(String(fi+1),dx,dy+1.2,2.8,WHITE,"bold","center");
+    });
+  }
+
+  // Insight strip
+  {
+    const iY=FTR_Y-12;
+    fr(0,iY,PW,12,NAVYM);
+    fr(0,iY,3,12,GOLD);
+    txt("OPERATIONAL INSIGHT",PAD+6,iY+4.5,4.5,GOLD,"bold");
+    txt(insight,PAD+54,iY+4.5,4.5,WHITE,"normal");
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAGE 3 — INFRASTRUCTURE & SERVICE INTELLIGENCE
+  // ══════════════════════════════════════════════════════════════════════════
+  doc.addPage();
+  drawShell(3,"Infrastructure & Service Intelligence");
+  const D3Y=BODY_TOP;
+
+  // 3 service panels row
+  const SP_W=(TW-4)/3, SP_H=52;
   const svcDefs=[
-    {lbl:"INTERNET CONNECTIVITY",key:"internet" as keyof FacilityState,icon:"◉"},
-    {lbl:"BIOMETRIC SYSTEMS",key:"bio" as keyof FacilityState,icon:"◈"},
-    {lbl:"PRINTING SERVICES",key:"printing" as keyof FacilityState,icon:"◎"},
+    {lbl:"INTERNET CONNECTIVITY",key:"internet" as keyof FacilityState},
+    {lbl:"BIOMETRIC SYSTEMS",key:"bio" as keyof FacilityState},
+    {lbl:"PRINTING SERVICES",key:"printing" as keyof FacilityState},
   ];
   svcDefs.forEach((svc,si)=>{
-    const sx=PAD+si*(SVC_W+4);
+    const sx=PAD+si*(SP_W+2);
     const vals=sorted.map(f=>(state[f.name]??defaultState())[svc.key] as RAGStatus);
     const sg=vals.filter(v=>v==="green").length, sa=vals.filter(v=>v==="amber").length;
-    const sr=vals.filter(v=>v==="red").length, sn=vals.filter(v=>v==="na").length;
+    const sr=vals.filter(v=>v==="red").length, sn2=vals.filter(v=>v==="na").length;
     const sh=vals.length>0?sg/vals.length:0;
     const shC:RGB=sh>=0.8?gC:sh>=0.5?aC:rC;
-    frr(sx,SVC_Y,SVC_W,SVC_H,3,WHITE);
-    doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.roundedRect(sx,SVC_Y,SVC_W,SVC_H,3,3,"S");
-    frr(sx,SVC_Y,SVC_W,2.5,1.5,shC);
-    txt(svc.icon,sx+SVC_W/2,SVC_Y+10,9,shC,"bold","center");
-    txt(svc.lbl,sx+SVC_W/2,SVC_Y+16,5,NAVY,"bold","center");
-    txt(`${Math.round(sh*100)}%`,sx+SVC_W/2,SVC_Y+26,15,shC,"bold","center");
-    txt("AVAILABILITY",sx+SVC_W/2,SVC_Y+31,4,MUTED,"bold","center");
-    pbar(sx+6,SVC_Y+33,SVC_W-12,4,sh,shC);
-    const ckY=SVC_Y+40;
-    ([{v:sg,l:"Active",c:gC},{v:sa,l:"Partial",c:aC},{v:sr,l:"Down",c:rC},{v:sn,l:"N/A",c:nC}] as {v:number;l:string;c:RGB}[]).forEach((ck,cki)=>{
-      const ckx=sx+4+cki*(SVC_W/4);
-      txt(String(ck.v),ckx+SVC_W/8,ckY+5,9,ck.c,"bold","center");
-      txt(ck.l,ckx+SVC_W/8,ckY+9.5,3.5,MUTED,"normal","center");
+    panel(sx,D3Y,SP_W,SP_H,svc.lbl,shC);
+    // large donut
+    const cx=sx+SP_W/2, cy=D3Y+27, RO=14, RI=9;
+    drawArc(cx,cy,RO,RI,-90,270,[228,234,246] as RGB);
+    if(sh>0) drawArc(cx,cy,RO,RI,-90,-90+360*sh,shC);
+    doc.setFillColor(...WHITE); doc.circle(cx,cy,RI-0.3,"F");
+    txt(`${Math.round(sh*100)}%`,cx,cy+2,7,shC,"bold","center");
+    txt("AVAIL",cx,cy+6.5,3.2,MUTED,"bold","center");
+    pbar(sx+6,D3Y+43,SP_W-12,4,sh,shC);
+    // stat row
+    ([{v:sg,l:"Active",c:gC},{v:sa,l:"Partial",c:aC},{v:sr,l:"Down",c:rC},{v:sn2,l:"N/A",c:nC}] as {v:number;l:string;c:RGB}[]).forEach((ck,cki)=>{
+      const ckx=sx+3+cki*(SP_W-6)/4;
+      txt(String(ck.v),ckx+(SP_W-6)/8,D3Y+SP_H-6,8,ck.c,"bold","center");
+      txt(ck.l,ckx+(SP_W-6)/8,D3Y+SP_H-2,3,MUTED,"normal","center");
     });
   });
 
-  // Compact facility appendix
-  const APP_Y=SVC_Y+SVC_H+8;
-  txt("FACILITY DETAIL APPENDIX",PAD,APP_Y,6,NAVY,"bold");
-  doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.line(PAD,APP_Y+3,PW-PAD,APP_Y+3);
-  const ACOLS=[
-    {h:"#",        w:7,  x:PAD},
-    {h:"FACILITY", w:65, x:PAD+7},
-    {h:"DIV",      w:25, x:PAD+72},
-    {h:"INTERNET", w:25, x:PAD+97},
-    {h:"BIOMETRIC",w:25, x:PAD+122},
-    {h:"PRINTING", w:25, x:PAD+147},
-    {h:"OVERALL",  w:28, x:PAD+172},
-    {h:"BANDWIDTH",w:28, x:PAD+200},
-  ];
-  const ATH_Y=APP_Y+6;
-  fr(0,ATH_Y,PW,6,NAVY);
-  ACOLS.forEach(col=>txt(col.h,col.x+col.w/2,ATH_Y+4.2,3.8,WHITE,"bold","center"));
-  const ARWH=Math.min(5.5,(FTR_Y-16-ATH_Y-6)/sorted.length);
-  sorted.forEach((f,fi)=>{
-    const sv=state[f.name]??defaultState(); const ov=calcOverall(sv);
-    const ry=ATH_Y+6+fi*ARWH;
-    fr(0,ry,PW,ARWH,fi%2===0?WHITE:[244,247,252] as RGB);
-    frr(PAD,ry,2.5,ARWH,0,CAT_C[f.cat]??NAVY);
-    const tc=ry+ARWH*0.72;
-    txt(String(fi+1),PAD+3.5,tc,3.5,MUTED,"normal","center");
-    txt(f.name.length>22?f.name.slice(0,20)+"…":f.name,PAD+9,tc,3.8,INK,"bold");
-    txt(f.cat,PAD+84.5,tc,3.5,CAT_C[f.cat]??NAVY,"bold","center");
-    ([sv.internet,sv.bio,sv.printing] as RAGStatus[]).forEach((st,sti)=>{
-      const lx=[PAD+109.5,PAD+134.5,PAD+159.5][sti];
-      doc.setFillColor(...ragAccent(st)); doc.circle(lx,ry+ARWH/2,2.5,"F");
-    });
-    frr(PAD+174,ry+1,24,ARWH-2,1,ragFill(ov));
-    txt(ragLabel(ov),PAD+186,tc,3.5,ragText(ov),"bold","center");
-    if(sv.bandwidth) txt(sv.bandwidth,PAD+214,tc,3.5,MUTED,"normal","center");
-  });
+  // Exception analysis + Division summary
+  const EA_Y=D3Y+SP_H+3, EA_H=Math.min(50,FTR_Y-EA_Y-40);
+  const EA_W=(TW-2)*0.55, DS_W=TW-EA_W-2;
 
-  drawInsight(FTR_Y-14);
+  // Exception Analysis
+  panel(PAD,EA_Y,EA_W,EA_H,"EXCEPTION ANALYSIS");
+  {
+    const issues=sorted.filter(f=>calcOverall(state[f.name]??defaultState())!=="green"&&calcOverall(state[f.name]??defaultState())!=="na");
+    if(issues.length===0){
+      txt("✓ All facilities operating normally — no exceptions detected.",PAD+EA_W/2,EA_Y+EA_H/2,4.5,gC,"bold","center");
+    } else {
+      const rowH=Math.min(7,(EA_H-10)/Math.min(issues.length,6));
+      issues.slice(0,6).forEach((f,ei)=>{
+        const sv=state[f.name]??defaultState(); const ov=calcOverall(sv);
+        const ry=EA_Y+9+ei*rowH;
+        fr(PAD,ry,EA_W,rowH,ei%2===0?WHITE:[248,250,254] as RGB);
+        fr(PAD,ry,2,rowH,ragAccent(ov));
+        txt(f.name,PAD+6,ry+rowH*0.7,4,INK,"bold");
+        frr(PAD+EA_W-28,ry+1,24,rowH-2,1.5,ragFill(ov));
+        txt(ragLabel(ov),PAD+EA_W-16,ry+rowH*0.7,3.5,ragText(ov),"bold","center");
+        // service dots
+        ([sv.internet,sv.bio,sv.printing] as RAGStatus[]).filter(s=>s!=="green").forEach((st,sti)=>{
+          const dx=PAD+EA_W-52+(sti*8);
+          doc.setFillColor(...ragAccent(st)); doc.circle(dx,ry+rowH/2,2,"F");
+        });
+      });
+      if(issues.length>6) txt(`+${issues.length-6} more facilities with exceptions`,PAD+6,EA_Y+EA_H-3,3.5,MUTED);
+    }
+  }
+
+  // Division Summary
+  panel(PAD+EA_W+2,EA_Y,DS_W,EA_H,"DIVISION SUMMARY");
+  {
+    CATS.forEach((cat,ci)=>{
+      const facs=sorted.filter(f=>f.cat===cat);
+      const grn=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="green").length;
+      const hlth=facs.length>0?grn/facs.length:0;
+      const cc=CAT_C[cat];
+      const rY=EA_Y+9+ci*((EA_H-11)/4);
+      txt(cat,PAD+EA_W+6,rY+4.5,4.5,cc,"bold");
+      pbar(PAD+EA_W+30,rY+1,DS_W-36,5,hlth,cc);
+      txt(`${Math.round(hlth*100)}%`,PAD+EA_W+DS_W-3,rY+5,4.5,cc,"bold","right");
+      txt(`${facs.length} sites`,PAD+EA_W+6,rY+8.5,3.2,MUTED);
+    });
+  }
+
+  // Compact appendix table
+  const APP_Y=EA_Y+EA_H+3;
+  const APP_H=FTR_Y-APP_Y-12;
+  panel(PAD,APP_Y,TW,APP_H,"FACILITY APPENDIX — COMPLETE REFERENCE");
+  {
+    const ACOLS=[
+      {h:"#",w:7,x:PAD},
+      {h:"FACILITY",w:60,x:PAD+7},
+      {h:"DIVISION",w:24,x:PAD+67},
+      {h:"NET",w:20,x:PAD+91},
+      {h:"BIO",w:20,x:PAD+111},
+      {h:"PRT",w:20,x:PAD+131},
+      {h:"OVERALL",w:26,x:PAD+151},
+      {h:"BW",w:22,x:PAD+177},
+      {h:"NOTES",w:TW-177-22,x:PAD+199},
+    ];
+    const ATH_Y=APP_Y+7.5;
+    fr(PAD,ATH_Y,TW,5.5,NAVYM);
+    ACOLS.forEach(col=>txt(col.h,col.x+col.w/2,ATH_Y+3.8,3.2,WHITE,"bold","center"));
+    const ARWH=Math.min(5,(APP_H-14)/sorted.length);
+    sorted.forEach((f,fi)=>{
+      const sv=state[f.name]??defaultState(); const ov=calcOverall(sv);
+      const ry=ATH_Y+5.5+fi*ARWH;
+      fr(PAD,ry,TW,ARWH,fi%2===0?WHITE:[244,247,252] as RGB);
+      fr(PAD,ry,2,ARWH,CAT_C[f.cat]??NAVY);
+      const tc=ry+ARWH*0.72;
+      txt(String(fi+1),PAD+4,tc,3,MUTED,"normal","center");
+      txt(f.name.length>20?f.name.slice(0,18)+"…":f.name,PAD+9,tc,3.5,INK,"bold");
+      txt(f.cat,PAD+79,tc,3,CAT_C[f.cat]??NAVY,"bold","center");
+      ([sv.internet,sv.bio,sv.printing] as RAGStatus[]).forEach((st,sti)=>{
+        const lx=[PAD+101,PAD+121,PAD+141][sti];
+        doc.setFillColor(...ragAccent(st)); doc.circle(lx,ry+ARWH/2,1.8,"F");
+      });
+      frr(PAD+153,ry+0.5,22,ARWH-1,1,ragFill(ov));
+      txt(ragLabel(ov).slice(0,4),PAD+164,tc,3,ragText(ov),"bold","center");
+      if(sv.bandwidth) txt(sv.bandwidth,PAD+188,tc,3,MUTED,"normal","center");
+      if(sv.notes) txt(sv.notes.slice(0,28),PAD+201,tc,3,MUTED,"normal");
+    });
+  }
+
+  // Insight strip
+  {
+    const iY=FTR_Y-12;
+    fr(0,iY,PW,12,NAVYM);
+    fr(0,iY,3,12,GOLD);
+    txt("OPERATIONAL INSIGHT",PAD+6,iY+4.5,4.5,GOLD,"bold");
+    txt(insight,PAD+54,iY+4.5,4.5,WHITE,"normal");
+  }
 
   doc.save(fileName);
   return fileName;
