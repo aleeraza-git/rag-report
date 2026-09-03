@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import ReportModal from "./ReportModal";
 
 const FACILITIES: { name: string; cat: string }[] = [
   // Imarat corporate (8)
@@ -201,6 +202,7 @@ export default function Dashboard() {
   const [state, setState] = useState<AppState>({});
   const [filter, setFilter] = useState<FilterMode>("all");
   const [mounted, setMounted] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState("");
   const [now, setNow] = useState("");
@@ -861,20 +863,14 @@ export default function Dashboard() {
             <span style={{ fontSize:11, color:"#718096" }}>{syncing ? "Syncing..." : `Live · ${clock}`}</span>
           </div>
         </div>
-        <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:8 }}>
-          <span style={{ fontSize:11, color:"#4A6FA5", marginRight:4 }}>Export PDF range:</span>
-          <input type="datetime-local" value={logFrom} onChange={e=>setLogFrom(e.target.value)}
-            style={{ padding:"5px 8px", border:"1px solid #1E3A5F", borderRadius:6, fontSize:11, color:"#fff", background:"#112240", width:168 }} />
-          <span style={{ color:"#4A6FA5", fontSize:11 }}>to</span>
-          <input type="datetime-local" value={logTo} onChange={e=>setLogTo(e.target.value)}
-            style={{ padding:"5px 8px", border:"1px solid #1E3A5F", borderRadius:6, fontSize:11, color:"#fff", background:"#112240", width:168 }} />
-          <button onClick={()=>{setLogFrom("");setLogTo("");}}
-            style={{ padding:"5px 10px", background:"#1E3A5F", border:"none", borderRadius:6, fontSize:11, color:"#718096", cursor:"pointer" }}>Clear</button>
-          <button onClick={exportPDF}
-            style={{ padding:"6px 16px", background:S.gold, border:"none", borderRadius:6, fontSize:12, color:"#fff", cursor:"pointer", fontWeight:700, letterSpacing:.3 }}>
-            {logFrom||logTo ? "Export PDF (Filtered)" : "Export PDF"}
+        <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:10 }}>
+          <div style={{ fontSize:11, color:"#4A6FA5" }}>{clock}</div>
+          <button
+            onClick={() => setShowReport(true)}
+            style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 18px", background:"linear-gradient(135deg,#C49A1E 0%,#E8C048 100%)", border:"none", borderRadius:7, fontSize:12.5, color:"#0C1A2E", cursor:"pointer", fontWeight:800, letterSpacing:.4, boxShadow:"0 3px 14px rgba(196,154,30,0.38)" }}
+          >
+            <span style={{ fontSize:13 }}>⬡</span> Reports
           </button>
-          <div style={{ marginLeft:8, fontSize:11, color:"#4A6FA5" }}>{clock}</div>
         </div>
       </nav>
 
@@ -1364,6 +1360,18 @@ export default function Dashboard() {
         </div>
 
       </div>
+
+      {/* ── Report Builder Modal ─────────────────────────────────────────────── */}
+      <ReportModal
+        isOpen={showReport}
+        onClose={() => setShowReport(false)}
+        facilities={FACILITIES}
+        state={state}
+        counts={counts}
+        autoStats={autoStats}
+        calcOverall={calcOverall}
+        defaultState={defaultState}
+      />
     </div>
   );
 }
