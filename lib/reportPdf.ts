@@ -186,7 +186,7 @@ export async function buildReport(
     txt(`${change.degraded}`,mx,y+2,{size:14,font:"mono",color:change.degraded?CRIT:INK4});
     txt("regressed",mx+(change.degraded>9?11:7),y+2,{size:8.5,color:INK2});
     if(change.events.length){
-      const names=[...new Set(change.events.slice(0,4).map(e=>e.facility))].join(", ");
+      const names=Array.from(new Set(change.events.slice(0,4).map(e=>e.facility))).join(", ");
       const t=wrap(names,CW-108,8,"sans");
       txt(t[0]+(t.length>1?"…":""),M+108,y+2,{size:8,color:INK3});
     }

@@ -352,7 +352,7 @@ export function repeatOffenders(log: LogEntry[], windowDays = 7, limit = 5) {
     if (e.time < since) break; // newest-first, so we can stop
     counts.set(e.facility, (counts.get(e.facility) ?? 0) + 1);
   }
-  return [...counts.entries()]
+  return Array.from(counts.entries())
     .map(([facility, flips]) => ({ facility, flips }))
     .filter(x => x.flips >= 2)
     .sort((a, b) => b.flips - a.flips)
