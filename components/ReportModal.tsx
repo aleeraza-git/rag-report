@@ -70,10 +70,10 @@ const D = {
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
 type RGB = [number, number, number];
-const gC: RGB=[34,197,94],   gL: RGB=[210,246,232], gD: RGB=[6,88,58];
-const aC: RGB=[245,158,11],  aL: RGB=[255,238,170], aD: RGB=[100,64,0];
-const rC: RGB=[239,68,68],   rL: RGB=[255,210,216], rD: RGB=[128,10,20];
-const nC: RGB=[148,163,184], nL: RGB=[232,236,248], nD: RGB=[80,96,130];
+const gC: RGB=[30,122,90],   gL: RGB=[230,240,235], gD: RGB=[10,70,50];
+const aC: RGB=[196,154,60],  aL: RGB=[245,237,218], aD: RGB=[110,82,20];
+const rC: RGB=[184,84,80],   rL: RGB=[243,230,229], rD: RGB=[120,36,32];
+const nC: RGB=[138,155,168], nL: RGB=[238,241,243], nD: RGB=[80,96,110];
 const ragFill  = (s: RAGStatus): RGB => ({green:gL,amber:aL,red:rL,na:nL})[s];
 const ragText  = (s: RAGStatus): RGB => ({green:gD,amber:aD,red:rD,na:nD})[s];
 const ragAccent= (s: RAGStatus): RGB => ({green:gC,amber:aC,red:rC,na:nC})[s];
@@ -192,147 +192,133 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
     return () => ro.disconnect();
   }, []);
 
+
   const total = facilities.length || 1;
   const healthPct = counts.green / total;
-  const hCol = healthPct >= 0.8 ? "#22C55E" : healthPct >= 0.5 ? "#F59E0B" : "#EF4444";
   const filtered = facilities.filter(f => cfg.divFilter === "all" || f.cat === cfg.divFilter);
   const ORDER: Record<string, number> = { Imarat:0, Projects:1, Graana:2, Agency21:3 };
   const sorted = [...filtered].sort((a,b) => (ORDER[a.cat]??9) - (ORDER[b.cat]??9));
   const dateStr = new Date().toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
   const timeStr = new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
   const cats = ["Imarat","Projects","Graana","Agency21"] as const;
-  // ── Color tokens ──────────────────────────────────────────────────────────
-  const BLU="#2563EB", GRN="#10B981", AMB="#F59E0B", CRT="#EF4444", SLT="#94A3B8";
-  const NAVY="#0B1D3A", PAGE="#EEF2F8", PANEL="#FFFFFF", BDR_C="#CBD5E1", MUT="#64748B";
-  const INK_C="#0F172A";
 
+  // ── Forest-green editorial palette ────────────────────────────────────────
+  const GRN="#1E7A5A", AMB="#C49A3C", CRT="#B85450", SLT="#8A9BA8";
+  const PAGE_C="#F4F6F3", SURF="#FFFFFF", SURF_ALT="#EFF2EE";
+  const BDR_S="rgba(18,28,30,0.08)", BRAND="#0E3D2F", GOLD_C="#C8A86A";
+  const INK_C="#12201C", TXT2="#5A6F68", MUT_C="#8AA099", GRN_BG="#E6F0EB";
+  const ff="'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif";
   const healthColor = healthPct>=0.8?GRN:healthPct>=0.5?AMB:CRT;
 
-  // ── Panel card: white, 3px top accent, uppercase label title ──────────────
-  const Card = ({ title, topColor=BLU, children, style }: { title:string; topColor?:string; children:React.ReactNode; style?:React.CSSProperties }) => (
-    <div style={{ background:PANEL, borderRadius:8, border:`1px solid ${BDR_C}`, display:"flex", flexDirection:"column" as const, overflow:"hidden", boxShadow:"0 1px 4px rgba(11,29,58,0.07)", ...style }}>
-      <div style={{ height:3, background:topColor, flexShrink:0 }}/>
-      <div style={{ padding:"12px 15px 0 15px", flexShrink:0 }}>
-        <div style={{ fontSize:9.5, fontWeight:700, color:BLU, letterSpacing:"1.8px", textTransform:"uppercase" as const, fontFamily:"'DM Sans','Inter',system-ui,sans-serif", marginBottom:10 }}>{title}</div>
+  // Panel — white surface, hairline border, uppercase eyebrow label
+  const Card = ({ title, children, dark=false, style }: { title:string; children:React.ReactNode; dark?:boolean; style?:React.CSSProperties }) => (
+    <div style={{ background: dark?"radial-gradient(120% 120% at 20% 20%, #183E34 0%, #0F2420 55%, #0B1E1A 100%)":SURF, borderRadius:12, border: dark?"none":`1px solid ${BDR_S}`, display:"flex", flexDirection:"column" as const, overflow:"hidden", ...style }}>
+      <div style={{ padding:"16px 18px 0 18px", flexShrink:0 }}>
+        <div style={{ fontSize:11, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase" as const, color: dark?"rgba(255,255,255,0.5)":TXT2, marginBottom:12 }}>{title}</div>
       </div>
-      <div style={{ flex:1, padding:"0 15px 13px 15px", overflow:"hidden" }}>{children}</div>
+      <div style={{ flex:1, padding:"0 18px 16px 18px", overflow:"hidden" }}>{children}</div>
     </div>
   );
 
-  const Dot = ({c,l}:{c:string;l:string}) => (
-    <div style={{ display:"flex", alignItems:"center", gap:5 }}>
-      <div style={{ width:7,height:7,borderRadius:"50%",background:c,flexShrink:0 }}/>
-      <span style={{ fontSize:10.5,color:MUT,fontFamily:"'DM Sans','Inter',system-ui,sans-serif" }}>{l}</span>
-    </div>
-  );
-
-  // Multi-segment donut
-  const RD=32, CD=2*Math.PI*RD;
-  const StatusDonut = () => {
+  // Multi-segment donut for the dark hero panel
+  const RD=38, CD=2*Math.PI*RD;
+  const HeroDonut = () => {
     const segs=[{v:counts.green,c:GRN},{v:counts.amber,c:AMB},{v:counts.red,c:CRT},{v:counts.na||0,c:SLT}];
     const tot=segs.reduce((s,r)=>s+r.v,0)||1;
     let cum=0;
     return (
-      <svg width="92" height="92" viewBox="0 0 92 92">
-        <circle cx="46" cy="46" r={RD} fill="none" stroke="#E2E8F0" strokeWidth="13"/>
+      <svg width="112" height="112" viewBox="0 0 112 112">
+        <circle cx="56" cy="56" r={RD} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="14"/>
         {segs.map((seg,si)=>{
           if(!seg.v) return null;
           const len=CD*(seg.v/tot), off=-CD*cum;
           cum+=seg.v/tot;
-          return <circle key={si} cx="46" cy="46" r={RD} fill="none" stroke={seg.c} strokeWidth="13"
+          return <circle key={si} cx="56" cy="56" r={RD} fill="none" stroke={seg.c} strokeWidth="14"
             strokeDasharray={`${len} ${CD-len}`} strokeDashoffset={off}
-            style={{ transform:"rotate(-90deg)", transformOrigin:"46px 46px" }} strokeLinecap="butt"/>;
+            style={{ transform:"rotate(-90deg)", transformOrigin:"56px 56px" }} strokeLinecap="butt"/>;
         })}
       </svg>
     );
   };
 
   const insightText = counts.red>0&&counts.amber>0
-    ?`${counts.red} critical + ${counts.amber} degraded sites require immediate IT attention.`
+    ?`${counts.red} critical and ${counts.amber} degraded sites require immediate IT attention.`
     :counts.red>0?`${counts.red} site${counts.red>1?"s":""} in critical state — service restoration is the priority.`
-    :counts.amber>0?`${counts.amber} site${counts.amber>1?"s":""} degraded. No critical failures detected at this time.`
-    :`All ${counts.green} facilities fully operational. All services healthy across all divisions.`;
-
-  const ff="'DM Sans','Inter',system-ui,sans-serif";
+    :counts.amber>0?`${counts.amber} site${counts.amber>1?"s":""} in degraded state. No critical failures at this time.`
+    :`All ${counts.green} facilities fully operational across all monitored services.`;
 
   return (
     <div ref={containerRef} style={{ width:"100%", display:"flex", flexDirection:"column" as const, alignItems:"center" }}>
       <div style={{ transform:`scale(${scale})`, transformOrigin:"top center", width:930, transition:"transform 0.15s" }}>
-        <div style={{ width:930, background:PAGE, fontFamily:ff, borderRadius:8, overflow:"hidden", boxShadow:"0 12px 48px rgba(11,29,58,0.22)" }}>
+        <div style={{ width:930, background:PAGE_C, fontFamily:ff, borderRadius:10, overflow:"hidden", boxShadow:"0 8px 40px rgba(18,28,30,0.16)" }}>
 
           {/* HEADER */}
-          <div style={{ background:NAVY, display:"flex", alignItems:"center", padding:"0 22px", height:54, borderBottom:`3px solid ${BLU}` }}>
-            {/* Wordmark */}
-            <div style={{ display:"flex", alignItems:"center", gap:0 }}>
-              <div style={{ width:28, height:28, borderRadius:6, background:BLU, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                <span style={{ fontSize:13, fontWeight:900, color:"#fff", letterSpacing:0.5, fontFamily:ff }}>IG</span>
+          <div style={{ background:SURF, borderBottom:`1px solid ${BDR_S}`, display:"flex", alignItems:"center", padding:"0 24px", height:58 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:13 }}>
+              <div style={{ width:32, height:32, borderRadius:8, background:BRAND, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                <span style={{ fontSize:12, fontWeight:700, color:GOLD_C, letterSpacing:"0.06em" }}>IG</span>
               </div>
-              <div style={{ marginLeft:10 }}>
-                <div style={{ fontSize:13, fontWeight:800, color:"#F1F5F9", letterSpacing:3, fontFamily:ff }}>IMARAT</div>
-                <div style={{ fontSize:8, color:"#64748B", letterSpacing:0.8, marginTop:1 }}>Group of Companies · IT Department</div>
+              <div>
+                <div style={{ fontSize:13.5, fontWeight:700, color:INK_C, letterSpacing:"0.14em" }}>IMARAT</div>
+                <div style={{ fontSize:9, color:MUT_C, letterSpacing:"0.04em", marginTop:1 }}>Group of Companies · IT Department</div>
               </div>
             </div>
-            {/* Divider */}
-            <div style={{ width:1, height:28, background:"#1E3A5F", margin:"0 20px" }}/>
-            {/* Title block */}
+            <div style={{ width:1, height:28, background:BDR_S, margin:"0 20px" }}/>
             <div style={{ flex:1 }}>
-              <div style={{ fontSize:13, fontWeight:700, color:"#F1F5F9" }}>{cfg.title}</div>
-              <div style={{ fontSize:9, color:"#475569", marginTop:2 }}>{cfg.org} · {cfg.period||dateStr}</div>
+              <div style={{ fontSize:13, fontWeight:600, color:INK_C, letterSpacing:"-0.01em" }}>{cfg.title}</div>
+              <div style={{ fontSize:9.5, color:MUT_C, marginTop:2 }}>{cfg.org} · {cfg.period||dateStr}</div>
             </div>
-            {/* Health badge */}
-            <div style={{ background: healthPct>=0.8?"rgba(16,185,129,0.15)":healthPct>=0.5?"rgba(245,158,11,0.15)":"rgba(239,68,68,0.15)", border:`1px solid ${healthColor}`, borderRadius:20, padding:"4px 14px", marginRight:20 }}>
-              <span style={{ fontSize:11, fontWeight:700, color:healthColor }}>{Math.round(healthPct*100)}% Operational</span>
+            <div style={{ display:"flex", alignItems:"center", gap:7, background:GRN_BG, borderRadius:20, padding:"6px 14px", marginRight:20 }}>
+              <div style={{ width:7, height:7, borderRadius:"50%", background:healthColor }}/>
+              <span style={{ fontSize:11, fontWeight:600, color:BRAND }}>{Math.round(healthPct*100)}% Operational</span>
             </div>
-            {/* Date */}
             <div style={{ textAlign:"right" as const }}>
-              <div style={{ fontSize:12, fontWeight:600, color:"#CBD5E1" }}>{dateStr}</div>
-              <div style={{ fontSize:9, color:"#475569", marginTop:2 }}>{timeStr}</div>
+              <div style={{ fontSize:12, fontWeight:600, color:INK_C }}>{dateStr}</div>
+              <div style={{ fontSize:9.5, color:MUT_C, marginTop:2 }}>{timeStr}</div>
             </div>
           </div>
 
           {/* BODY */}
-          <div style={{ padding:"12px", display:"flex", flexDirection:"column" as const, gap:10 }}>
+          <div style={{ padding:"14px", display:"flex", flexDirection:"column" as const, gap:10 }}>
 
             {/* ROW 1 */}
-            <div style={{ display:"flex", gap:10, height:196 }}>
+            <div style={{ display:"flex", gap:10, height:200 }}>
 
-              {/* 1 · Health */}
-              <Card title="Facility Health" topColor={healthColor} style={{ width:268 }}>
-                {[
-                  {l:"Overall Health",v:`${Math.round(healthPct*100)}%`,c:healthColor,big:true},
-                  {l:"Total Sites",v:String(facilities.length),c:INK_C,big:false},
-                  {l:"Operational",v:String(counts.green),c:GRN,big:false},
-                  {l:"Degraded",v:String(counts.amber),c:AMB,big:false},
-                  {l:"Critical",v:String(counts.red),c:CRT,big:false},
-                  {l:"Not Configured",v:String(counts.na||0),c:SLT,big:false},
-                ].map((r,ri)=>(
-                  <div key={r.l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"5.5px 0", borderBottom:ri<5?`1px solid #F1F5F9`:"none" }}>
-                    <span style={{ fontSize:11.5, color:ri===0?MUT:MUT, fontWeight:ri===0?500:400 }}>{r.l}</span>
-                    <span style={{ fontSize:ri===0?17:12.5, fontWeight:ri===0?800:600, color:r.c, fontVariantNumeric:"tabular-nums" }}>{r.v}</span>
-                  </div>
-                ))}
+              {/* 1 · Facility Health */}
+              <Card title="Facility Health" style={{ width:258 }}>
+                <div style={{ display:"flex", flexDirection:"column" as const }}>
+                  {[
+                    {l:"Overall Health",v:`${Math.round(healthPct*100)}%`,c:healthColor,hero:true},
+                    {l:"Total Sites",v:String(total),c:INK_C,hero:false},
+                    {l:"Operational",v:String(counts.green),c:GRN,hero:false},
+                    {l:"Degraded",v:String(counts.amber),c:AMB,hero:false},
+                    {l:"Critical",v:String(counts.red),c:CRT,hero:false},
+                    {l:"Not Configured",v:String(counts.na||0),c:SLT,hero:false},
+                  ].map((r,ri)=>(
+                    <div key={r.l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6.5px 0", borderBottom: ri<5?`1px solid ${BDR_S}`:"none" }}>
+                      <span style={{ fontSize:11.5, color:TXT2 }}>{r.l}</span>
+                      <span style={{ fontSize:r.hero?19:12.5, fontWeight:r.hero?700:600, color:r.c, fontVariantNumeric:"tabular-nums", letterSpacing:r.hero?"-0.02em":"0" }}>{r.v}</span>
+                    </div>
+                  ))}
+                </div>
               </Card>
 
-              {/* 2 · Status */}
-              <Card title="Status Distribution" topColor={BLU} style={{ width:250 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:12, height:"100%" }}>
+              {/* 2 · Status Overview — dark hero panel */}
+              <Card title="Status Overview" dark style={{ width:242 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:14, height:"100%" }}>
                   <div style={{ position:"relative" as const, flexShrink:0 }}>
-                    <StatusDonut/>
+                    <HeroDonut/>
                     <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column" as const, alignItems:"center", justifyContent:"center" }}>
-                      <div style={{ fontSize:21, fontWeight:800, color:INK_C, lineHeight:1 }}>{facilities.length}</div>
-                      <div style={{ fontSize:8.5, color:SLT, marginTop:2 }}>sites</div>
+                      <div style={{ fontSize:25, fontWeight:700, color:"#fff", lineHeight:1, letterSpacing:"-0.02em" }}>{total}</div>
+                      <div style={{ fontSize:9, color:"rgba(255,255,255,0.45)", marginTop:3 }}>sites</div>
                     </div>
                   </div>
-                  <div style={{ flex:1, display:"flex", flexDirection:"column" as const, gap:7 }}>
+                  <div style={{ flex:1, display:"flex", flexDirection:"column" as const, gap:9 }}>
                     {([{v:counts.green,l:"Operational",c:GRN},{v:counts.amber,l:"Degraded",c:AMB},{v:counts.red,l:"Critical",c:CRT},{v:counts.na||0,l:"Not Set",c:SLT}]).map(s=>(
-                      <div key={s.l}>
-                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
-                          <span style={{ fontSize:11, color:MUT }}>{s.l}</span>
-                          <span style={{ fontSize:12, fontWeight:700, color:s.c, fontVariantNumeric:"tabular-nums" }}>{s.v}</span>
-                        </div>
-                        <div style={{ height:4, background:"#EEF2F8", borderRadius:2 }}>
-                          <div style={{ height:4, borderRadius:2, width:`${facilities.length>0?s.v/facilities.length*100:0}%`, background:s.c }}/>
-                        </div>
+                      <div key={s.l} style={{ display:"flex", alignItems:"center", gap:8 }}>
+                        <div style={{ width:6, height:6, borderRadius:"50%", background:s.c, flexShrink:0 }}/>
+                        <span style={{ flex:1, fontSize:11, color:"rgba(255,255,255,0.55)" }}>{s.l}</span>
+                        <span style={{ fontSize:13, fontWeight:700, color:s.c, fontVariantNumeric:"tabular-nums" }}>{s.v}</span>
                       </div>
                     ))}
                   </div>
@@ -340,28 +326,27 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
               </Card>
 
               {/* 3 · Division Progress */}
-              <Card title="Division Progress" topColor={BLU} style={{ flex:1 }}>
-                <div style={{ display:"flex", flexDirection:"column" as const, gap:11 }}>
+              <Card title="Division Progress" style={{ flex:1 }}>
+                <div style={{ display:"flex", flexDirection:"column" as const, gap:12 }}>
                   {cats.map(cat=>{
                     const facs=facilities.filter(f=>f.cat===cat);
                     const grn=facs.filter(f=>calcOverall(state[f.name]??defState())==="green").length;
                     const amb=facs.filter(f=>calcOverall(state[f.name]??defState())==="amber").length;
                     const red=facs.filter(f=>calcOverall(state[f.name]??defState())==="red").length;
                     const hlth=facs.length>0?Math.round(grn/facs.length*100):0;
-                    const cc=CAT_HEX[cat];
                     return (
                       <div key={cat}>
-                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                          <span style={{ fontSize:12, color:INK_C, fontWeight:600 }}>{cat}</span>
-                          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                            <span style={{ fontSize:10.5, color:SLT }}>{facs.length} sites</span>
-                            <span style={{ fontSize:13, fontWeight:800, color:cc, fontVariantNumeric:"tabular-nums" }}>{hlth}%</span>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:5 }}>
+                          <span style={{ fontSize:12, color:INK_C, fontWeight:500 }}>{cat}</span>
+                          <div style={{ display:"flex", alignItems:"baseline", gap:9 }}>
+                            <span style={{ fontSize:10.5, color:MUT_C }}>{facs.length} sites</span>
+                            <span style={{ fontSize:13, fontWeight:700, color: hlth>=80?GRN:hlth>=50?AMB:CRT, fontVariantNumeric:"tabular-nums" }}>{hlth}%</span>
                           </div>
                         </div>
-                        <div style={{ height:8, background:"#EEF2F8", borderRadius:4, display:"flex", overflow:"hidden" }}>
-                          {grn>0&&<div style={{ width:`${grn/facs.length*100}%`, background:GRN }}/>}
-                          {amb>0&&<div style={{ width:`${amb/facs.length*100}%`, background:AMB }}/>}
-                          {red>0&&<div style={{ width:`${red/facs.length*100}%`, background:CRT }}/>}
+                        <div style={{ height:6, background:SURF_ALT, borderRadius:3, display:"flex", overflow:"hidden" }}>
+                          {grn>0&&<div style={{ width:`${grn/Math.max(facs.length,1)*100}%`, background:GRN }}/>}
+                          {amb>0&&<div style={{ width:`${amb/Math.max(facs.length,1)*100}%`, background:AMB }}/>}
+                          {red>0&&<div style={{ width:`${red/Math.max(facs.length,1)*100}%`, background:CRT }}/>}
                         </div>
                       </div>
                     );
@@ -371,11 +356,11 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
             </div>
 
             {/* ROW 2 */}
-            <div style={{ display:"flex", gap:10, height:214 }}>
+            <div style={{ display:"flex", gap:10, height:208 }}>
 
-              {/* 4 · Services */}
-              <Card title="Service Availability" topColor={BLU} style={{ width:268 }}>
-                <div style={{ display:"flex", flexDirection:"column" as const, gap:13 }}>
+              {/* 4 · Service Availability */}
+              <Card title="Service Availability" style={{ width:258 }}>
+                <div style={{ display:"flex", flexDirection:"column" as const, gap:15 }}>
                   {(["internet","bio","printing"] as const).map((key,ki)=>{
                     const lbls=["Internet","Biometric","Printing"];
                     const vals=sorted.map(f=>(state[f.name]??defState())[key]);
@@ -386,40 +371,39 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
                     const shC=sh>=0.8?GRN:sh>=0.5?AMB:CRT;
                     return (
                       <div key={key}>
-                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                          <span style={{ fontSize:12, color:INK_C, fontWeight:600 }}>{lbls[ki]}</span>
-                          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                            <span style={{ fontSize:10.5, color:MUT, fontVariantNumeric:"tabular-nums" }}>{sg}/{vals.length}</span>
-                            <span style={{ fontSize:11, fontWeight:700, color:shC }}>{Math.round(sh*100)}%</span>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:5 }}>
+                          <span style={{ fontSize:12, color:INK_C, fontWeight:500 }}>{lbls[ki]}</span>
+                          <div style={{ display:"flex", alignItems:"baseline", gap:8 }}>
+                            <span style={{ fontSize:10.5, color:MUT_C, fontVariantNumeric:"tabular-nums" }}>{sg}/{vals.length}</span>
+                            <span style={{ fontSize:12, fontWeight:700, color:shC, fontVariantNumeric:"tabular-nums" }}>{Math.round(sh*100)}%</span>
                           </div>
                         </div>
-                        <div style={{ height:8, background:"#EEF2F8", borderRadius:4, display:"flex", overflow:"hidden" }}>
-                          {sg>0&&<div style={{ width:`${sg/vals.length*100}%`, background:GRN }}/>}
-                          {sa>0&&<div style={{ width:`${sa/vals.length*100}%`, background:AMB }}/>}
-                          {sr>0&&<div style={{ width:`${sr/vals.length*100}%`, background:CRT }}/>}
+                        <div style={{ height:5, background:SURF_ALT, borderRadius:3, display:"flex", overflow:"hidden" }}>
+                          {sg>0&&<div style={{ width:`${sg/Math.max(vals.length,1)*100}%`, background:GRN }}/>}
+                          {sa>0&&<div style={{ width:`${sa/Math.max(vals.length,1)*100}%`, background:AMB }}/>}
+                          {sr>0&&<div style={{ width:`${sr/Math.max(vals.length,1)*100}%`, background:CRT }}/>}
                         </div>
-                        <div style={{ fontSize:10, color:"#94A3B8", marginTop:3 }}>{sa} degraded · {sr} critical</div>
                       </div>
                     );
                   })}
                 </div>
               </Card>
 
-              {/* 5 · Tickets */}
-              <Card title="Support Tickets" topColor={BLU} style={{ width:250 }}>
+              {/* 5 · Support Tickets */}
+              <Card title="Support Tickets" style={{ width:242 }}>
                 {(()=>{
                   const maxV=Math.max(autoStats.received,autoStats.resolved,autoStats.pending,1);
-                  const bars=[{v:autoStats.received,c:BLU,l:"Received"},{v:autoStats.resolved,c:GRN,l:"Resolved"},{v:autoStats.pending,c:AMB,l:"Pending"}];
-                  const barH=108;
+                  const bars=[{v:autoStats.received,c:BRAND,l:"Received"},{v:autoStats.resolved,c:GRN,l:"Resolved"},{v:autoStats.pending,c:AMB,l:"Pending"}];
+                  const barH=104;
                   return (
-                    <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-around", height:barH+36 }}>
+                    <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-around", height:barH+38 }}>
                       {bars.map(b=>(
-                        <div key={b.l} style={{ display:"flex", flexDirection:"column" as const, alignItems:"center", gap:5, width:58 }}>
-                          <span style={{ fontSize:20, fontWeight:800, color:b.c, lineHeight:1, fontVariantNumeric:"tabular-nums" }}>{b.v}</span>
-                          <div style={{ width:"100%", height:barH, background:"#EEF2F8", borderRadius:5, display:"flex", alignItems:"flex-end", overflow:"hidden" }}>
-                            <div style={{ width:"100%", background:b.c, borderRadius:5, height:`${Math.max(b.v/maxV*100,4)}%` }}/>
+                        <div key={b.l} style={{ display:"flex", flexDirection:"column" as const, alignItems:"center", gap:6, width:54 }}>
+                          <span style={{ fontSize:22, fontWeight:700, color:b.c, lineHeight:1, fontVariantNumeric:"tabular-nums", letterSpacing:"-0.02em" }}>{b.v}</span>
+                          <div style={{ width:"100%", height:barH, background:SURF_ALT, borderRadius:4, display:"flex", alignItems:"flex-end", overflow:"hidden" }}>
+                            <div style={{ width:"100%", background:b.c, borderRadius:4, height:`${Math.max(b.v/maxV*100,4)}%` }}/>
                           </div>
-                          <span style={{ fontSize:10, color:MUT, textAlign:"center" as const }}>{b.l}</span>
+                          <span style={{ fontSize:10, color:MUT_C, textAlign:"center" as const }}>{b.l}</span>
                         </div>
                       ))}
                     </div>
@@ -427,51 +411,56 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
                 })()}
               </Card>
 
-              {/* 6 · Facility Grid */}
-              <Card title="Facility Overview" topColor={BLU} style={{ flex:1 }}>
-                <div style={{ display:"flex", flexWrap:"wrap" as const, gap:5 }}>
+              {/* 6 · Facility Overview */}
+              <Card title="Facility Overview" style={{ flex:1 }}>
+                <div style={{ display:"flex", flexWrap:"wrap" as const, gap:4 }}>
                   {sorted.map((f,fi)=>{
                     const ov=calcOverall(state[f.name]??defState());
                     const c=ov==="green"?GRN:ov==="amber"?AMB:ov==="red"?CRT:SLT;
-                    const bg=ov==="green"?"#ECFDF5":ov==="amber"?"#FFFBEB":ov==="red"?"#FEF2F2":"#F8FAFC";
+                    const bg=ov==="green"?GRN_BG:ov==="amber"?"#F5EDDA":ov==="red"?"#F3E6E5":"#EEF1F3";
                     return (
-                      <div key={f.name} title={f.name} style={{ width:24, height:24, borderRadius:5, background:bg, border:`1.5px solid ${c}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:8.5, fontWeight:700, color:c, flexShrink:0, fontVariantNumeric:"tabular-nums" }}>
+                      <div key={f.name} title={f.name} style={{ width:22, height:22, borderRadius:4, background:bg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:8, fontWeight:600, color:c, flexShrink:0, fontVariantNumeric:"tabular-nums" }}>
                         {fi+1}
                       </div>
                     );
                   })}
                 </div>
-                <div style={{ display:"flex", gap:14, marginTop:10 }}>
-                  <Dot c={GRN} l={`${counts.green} OK`}/>
-                  <Dot c={AMB} l={`${counts.amber} Degraded`}/>
-                  <Dot c={CRT} l={`${counts.red} Critical`}/>
+                <div style={{ display:"flex", gap:16, marginTop:12 }}>
+                  {([{c:GRN,l:`${counts.green} Operational`},{c:AMB,l:`${counts.amber} Degraded`},{c:CRT,l:`${counts.red} Critical`}]).map(d=>(
+                    <div key={d.l} style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      <div style={{ width:6, height:6, borderRadius:"50%", background:d.c, flexShrink:0 }}/>
+                      <span style={{ fontSize:10, color:TXT2 }}>{d.l}</span>
+                    </div>
+                  ))}
                 </div>
               </Card>
             </div>
 
             {/* INSIGHT STRIP */}
-            <div style={{ background:"#0B1D3A", borderRadius:6, padding:"10px 18px", display:"flex", alignItems:"center", gap:14, borderLeft:`4px solid ${BLU}` }}>
-              <span style={{ fontSize:9.5, fontWeight:700, color:BLU, letterSpacing:"1.5px", textTransform:"uppercase" as const, flexShrink:0 }}>AI Insight</span>
-              <div style={{ width:1, height:16, background:"#1E3A5F", flexShrink:0 }}/>
-              <span style={{ fontSize:12, color:"#CBD5E1", lineHeight:1.5 }}>{insightText}</span>
+            <div style={{ background:BRAND, borderRadius:8, padding:"11px 20px", display:"flex", alignItems:"center", gap:14 }}>
+              <div style={{ width:3, height:20, background:GOLD_C, borderRadius:2, flexShrink:0 }}/>
+              <span style={{ fontSize:10, fontWeight:600, color:GOLD_C, letterSpacing:"0.1em", textTransform:"uppercase" as const, flexShrink:0 }}>Insight</span>
+              <div style={{ width:1, height:14, background:"rgba(200,168,106,0.28)", flexShrink:0 }}/>
+              <span style={{ fontSize:12, color:"rgba(255,255,255,0.78)", lineHeight:1.5 }}>{insightText}</span>
             </div>
 
           </div>
 
           {/* FOOTER */}
-          <div style={{ background:NAVY, borderTop:`1px solid #1E3A5F`, padding:"8px 22px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-            <div style={{ fontSize:10.5, color:"#475569" }}>{cfg.org} · IT Department · it.support@imarat.com.pk</div>
-            {cfg.includeTs&&<div style={{ fontSize:10.5, color:"#334155" }}>Confidential · System Generated</div>}
-            <div style={{ fontSize:10.5, color:"#475569" }}>imarat.com.pk · {dateStr}</div>
+          <div style={{ background:SURF, borderTop:`1px solid ${BDR_S}`, padding:"9px 24px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div style={{ fontSize:10.5, color:MUT_C }}>{cfg.org} · IT Department · it.support@imarat.com.pk</div>
+            {cfg.includeTs&&<div style={{ fontSize:10.5, color:MUT_C }}>Confidential · System Generated</div>}
+            <div style={{ fontSize:10.5, color:MUT_C }}>imarat.com.pk · {dateStr}</div>
           </div>
 
         </div>
       </div>
-      <div style={{ fontSize:11, color:"#64748B", marginTop:12, fontFamily:ff }}>
+      <div style={{ fontSize:11, color:MUT_C, marginTop:12, fontFamily:ff }}>
         Single Page · A4 {cfg.orientation==="landscape"?"Landscape":"Portrait"} · RAG Report
       </div>
     </div>
   );
+
 }
 
 // ─── Export Progress ──────────────────────────────────────────────────────────
@@ -586,10 +575,10 @@ async function generatePDF(
   const redN      = counts.red;
   const healthPct = total>0 ? grnN/total : 0;
 
-  const NAVY:RGB=[11,29,58], NAVYM:RGB=[11,29,58], GOLD:RGB=[37,99,235];
-  const WHITE:RGB=[255,255,255], INK:RGB=[15,23,42], MUTED:RGB=[100,116,139];
-  const BDR:RGB=[203,213,225], BGLT:RGB=[238,242,248];
-  const BLUE:RGB=[37,99,235];
+  const NAVY:RGB=[14,61,47], NAVYM:RGB=[15,36,32], GOLD:RGB=[200,168,106];
+  const WHITE:RGB=[255,255,255], INK:RGB=[18,32,28], MUTED:RGB=[138,160,153];
+  const BDR:RGB=[224,229,225], BGLT:RGB=[244,246,243];
+  const BLUE:RGB=[14,61,47], TXT2C:RGB=[90,111,104], SURFALT:RGB=[239,242,238];
 
   const fr  = (x:number,y:number,w:number,h:number,c:RGB) => { doc.setFillColor(...c); doc.rect(x,y,w,h,"F"); };
   const frr = (x:number,y:number,w:number,h:number,r:number,c:RGB) => { doc.setFillColor(...c); doc.roundedRect(x,y,w,h,r,r,"F"); };
@@ -611,53 +600,55 @@ async function generatePDF(
     (doc as any).lines(lines,pts[0][0],pts[0][1],[1,1],"F",true);
   };
 
-  // Panel: white card, 3pt blue top accent bar, uppercase label title, separator
-  const panel = (x:number,y:number,w:number,h:number,title:string,accent:RGB=BLUE) => {
-    frr(x,y,w,h,2.5,WHITE);
-    doc.setDrawColor(...BDR); doc.setLineWidth(0.25); doc.roundedRect(x,y,w,h,2.5,2.5,"S");
-    // 2mm top accent stripe
-    doc.setFillColor(...accent); doc.roundedRect(x,y,w,2,1,1,"F");
-    // uppercase label title in blue
-    doc.setFont("helvetica","bold"); doc.setFontSize(5); doc.setTextColor(...BLUE);
-    doc.text(title,x+5,y+8);
-    // thin rule
-    doc.setDrawColor(...BDR); doc.setLineWidth(0.2); doc.line(x+4,y+10,x+w-4,y+10);
+  // Panel: white surface, hairline border, muted uppercase eyebrow label
+  const panel = (x:number,y:number,w:number,h:number,title:string,_accent:RGB=BLUE) => {
+    frr(x,y,w,h,3,WHITE);
+    doc.setDrawColor(...BDR); doc.setLineWidth(0.25); doc.roundedRect(x,y,w,h,3,3,"S");
+    doc.setFont("helvetica","bold"); doc.setFontSize(5); doc.setTextColor(...TXT2C);
+    doc.text(title.toUpperCase(),x+6,y+7.5);
+  };
+
+  // Dark panel variant for the hero (radial-gradient look approximated with flat deep green)
+  const panelDark = (x:number,y:number,w:number,h:number,title:string) => {
+    frr(x,y,w,h,3,[15,36,32] as RGB);
+    doc.setFont("helvetica","bold"); doc.setFontSize(5); doc.setTextColor(140,160,152);
+    doc.text(title.toUpperCase(),x+6,y+7.5);
   };
 
   const TOTPG = 1;
   const drawShell = (pg:number, _subtitle="") => {
-    // Ice-blue page background
+    // Warm sage page ground
     fr(0,0,PW,PH,BGLT);
-    // Dark navy header
-    fr(0,0,PW,HDR,NAVY);
-    // Blue accent stripe at very top
-    fr(0,0,PW,2.5,BLUE);
-    // IG monogram box
-    frr(PAD,5,10,13,1.5,BLUE);
-    txt("IG",PAD+5,13,7,WHITE,"bold","center");
+    // White header with hairline rule
+    fr(0,0,PW,HDR,WHITE);
+    doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.line(0,HDR,PW,HDR);
+    // IG monogram — deep green tile, gold letters
+    frr(PAD,6,11,11,2,NAVY);
+    txt("IG",PAD+5.5,13.2,6,GOLD,"bold","center");
     // IMARAT wordmark
-    txt("IMARAT",PAD+14,12,11,WHITE,"bold");
-    txt("Group of Companies · IT Dept",PAD+14,18,3.8,MUTED);
-    // Vertical divider
-    doc.setDrawColor(30,58,95); doc.setLineWidth(0.4); doc.line(PAD+56,4,PAD+56,HDR-3);
+    txt("IMARAT",PAD+15,12,10,INK,"bold");
+    txt("Group of Companies  ·  IT Department",PAD+15,17.5,3.6,MUTED);
+    // Vertical hairline divider
+    doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.line(PAD+62,5,PAD+62,HDR-4);
     // Report title
-    txt(cfg.title,PAD+60,12,9,WHITE,"bold");
-    txt(`${cfg.org}  ·  ${cfg.period||dateStr}`,PAD+60,18,3.8,MUTED);
-    // Center badge
-    frr(PW/2-22,6.5,44,10,2,BLUE);
-    txt("EXECUTIVE RAG REPORT",PW/2,13.5,4.5,WHITE,"bold","center");
+    txt(cfg.title,PAD+66,12,8.5,INK,"bold");
+    txt(`${cfg.org}  ·  ${cfg.period||dateStr}`,PAD+66,17.5,3.6,MUTED);
+    // Health pill — pale green capsule, deep green text
+    const hp=Math.round(healthPct*100);
+    const pillW=44, pillX=PW-PAD-pillW-42;
+    frr(pillX,7.5,pillW,8.5,4.25,[230,240,235] as RGB);
+    doc.setFillColor(...(healthPct>=0.8?gC:healthPct>=0.5?aC:rC)); doc.circle(pillX+5,11.7,1.5,"F");
+    txt(`${hp}% Operational`,pillX+9,13,4.2,NAVY,"bold");
     // Date right
-    txt(dateStr,PW-PAD,12,8,WHITE,"bold","right");
-    txt(timeStr,PW-PAD,18,3.8,MUTED,"normal","right");
-    // Blue rule at bottom of header
-    fr(0,HDR-1,PW,1,BLUE);
-    // Dark navy footer (matches header)
-    fr(0,FTR_Y,PW,PH-FTR_Y,NAVY);
-    fr(0,FTR_Y,PW,0.5,BLUE);
+    txt(dateStr,PW-PAD,12,7.5,INK,"bold","right");
+    txt(timeStr,PW-PAD,17.5,3.6,MUTED,"normal","right");
+    // White footer with hairline rule
+    fr(0,FTR_Y,PW,PH-FTR_Y,WHITE);
+    doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.line(0,FTR_Y,PW,FTR_Y);
     const fy=FTR_Y+4;
-    txt(`${cfg.org}  ·  IT Department  ·  it.support@imarat.com.pk`,PAD,fy+2,4,MUTED);
-    if(cfg.includeTs) txt("CONFIDENTIAL  ·  SYSTEM GENERATED",PW/2,fy+2,3.8,MUTED,"bold","center");
-    txt(`Page ${pg} / ${TOTPG}  ·  imarat.com.pk`,PW-PAD,fy+2,4,MUTED,"normal","right");
+    txt(`${cfg.org}  ·  IT Department  ·  it.support@imarat.com.pk`,PAD,fy+2,3.8,MUTED);
+    if(cfg.includeTs) txt("Confidential  ·  System Generated",PW/2,fy+2,3.8,MUTED,"normal","center");
+    txt(`Page ${pg} / ${TOTPG}  ·  imarat.com.pk`,PW-PAD,fy+2,3.8,MUTED,"normal","right");
   };
 
   const insight = (() => {
@@ -683,144 +674,143 @@ async function generatePDF(
   const P_X=(i:number)=>PAD+i*(PW3+GAP3);
   const hC:RGB=healthPct>=0.8?gC:healthPct>=0.5?aC:rC;
 
-  // ── Panel 1: Health ──────────────────────────────────────────────────────
-  panel(P_X(0),BT,PW3,ROW_H,"HEALTH");
+  // ── Panel 1: Facility Health ─────────────────────────────────────────────
+  panel(P_X(0),BT,PW3,ROW_H,"Facility Health");
   {
     const rows=[
-      {l:"Overall Health",v:`${Math.round(healthPct*100)}%`,c:hC,highlight:true},
-      {l:"Total Sites",v:`${sorted.length}`,c:INK,highlight:false},
-      {l:"Operational",v:String(grnN),c:gC,highlight:false},
-      {l:"Degraded",v:String(ambN),c:aC,highlight:false},
-      {l:"Critical",v:String(redN),c:rC,highlight:false},
-      {l:"Not Configured",v:String(counts.na||0),c:nC,highlight:false},
-    ] as {l:string;v:string;c:RGB;highlight:boolean}[];
-    const rowH=(ROW_H-15)/6;
+      {l:"Overall Health",v:`${Math.round(healthPct*100)}%`,c:hC,hero:true},
+      {l:"Total Sites",v:`${sorted.length}`,c:INK,hero:false},
+      {l:"Operational",v:String(grnN),c:gC,hero:false},
+      {l:"Degraded",v:String(ambN),c:aC,hero:false},
+      {l:"Critical",v:String(redN),c:rC,hero:false},
+      {l:"Not Configured",v:String(counts.na||0),c:nC,hero:false},
+    ] as {l:string;v:string;c:RGB;hero:boolean}[];
+    const top=BT+11, rowH=(ROW_H-13)/6;
     rows.forEach((r,ri)=>{
-      const ry=BT+14+ri*rowH;
-      if(r.highlight){
-        frr(P_X(0)+4,ry-1,PW3-8,rowH-1,2,hC);
-        txt(r.l,P_X(0)+8,ry+rowH/2+1.5,5.5,WHITE,"normal");
-        txt(r.v,P_X(0)+PW3-8,ry+rowH/2+1.5,9,WHITE,"bold","right");
-      } else {
-        if(ri>0){ doc.setDrawColor(...BDR); doc.setLineWidth(0.15); doc.line(P_X(0)+4,ry-0.5,P_X(0)+PW3-4,ry-0.5); }
-        txt(r.l,P_X(0)+6,ry+rowH/2+1.5,5.5,MUTED,"normal");
-        txt(r.v,P_X(0)+PW3-6,ry+rowH/2+1.5,6.5,r.c,"bold","right");
-      }
+      const ry=top+ri*rowH, mid=ry+rowH/2+1.4;
+      txt(r.l,P_X(0)+6,mid,5,TXT2C,"normal");
+      txt(r.v,P_X(0)+PW3-6,mid,r.hero?10:6.5,r.c,"bold","right");
+      if(ri<5){ doc.setDrawColor(...BDR); doc.setLineWidth(0.15); doc.line(P_X(0)+6,ry+rowH,P_X(0)+PW3-6,ry+rowH); }
     });
   }
 
-  // ── Panel 2: Status ───────────────────────────────────────────────────────
-  panel(P_X(1),BT,PW3,ROW_H,"STATUS");
+  // ── Panel 2: Status Overview — dark hero panel ───────────────────────────
+  panelDark(P_X(1),BT,PW3,ROW_H,"Status Overview");
   {
-    const cx=P_X(1)+PW3*0.33, cy=BT+14+(ROW_H-15)/2, RO=19, RI=12;
+    const cx=P_X(1)+PW3*0.32, cy=BT+11+(ROW_H-13)/2, RO=19, RI=12.5;
     const segs=[{v:grnN,c:gC},{v:ambN,c:aC},{v:redN,c:rC},{v:counts.na||0,c:nC}] as {v:number;c:RGB}[];
     const tot=segs.reduce((s,r)=>s+r.v,0)||1;
-    drawArc(cx,cy,RO,RI,-90,270,[228,234,246] as RGB);
+    drawArc(cx,cy,RO,RI,-90,270,[32,58,50] as RGB);
     let ca=-90;
     segs.forEach(seg=>{ if(!seg.v) return; const sp=360*seg.v/tot; drawArc(cx,cy,RO,RI,ca,ca+sp,seg.c); ca+=sp; });
-    doc.setFillColor(...WHITE); doc.circle(cx,cy,RI-0.5,"F");
-    txt(String(sorted.length),cx,cy+1.5,10,INK,"bold","center");
-    txt("sites",cx,cy+6,4.5,MUTED,"normal","center");
-    const legX=P_X(1)+PW3*0.6, legY=BT+14;
+    doc.setFillColor(15,36,32); doc.circle(cx,cy,RI-0.4,"F");
+    txt(String(sorted.length),cx,cy+1,11,WHITE,"bold","center");
+    txt("sites",cx,cy+5.5,4,[120,145,136] as RGB,"normal","center");
+    const legX=P_X(1)+PW3*0.6, top=BT+13, legRowH=(ROW_H-17)/4;
     ([{l:"Operational",v:grnN,c:gC},{l:"Degraded",v:ambN,c:aC},{l:"Critical",v:redN,c:rC},{l:"Not Set",v:counts.na||0,c:nC}] as {l:string;v:number;c:RGB}[]).forEach((lk,li)=>{
-      const ly=legY+li*((ROW_H-16)/4);
-      doc.setFillColor(...lk.c); doc.circle(legX+2.5,ly+3,2,"F");
-      txt(lk.l,legX+7,ly+4,5.5,INK);
-      txt(String(lk.v),P_X(1)+PW3-5,ly+4,7,lk.c,"bold","right");
-      const avail=PW3-legX+P_X(1)-14;
-      const bW=avail*lk.v/tot;
-      frr(legX+7,ly+6.5,avail,3.5,1.5,[228,234,246] as RGB);
-      if(lk.v>0) frr(legX+7,ly+6.5,Math.max(bW,2.5),3.5,1.5,lk.c);
+      const ly=top+li*legRowH+legRowH/2;
+      doc.setFillColor(...lk.c); doc.circle(legX+2,ly-0.8,1.5,"F");
+      txt(lk.l,legX+6,ly,5,[140,165,155] as RGB,"normal");
+      txt(String(lk.v),P_X(1)+PW3-6,ly,7,lk.c,"bold","right");
     });
   }
 
-  // ── Panel 3: Division Progress ────────────────────────────────────────────
-  panel(P_X(2),BT,PW3,ROW_H,"PROGRESS");
+  // ── Panel 3: Division Progress ───────────────────────────────────────────
+  panel(P_X(2),BT,PW3,ROW_H,"Division Progress");
   {
-    const catRowH=(ROW_H-16)/4;
+    const top=BT+12, catRowH=(ROW_H-14)/4;
     CATS.forEach((cat,ci)=>{
       const facs=sorted.filter(f=>f.cat===cat);
       const grn=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="green").length;
       const amb=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="amber").length;
       const red=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="red").length;
-      const cc=CAT_C[cat];
-      const rY=BT+14+ci*catRowH;
-      txt(cat,P_X(2)+6,rY+5.5,6,cc,"bold");
-      txt(`${facs.length} sites`,P_X(2)+6,rY+10,4.5,MUTED);
-      txt(`${Math.round(grn/Math.max(facs.length,1)*100)}%`,P_X(2)+PW3-6,rY+6,7,cc,"bold","right");
-      const bX=P_X(2)+6, bW=PW3-12, bY=rY+12;
-      frr(bX,bY,bW,6,2,[228,234,246] as RGB);
+      const pct=Math.round(grn/Math.max(facs.length,1)*100);
+      const pc:RGB=pct>=80?gC:pct>=50?aC:rC;
+      const rY=top+ci*catRowH;
+      txt(cat,P_X(2)+6,rY+5,5.5,INK,"bold");
+      txt(`${facs.length} sites`,P_X(2)+PW3-24,rY+5,4.2,MUTED,"normal","right");
+      txt(`${pct}%`,P_X(2)+PW3-6,rY+5,7,pc,"bold","right");
+      const bX=P_X(2)+6, bW=PW3-12, bY=rY+7.5;
+      frr(bX,bY,bW,4,2,SURFALT);
       let bx=bX;
       ([{v:grn,c:gC},{v:amb,c:aC},{v:red,c:rC}] as {v:number;c:RGB}[]).forEach(bk=>{
         const bw=bW*bk.v/Math.max(facs.length,1);
-        if(bk.v>0){frr(bx,bY,bw,6,0,bk.c); bx+=bw;}
+        if(bk.v>0){frr(bx,bY,bw,4,0,bk.c); bx+=bw;}
       });
     });
   }
 
-  // ── Panel 4: Services ────────────────────────────────────────────────────
-  panel(P_X(0),ROW2_Y,PW3,ROW_H,"SERVICES");
+  // ── Panel 4: Service Availability ────────────────────────────────────────
+  panel(P_X(0),ROW2_Y,PW3,ROW_H,"Service Availability");
   {
     const svcs=[
-      {lbl:"Internet Connectivity",key:"internet" as keyof FacilityState},
-      {lbl:"Biometric Systems",key:"bio" as keyof FacilityState},
-      {lbl:"Printing Services",key:"printing" as keyof FacilityState},
+      {lbl:"Internet",key:"internet" as keyof FacilityState},
+      {lbl:"Biometric",key:"bio" as keyof FacilityState},
+      {lbl:"Printing",key:"printing" as keyof FacilityState},
     ];
-    const svcRowH=(ROW_H-16)/3;
+    const top=ROW2_Y+12, svcRowH=(ROW_H-14)/3;
     svcs.forEach((svc,si)=>{
       const vals=sorted.map(f=>(state[f.name]??defaultState())[svc.key] as RAGStatus);
       const sg=vals.filter(v=>v==="green").length, sa=vals.filter(v=>v==="amber").length, sr=vals.filter(v=>v==="red").length;
       const sh=vals.length>0?sg/vals.length:0;
       const shC:RGB=sh>=0.8?gC:sh>=0.5?aC:rC;
-      const sY=ROW2_Y+14+si*svcRowH;
-      txt(svc.lbl,P_X(0)+6,sY+5.5,5.5,INK,"bold");
-      txt(`${sg} / ${vals.length}`,P_X(0)+PW3-6,sY+5.5,6.5,shC,"bold","right");
-      const bX=P_X(0)+6, bW=PW3-12, bY=sY+8;
-      frr(bX,bY,bW,7,2,[228,234,246] as RGB);
+      const sY=top+si*svcRowH;
+      txt(svc.lbl,P_X(0)+6,sY+5,5.5,INK,"bold");
+      txt(`${sg}/${vals.length}`,P_X(0)+PW3-22,sY+5,4.2,MUTED,"normal","right");
+      txt(`${Math.round(sh*100)}%`,P_X(0)+PW3-6,sY+5,7,shC,"bold","right");
+      const bX=P_X(0)+6, bW=PW3-12, bY=sY+7.5;
+      frr(bX,bY,bW,4,2,SURFALT);
       let bx=bX;
-      ([{v:sg,c:gC},{v:sa,c:aC},{v:sr,c:rC}] as {v:number;c:RGB}[]).forEach(bk=>{ const bw=bW*bk.v/Math.max(vals.length,1); if(bk.v>0){frr(bx,bY,bw,7,0,bk.c); bx+=bw;} });
-      txt(`${Math.round(sh*100)}% availability  ·  ${sa} degraded  ·  ${sr} critical`,P_X(0)+6,sY+19,4.5,MUTED);
+      ([{v:sg,c:gC},{v:sa,c:aC},{v:sr,c:rC}] as {v:number;c:RGB}[]).forEach(bk=>{ const bw=bW*bk.v/Math.max(vals.length,1); if(bk.v>0){frr(bx,bY,bw,4,0,bk.c); bx+=bw;} });
+      txt(`${sa} degraded  ·  ${sr} critical`,P_X(0)+6,sY+15,4.2,MUTED);
     });
   }
 
   // ── Panel 5: Support Tickets ─────────────────────────────────────────────
-  panel(P_X(1),ROW2_Y,PW3,ROW_H,"SUPPORT TICKETS");
+  panel(P_X(1),ROW2_Y,PW3,ROW_H,"Support Tickets");
   {
     const tkData=[
-      {v:autoStats.received,l:"Received",c:[59,130,246] as RGB},
+      {v:autoStats.received,l:"Received",c:NAVY},
       {v:autoStats.resolved,l:"Resolved",c:gC},
       {v:autoStats.pending,l:"Pending",c:aC},
     ];
     const maxV=Math.max(...tkData.map(t=>t.v),1);
-    const barH=ROW_H-34, barW=(PW3-28)/3;
+    const barTop=ROW2_Y+19, barH=ROW_H-30, barW=(PW3-28)/3;
     tkData.forEach((tk,ti)=>{
       const bX=P_X(1)+8+ti*(barW+4);
-      const filled=Math.max(barH*(tk.v/maxV),3);
-      txt(String(tk.v),bX+barW/2,ROW2_Y+17,11,tk.c,"bold","center");
-      frr(bX,ROW2_Y+20,barW,barH,3,[228,234,246] as RGB);
-      if(tk.v>0) frr(bX,ROW2_Y+20+barH-filled,barW,filled,3,tk.c);
-      txt(tk.l,bX+barW/2,ROW2_Y+ROW_H-5,5,MUTED,"normal","center");
+      const filled=Math.max(barH*(tk.v/maxV),2.5);
+      txt(String(tk.v),bX+barW/2,barTop-2,11,tk.c,"bold","center");
+      frr(bX,barTop,barW,barH,2,SURFALT);
+      if(tk.v>0) frr(bX,barTop+barH-filled,barW,filled,2,tk.c);
+      txt(tk.l,bX+barW/2,barTop+barH+4.5,4.5,MUTED,"normal","center");
     });
   }
 
-  // ── Panel 6: Facility Overview (dot grid) ────────────────────────────────
-  panel(P_X(2),ROW2_Y,PW3,ROW_H,"FACILITY OVERVIEW");
+  // ── Panel 6: Facility Overview ───────────────────────────────────────────
+  panel(P_X(2),ROW2_Y,PW3,ROW_H,"Facility Overview");
   {
     const COLS=6;
-    const availW=PW3-14, availH=ROW_H-18;
+    const top=ROW2_Y+12;
+    const availW=PW3-14, availH=ROW_H-24;
     const dotD=Math.min(8,Math.floor(availW/COLS)-2);
     const dotGapX=availW/COLS;
     const rows2=Math.ceil(sorted.length/COLS);
-    const dotGapY=Math.min(dotD+3,availH/Math.max(rows2,1));
+    const dotGapY=Math.min(dotD+2.5,availH/Math.max(rows2,1));
     sorted.forEach((f,fi)=>{
       const col=fi%COLS, row=Math.floor(fi/COLS);
-      const dx=P_X(2)+7+col*dotGapX+dotD/2;
-      const dy=ROW2_Y+14+row*dotGapY+dotD/2;
+      const dx=P_X(2)+7+col*dotGapX;
+      const dy=top+row*dotGapY;
       const ov=calcOverall(state[f.name]??defaultState());
-      frr(dx-dotD/2,dy-dotD/2,dotD,dotD,1.5,ragFill(ov));
-      doc.setDrawColor(...ragAccent(ov)); doc.setLineWidth(0.5); doc.roundedRect(dx-dotD/2,dy-dotD/2,dotD,dotD,1.5,1.5,"S");
-      doc.setTextColor(...ragAccent(ov)); doc.setFont("helvetica","bold"); doc.setFontSize(3.5);
-      doc.text(String(fi+1),dx,dy+1.2,{align:"center"});
+      frr(dx,dy,dotD,dotD,1.5,ragFill(ov));
+      doc.setTextColor(...ragAccent(ov)); doc.setFont("helvetica","bold"); doc.setFontSize(3.6);
+      doc.text(String(fi+1),dx+dotD/2,dy+dotD/2+1.2,{align:"center"});
+    });
+    // legend row at panel foot
+    const lgY=ROW2_Y+ROW_H-5;
+    ([{c:gC,l:`${grnN} Operational`},{c:aC,l:`${ambN} Degraded`},{c:rC,l:`${redN} Critical`}] as {c:RGB;l:string}[]).forEach((d,di)=>{
+      const lx=P_X(2)+7+di*((PW3-14)/3);
+      doc.setFillColor(...d.c); doc.circle(lx+1.2,lgY-1,1.2,"F");
+      txt(d.l,lx+4,lgY,4.2,TXT2C,"normal");
     });
   }
 
@@ -828,14 +818,11 @@ async function generatePDF(
   {
     const iY=FTR_Y-12, iH=11;
     frr(PAD,iY,TW,iH,2.5,NAVY);
-    // blue left border (4mm thick, full height)
-    frr(PAD,iY,4,iH,1.5,BLUE);
-    txt("AI INSIGHT",PAD+8,iY+4,4.5,BLUE,"bold");
-    // divider dot
-    doc.setFillColor(...MUTED); doc.circle(PAD+30,iY+5.5,0.8,"F");
-    txt(insight,PAD+34,iY+4,4.5,[203,213,225] as RGB,"normal");
+    doc.setFillColor(...GOLD); doc.roundedRect(PAD+5,iY+3,1.2,5,0.6,0.6,"F");
+    txt("INSIGHT",PAD+9,iY+6.8,4.2,GOLD,"bold");
+    doc.setDrawColor(90,78,50); doc.setLineWidth(0.3); doc.line(PAD+26,iY+3.5,PAD+26,iY+7.5);
+    txt(insight,PAD+30,iY+6.8,4.5,[210,222,215] as RGB,"normal");
   }
-
   doc.save(fileName);
   return fileName;
 }
