@@ -92,7 +92,7 @@ export interface HistoryResult {
 }
 
 /**
- * Reconstruct daily estate health for the last `days` days by replaying
+ * Reconstruct daily operational health for the last `days` days by replaying
  * transitions backwards from the current state.
  */
 export function reconstructHistory(
@@ -406,9 +406,9 @@ export function verdict(
 
   const headline =
     crit > 0
-      ? `${crit} site${crit > 1 ? "s" : ""} ${crit > 1 ? "are" : "is"} down. Estate is at ${pct}% operational capacity.`
+      ? `${crit} site${crit > 1 ? "s" : ""} ${crit > 1 ? "are" : "is"} down. IT operations at ${pct}% capacity.`
       : deg > 0
-        ? `Estate is stable at ${pct}%, with ${deg} site${deg > 1 ? "s" : ""} degraded.`
+        ? `IT operations stable at ${pct}%, with ${deg} site${deg > 1 ? "s" : ""} degraded.`
         : `All monitored sites are fully operational at ${pct}%.`;
 
   const dir = trendDelta === null ? null : trendDelta > 1.5 ? "improving" : trendDelta < -1.5 ? "declining" : "flat";

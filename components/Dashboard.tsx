@@ -292,7 +292,7 @@ export default function Dashboard() {
           </div>
 
           <div className="led-railfoot" style={{ marginTop:"auto", paddingTop:18, borderTop:`1px solid ${T.line}` }}>
-            <Eyebrow style={{ marginBottom:9, fontSize:9 }}>Estate</Eyebrow>
+            <Eyebrow style={{ marginBottom:9, fontSize:9 }}>Facilities</Eyebrow>
             {([["green","Operational"],["amber","Degraded"],["red","Critical"],["na","Not set"]] as [RAG,string][])
               .map(([k,l])=>(
                 <div key={k} style={{ display:"flex", alignItems:"center", gap:8, padding:"3px 0" }}>
