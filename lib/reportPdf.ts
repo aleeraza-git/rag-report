@@ -145,8 +145,8 @@ export async function buildReport(
 
     // KPI band — four figures, deltas where real
     const kpis:{label:string;value:string;delta:number|null;c:RGB}[]=[
-      { label:"Operational capacity", value:`${Math.round(health*100)}%`, delta:trend, c:statusRGB[v.tone] },
-      { label:"Sites operational",    value:`${counts.green}/${total}`,   delta:null,  c:OK },
+      { label:"Capacity", value:`${Math.round(health*100)}%`, delta:trend, c:statusRGB[v.tone] },
+      { label:"Operational",  value:`${counts.green}/${total}`,   delta:null,  c:OK },
       { label:"Critical",             value:String(counts.red),           delta:null,  c:counts.red?CRIT:INK3 },
       { label:"Degraded",             value:String(counts.amber),         delta:null,  c:counts.amber?WARN:INK3 },
     ];

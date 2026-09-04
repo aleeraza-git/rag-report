@@ -280,8 +280,10 @@ function PageSummary({ a, total, period, org, hasHist, windowDays }:
           {l:"Degraded",v:String(a.counts.amber),d:null,c:a.counts.amber?T.warn:T.ink3},
         ].map((k,i)=>(
           <div key={k.l} style={{ padding:"13px 12px", borderLeft:i?`1px solid ${T.line}`:"none" }}>
-            <Eyebrow style={{ fontSize:8.5 }}>{k.l}</Eyebrow>
-            <div style={{ display:"flex", alignItems:"baseline", gap:6, marginTop:7 }}>
+            {/* fixed label box so a two-line label cannot push its figure off
+                the baseline the other three sit on */}
+            <div style={{ height:20 }}><Eyebrow style={{ fontSize:8.5, lineHeight:1.35 }}>{k.l}</Eyebrow></div>
+            <div style={{ display:"flex", alignItems:"baseline", gap:6, marginTop:4 }}>
               <Num size={20} weight={400} color={k.c}>{k.v}</Num>
               {k.d!==null && hasHist && <Delta v={k.d} unit="" />}
             </div>
