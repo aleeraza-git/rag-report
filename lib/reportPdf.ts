@@ -547,8 +547,8 @@ export async function buildReport(
     }
     rows.forEach((r,i)=>{
       const ry=y+i*rowH;
-      txt(clip(r.label,labelW-3,8),x,ry+3.4,{size:8,color:INK});
-      if(r.sub) txt(r.sub,x,ry+7.4,{size:5.8,color:INK4});
+      txt(clip(r.label,labelW-15,7.6),x,ry+3.6,{size:7.6,color:INK});
+      if(r.sub) txt(r.sub,x+labelW-4,ry+3.6,{size:5.6,font:"mono",color:INK4,align:"right"});
       const bw=Math.max(barW*(Math.min(r.value,100)/100),0.6);
       rect(x+labelW,ry,bw,5.2,r.c);
       txt(`${Math.round(r.value)}%`,x+labelW+barW+valueW-2,ry+4,{size:8.5,font:"mono",color:r.c,align:"right"});

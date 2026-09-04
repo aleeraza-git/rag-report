@@ -381,11 +381,11 @@ function RankedBars({ rows }:{ rows:{ label:string; value:number; sub?:string; c
       </div>
       {rows.map(r=>(
         <div key={r.label} style={{ display:"grid", gridTemplateColumns:"88px 1fr 44px",
-              alignItems:"center", gap:0, height:26 }}>
-          <span style={{ minWidth:0 }}>
-            <span style={{ display:"block", fontFamily:T.sans, fontSize:10, color:T.ink,
+              alignItems:"center", gap:0, height:24 }}>
+          <span style={{ display:"flex", alignItems:"baseline", gap:5, minWidth:0, paddingRight:8 }}>
+            <span style={{ fontFamily:T.sans, fontSize:9.5, color:T.ink,
                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.label}</span>
-            {r.sub && <span style={{ fontFamily:T.sans, fontSize:7.5, color:T.ink4 }}>{r.sub}</span>}
+            {r.sub && <span style={{ fontFamily:T.mono, fontSize:7, color:T.ink4, flexShrink:0 }}>{r.sub}</span>}
           </span>
           <span style={{ position:"relative", height:9 }}>
             <span style={{ position:"absolute", left:0, top:0, height:9,
