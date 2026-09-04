@@ -15,9 +15,10 @@ import {
 } from "./ui";
 import {
   reconstructRange, attentionInRange, changesBetween, divisionPerformanceRange,
-  divisionSeries, serviceStats, repeatOffenders, bandwidthDeficits, verdict,
+  divisionSeries, serviceStatsAt, bandwidthDeficitsAt, verdict,
   overallOf, fmtDuration, mttrByService, dailyChurn, facilityDayMatrix,
-  worstPerformers, comparePeriods, rangeDays, rangeOf, fmtRange,
+  worstPerformers, comparePeriods, rangeDays, rangeOf, fmtRange, stateAsAt,
+  periodActivity, activityTotals,
   toDateInput, fromDateInput, SERVICES, SERVICE_LABEL,
   type FacState, type LogEntry, type RAG, type DateRange,
 } from "@/lib/analytics";
@@ -61,14 +62,16 @@ function analyse(
     const change  = changesBetween(log, range);
     const divs    = divisionPerformanceRange(fac, state, log, range);
     const divSer  = divisionSeries(fac, state, log, range);
-    const svcs    = serviceStats(fac, state, hist);
+    const atEnd   = stateAsAt(fac, state, log, range.to);
+    const svcs    = serviceStatsAt(fac, atEnd, hist);
     const mttr    = mttrByService(log, range);
     const churn   = dailyChurn(log, range);
     const worst   = worstPerformers(fac, state, log, range, 8);
     const matrix  = facilityDayMatrix(fac, state, log, range, 14);
     const cmp     = comparePeriods(fac, state, log, range);
-    const flappy  = repeatOffenders(log, rangeDays(range), 5);
-    const bw      = bandwidthDeficits(fac, state);
+    const acts    = periodActivity(fac, state, log, range);
+    const actT    = activityTotals(acts);
+    const bw      = bandwidthDeficitsAt(fac, state, log, range);
     const series  = hist.points.map(p=>p.health);
     const health  = series[series.length-1] ?? 0;
     const trend   = hist.coverage>0 && series.length>1 ? (health-series[0])*100 : null;
@@ -76,7 +79,7 @@ function analyse(
     const counts  = {green:0,amber:0,red:0,na:0} as Record<RAG,number>;
     const last    = hist.points[hist.points.length-1];
     if (last) { counts.green=last.green; counts.amber=last.amber; counts.red=last.red; counts.na=last.na; }
-    return { hist,attn,change,divs,divSer,svcs,mttr,churn,worst,matrix,cmp,flappy,bw,series,health,trend,v,counts };
+    return { hist,attn,change,divs,divSer,svcs,mttr,churn,worst,matrix,cmp,bw,acts,actT,series,health,trend,v,counts };
 }
 
 export default function ReportStudio({ facilities, state, log, org }: Props) {
@@ -622,25 +625,51 @@ function PageAnalysis({ a, hasHist }:{ a:A; hasHist:boolean }) {
           )}
         </div>
         <div>
-          <Eb>Instability · most frequent changes</Eb>
+          <Eb>Activity in this period · what was dealt with</Eb>
           <Panel style={{ minHeight:92 }}>
-            {a.flappy.length ? a.flappy.slice(0,5).map(f=>{
-              const max = Math.max(...a.flappy.map(z=>z.flips),1);
-              return (
-                <div key={f.facility} style={{ display:"grid", gridTemplateColumns:"1fr 70px 22px",
-                      alignItems:"center", gap:6, height:15 }}>
-                  <span style={{ fontFamily:T.sans, fontSize:8.5, color:T.ink, overflow:"hidden",
-                                 textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.facility}</span>
-                  <span style={{ position:"relative", height:5 }}>
-                    <span style={{ position:"absolute", left:0, height:5,
-                                   width:`${(f.flips/max)*100}%`, background:T.warn }} />
-                  </span>
-                  <Num size={8.5} color={T.warn} style={{ textAlign:"right", display:"block" }}>{f.flips}</Num>
+            {a.acts.length ? (
+              <>
+                <div style={{ display:"flex", gap:14, paddingBottom:7, borderBottom:`1px solid ${T.lineSoft}` }}>
+                  {[
+                    { n:a.actT.sitesTouched, l:"sites",    c:T.ink },
+                    { n:a.actT.changes,      l:"changes",  c:T.ink },
+                    { n:a.actT.improved,     l:"improved", c:a.actT.improved?T.ok:T.ink3 },
+                    { n:a.actT.worsened,     l:"worse",    c:a.actT.worsened?T.crit:T.ink3 },
+                  ].map(x=>(
+                    <span key={x.l} style={{ display:"flex", alignItems:"baseline", gap:3 }}>
+                      <Num size={13} color={x.c}>{x.n}</Num>
+                      <span style={{ fontFamily:T.sans, fontSize:7.5, color:T.ink4 }}>{x.l}</span>
+                    </span>
+                  ))}
                 </div>
-              );
-            }) : (
+                {a.acts.slice(0,4).map(r=>{
+                  const max = Math.max(...a.acts.map(z=>z.changes),1);
+                  return (
+                    <div key={r.facility} style={{ display:"grid", gridTemplateColumns:"1fr 72px 26px 12px",
+                          gap:5, alignItems:"center", height:15 }}>
+                      <span style={{ fontFamily:T.sans, fontSize:8.5, color:T.ink, overflow:"hidden",
+                                     textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.facility}</span>
+                      <span style={{ display:"flex", height:5 }}>
+                        {r.recoveries>0 && <span style={{ width:`${r.recoveries/max*100}%`, background:T.ok }} />}
+                        {r.regressions>0 && <span style={{ width:`${r.regressions/max*100}%`, background:T.crit }} />}
+                      </span>
+                      <Num size={8} color={T.ink2} style={{ textAlign:"right", display:"block" }}>{r.changes}</Num>
+                      <span style={{ fontFamily:T.mono, fontSize:9, textAlign:"right",
+                                     color: r.netImproved===null ? T.ink3 : r.netImproved ? T.ok : T.crit }}>
+                        {r.netImproved===null ? "=" : r.netImproved ? "▲" : "▼"}
+                      </span>
+                    </div>
+                  );
+                })}
+                {a.acts.length>4 && (
+                  <div style={{ fontFamily:T.sans, fontSize:7.5, color:T.ink4, marginTop:4 }}>
+                    + {a.acts.length-4} more sites had activity
+                  </div>
+                )}
+              </>
+            ) : (
               <span style={{ fontFamily:T.sans, fontSize:9, color:T.ink4 }}>
-                No repeated state changes in this window.
+                No status changes were recorded in this period.
               </span>
             )}
           </Panel>
@@ -674,7 +703,7 @@ function PageAnalysis({ a, hasHist }:{ a:A; hasHist:boolean }) {
                   <span style={{ fontFamily:T.sans, fontSize:8.5, color:T.ink2, overflow:"hidden",
                                  textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{it.reason}</span>
                 </span>
-                <Num size={8.5} color={T.ink2}>{it.since?fmtDuration(Date.now()-it.since):"—"}</Num>
+                <Num size={8.5} color={T.ink2}>{it.since?fmtDuration(it.asOf-it.since):"—"}</Num>
                 <Num size={8.5} color={it.flips>=3?T.warn:T.ink3}>{it.flips||"—"}</Num>
                 <span><Pill s={it.status} /></span>
               </div>

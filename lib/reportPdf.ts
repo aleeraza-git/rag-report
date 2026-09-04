@@ -12,9 +12,10 @@
 import jsPDF from "jspdf";
 import {
   reconstructRange, attentionInRange, changesBetween, divisionPerformanceRange,
-  divisionSeries, serviceStats, repeatOffenders, bandwidthDeficits, verdict,
+  divisionSeries, serviceStatsAt, bandwidthDeficitsAt, verdict,
   overallOf, fmtDuration, mttrByService, dailyChurn, facilityDayMatrix,
-  worstPerformers, comparePeriods, rangeDays, fmtRange,
+  worstPerformers, comparePeriods, rangeDays, fmtRange, stateAsAt,
+  periodActivity, activityTotals,
   SERVICES, SERVICE_LABEL,
   type FacState, type LogEntry, type RAG, type DateRange, type HealthPoint,
 } from "./analytics";
@@ -140,13 +141,15 @@ export async function buildReport(
   const change = changesBetween(log,R);
   const divs   = divisionPerformanceRange(fac,state,log,R);
   const divSer = divisionSeries(fac,state,log,R);
-  const svcs   = serviceStats(fac,state,hist);
+  const atEnd  = stateAsAt(fac,state,log,R.to);
+  const svcs   = serviceStatsAt(fac,atEnd,hist);
   const mttr   = mttrByService(log,R);
   const churn  = dailyChurn(log,R);
   const worst  = worstPerformers(fac,state,log,R,8);
   const cmp    = comparePeriods(fac,state,log,R);
-  const bwDef  = bandwidthDeficits(fac,state);
-  const flappy = repeatOffenders(log,rangeDays(R),6);
+  const bwDef  = bandwidthDeficitsAt(fac,state,log,R);
+  const acts   = periodActivity(fac,state,log,R);
+  const actT   = activityTotals(acts);
   const series = hist.points.map(p=>p.health);
   const health = series[series.length-1]??0;
   const trend  = hist.coverage>0&&series.length>1 ? (health-series[0])*100 : null;
@@ -326,20 +329,39 @@ export async function buildReport(
       txt("No status changes inside this window.",M+5,y+24,{size:7,color:INK4});
     }
 
-    eyebrow("Instability · most frequent changes",cx2,y);
+    // What was actually dealt with in this window — the record management asks
+    // for on a monthly report. Strictly window-scoped: sites with no events
+    // inside the window do not appear at all.
+    eyebrow("Activity in this period · what was dealt with",cx2,y);
     rect(cx2,y+3,colW,40,WHITE);
     doc.setDrawColor(...LINE);doc.setLineWidth(0.25);doc.rect(cx2,y+3,colW,40,"S");
-    if(flappy.length){
-      const maxF=Math.max(...flappy.map(f=>f.flips),1);
-      flappy.slice(0,5).forEach((f,i)=>{
-        const ry=y+9+i*7;
-        txt(clip(f.facility,40,7),cx2+4,ry,{size:7,color:INK});
-        const bw=(colW-58)*(f.flips/maxF);
-        rect(cx2+46,ry-2.6,Math.max(bw,0.6),3,WARN);
-        txt(String(f.flips),cx2+colW-4,ry,{size:7,font:"mono",color:WARN,align:"right"});
+    if(acts.length){
+      txt(String(actT.sitesTouched),cx2+4,y+11,{size:11,font:"mono",color:INK});
+      txt("sites",cx2+4+(actT.sitesTouched>9?7:4),y+11,{size:5.6,color:INK4});
+      txt(String(actT.changes),cx2+26,y+11,{size:11,font:"mono",color:INK});
+      txt("changes",cx2+26+(actT.changes>9?7:4),y+11,{size:5.6,color:INK4});
+      txt(String(actT.improved),cx2+54,y+11,{size:11,font:"mono",color:actT.improved?OK:INK3});
+      txt("improved",cx2+54+(actT.improved>9?7:4),y+11,{size:5.6,color:INK4});
+      txt(String(actT.worsened),cx2+84,y+11,{size:11,font:"mono",color:actT.worsened?CRIT:INK3});
+      txt("worse",cx2+84+(actT.worsened>9?7:4),y+11,{size:5.6,color:INK4});
+      line(cx2+4,y+14,cx2+colW-4,y+14,SOFT);
+      const maxC=Math.max(...acts.map(a2=>a2.changes),1);
+      acts.slice(0,4).forEach((a2,i)=>{
+        const ry=y+20+i*6.2;
+        txt(clip(a2.facility,38,6.6),cx2+4,ry,{size:6.6,color:INK});
+        // recoveries then regressions, on one shared scale
+        const bx=cx2+46, bwid=colW-64;
+        const rw=bwid*(a2.recoveries/maxC), gw=bwid*(a2.regressions/maxC);
+        if(a2.recoveries)  rect(bx,ry-2.4,Math.max(rw,0.5),2.8,OK);
+        if(a2.regressions) rect(bx+rw,ry-2.4,Math.max(gw,0.5),2.8,CRIT);
+        const arrow = a2.netImproved===null ? "=" : a2.netImproved ? "+" : "-";
+        const ac:RGB = a2.netImproved===null ? INK3 : a2.netImproved ? OK : CRIT;
+        txt(String(a2.changes),cx2+colW-11,ry,{size:6.6,font:"mono",color:INK2,align:"right"});
+        txt(arrow,cx2+colW-4,ry,{size:6.6,font:"mono",color:ac,align:"right"});
       });
+      if(acts.length>4) txt(`+ ${acts.length-4} more sites had activity`,cx2+4,y+40,{size:5.6,color:INK4});
     } else {
-      txt("No repeated state changes in this window.",cx2+5,y+24,{size:7,color:INK4});
+      txt("No status changes were recorded in this period.",cx2+5,y+24,{size:7,color:INK4});
     }
     y=colTop+52;
 
@@ -363,7 +385,7 @@ export async function buildReport(
         txt(it.cat,c0,y+2.9,{size:5.6,color:INK4});
         fill(statusRGB[it.status],1); doc.circle(c1+0.9,y-1,0.9,"F"); A(1);
         txt(clip(it.reason,32,6.8),c1+3,y,{size:6.8,color:INK2});
-        txt(it.since?fmtDuration(Date.now()-it.since):"—",c2,y,{size:6.8,font:"mono",color:INK2});
+        txt(it.since?fmtDuration(it.asOf-it.since):"—",c2,y,{size:6.8,font:"mono",color:INK2});
         txt(it.flips?String(it.flips):"—",c3,y,{size:6.8,font:"mono",color:it.flips>=3?WARN:INK3});
         rrect(c4,y-2.7,18,4.2,1,statusBGRGB[it.status]);
         txt(statusText[it.status],c4+9,y+0.2,{size:5.4,color:statusRGB[it.status],align:"center",weight:"bold"});

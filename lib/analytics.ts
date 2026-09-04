@@ -185,6 +185,8 @@ export interface AttentionItem {
   issue: string;
   /** Composite rank; higher sorts first. */
   score: number;
+  /** Instant this item was evaluated at — durations must be measured to this. */
+  asOf: number;
 }
 
 /**
@@ -244,7 +246,7 @@ export function attentionQueue(
 
     out.push({
       facility: f.name, cat: f.cat, status, reason, failing,
-      since: onsetAt, flips, bwRatio, issue: s.issue || "", score,
+      since: onsetAt, flips, bwRatio, issue: s.issue || "", score, asOf: Date.now(),
     });
   }
 
@@ -700,11 +702,12 @@ export function attentionInRange(
   log: LogEntry[],
   range: DateRange,
 ): AttentionItem[] {
-  // When the window ends now, current state is authoritative and carries the
-  // live issue/bandwidth fields; only reconstruct for historical windows.
-  if (Math.abs(range.to - Date.now()) < 6e4) return attentionQueue(facilities, state, log, 7);
-
+  // Always evaluate against the window. Previously this delegated to a
+  // hard-coded 7-day queue whenever the window ended near "now", which meant a
+  // one-day report counted a week of flips and a month report counted only a
+  // week of them. The window is the only thing that decides scope.
   const at = stateAsAt(facilities, state, log, range.to);
+  const live = Math.abs(range.to - Date.now()) < 6e4;
   const tx = statusTransitions(log).filter(e => e.time <= range.to);
   const out: AttentionItem[] = [];
 
@@ -736,10 +739,20 @@ export function attentionInRange(
       : "Status not configured";
 
     const ageH = onset ? (range.to - onset)/36e5 : 0;
+    // the free-text issue and bandwidth reading are only meaningful when the
+    // window ends now; for a historical window they would be today's values
+    const liveS = live ? state[f.name] : undefined;
+    let bwRatio: number|null = null;
+    if (liveS) {
+      const c = parseFloat((liveS.bandwidth||"").replace(/[^0-9.]/g,""));
+      const r = parseFloat((liveS.requiredBandwidth||"").replace(/[^0-9.]/g,""));
+      if (c > 0 && r > 0) bwRatio = c / r;
+    }
     out.push({
       facility:f.name, cat:f.cat, status, reason, failing,
-      since:onset, flips, bwRatio:null, issue:"",
-      score: severity[status]*1000 + Math.min(ageH,168)*3 + flips*25 + failing.length*15,
+      since:onset, flips, bwRatio, issue: liveS?.issue || "", asOf: range.to,
+      score: severity[status]*1000 + Math.min(ageH,168)*3 + flips*25 + failing.length*15
+             + (bwRatio!==null && bwRatio<1 ? (1-bwRatio)*60 : 0),
     });
   }
   return out.sort((a,b)=>b.score-a.score);
@@ -839,3 +852,179 @@ export const fromDateInput = (s: string, endOfDay = false) => {
   const dt = new Date(y, (m||1)-1, d||1, endOfDay?23:0, endOfDay?59:0, endOfDay?59:0, endOfDay?999:0);
   return dt.getTime();
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STRICT WINDOW SCOPING
+//
+// Everything below is evaluated AS AT `range.to` and counts only events inside
+// `[range.from, range.to]`. A report for last month must describe last month —
+// not last month's chart with today's numbers stapled underneath. Nothing here
+// reads the live clock or the live state.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Service counts as at the end of the window, from reconstructed state. */
+export function serviceStatsAt(
+  facilities: { name:string; cat:string }[],
+  at: StatusMap,
+  hist: HistoryResult,
+): ServiceStat[] {
+  return SERVICES.map(sv => {
+    let ok = 0, degraded = 0, down = 0;
+    for (const f of facilities) {
+      const c = at[f.name];
+      if (!c) continue;
+      if (c[sv] === "green") ok++;
+      else if (c[sv] === "amber") degraded++;
+      else if (c[sv] === "red") down++;
+    }
+    const total = facilities.length || 1;
+    const series = hist.points.map(p => p.svc[sv]);
+    const delta = hist.coverage > 0 && series.length > 1
+      ? (series[series.length - 1] - series[0]) * 100 : null;
+    return { service: sv, ok, degraded, down, total: facilities.length,
+             availability: ok / total, series, delta };
+  });
+}
+
+/** Repeat offenders inside the window, anchored to the window — not to now. */
+export function repeatOffendersIn(log: LogEntry[], range: DateRange, limit = 5) {
+  const counts = new Map<string, number>();
+  for (const e of statusTransitions(log)) {
+    if (e.time > range.to) continue;
+    if (e.time < range.from) break;               // newest-first, safe to stop
+    counts.set(e.facility, (counts.get(e.facility) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([facility, flips]) => ({ facility, flips }))
+    .filter(x => x.flips >= 2)
+    .sort((a, b) => b.flips - a.flips)
+    .slice(0, limit);
+}
+
+/**
+ * Bandwidth as at the end of the window, replayed from logged bandwidth edits.
+ * Falls back to the live value only when the log never touched that field, in
+ * which case the value has not changed and is correct for any window.
+ */
+export function bandwidthDeficitsAt(
+  facilities: { name:string; cat:string }[],
+  state: Record<string, FacState>,
+  log: LogEntry[],
+  range: DateRange,
+) {
+  const num = (v:string) => parseFloat((v || "").replace(/[^0-9.]/g, ""));
+  const cur: Record<string,{c:string;r:string}> = {};
+  for (const f of facilities) {
+    const s = state[f.name];
+    cur[f.name] = { c: s?.bandwidth ?? "", r: s?.requiredBandwidth ?? "" };
+  }
+  // rewind bandwidth edits that happened after the window closed
+  const edits = log
+    .filter(e => e.field === "Current BW" || e.field === "Required BW")
+    .map(e => ({ ...e, time: e.at ? Date.parse(e.at) : Date.parse(e.ts) }))
+    .filter(e => Number.isFinite(e.time) && e.time > 0)
+    .sort((a,b) => b.time - a.time);
+  for (const e of edits) {
+    if (e.time <= range.to) break;
+    const rec = cur[e.facility];
+    if (!rec) continue;
+    if (e.field === "Current BW")  rec.c = e.oldVal;
+    else                           rec.r = e.oldVal;
+  }
+
+  const out: { facility:string; cat:string; current:number; required:number; ratio:number }[] = [];
+  for (const f of facilities) {
+    const c = num(cur[f.name].c), r = num(cur[f.name].r);
+    if (!(c > 0) || !(r > 0)) continue;
+    const ratio = c / r;
+    if (ratio >= 1) continue;
+    out.push({ facility: f.name, cat: f.cat, current: c, required: r, ratio });
+  }
+  return out.sort((a,b) => a.ratio - b.ratio);
+}
+
+export interface ActivityRow {
+  facility: string;
+  cat: string;
+  changes: number;
+  recoveries: number;
+  regressions: number;
+  services: Service[];
+  firstAt: number;
+  lastAt: number;
+  endedAt: RAG;
+  /** true = ended the window better than it started, false = worse, null = level */
+  netImproved: boolean | null;
+}
+
+/**
+ * What actually happened during the window, per facility.
+ *
+ * This is the record management asks for on a monthly report — not "what is
+ * broken now" but "what did we deal with". Sites with no events in the window
+ * are absent by construction.
+ */
+export function periodActivity(
+  facilities: { name:string; cat:string }[],
+  state: Record<string, FacState>,
+  log: LogEntry[],
+  range: DateRange,
+): ActivityRow[] {
+  const catOf = new Map(facilities.map(f => [f.name, f.cat]));
+  const startState = stateAsAt(facilities, state, log, range.from);
+  const endState   = stateAsAt(facilities, state, log, range.to);
+
+  const inWindow = statusTransitions(log)
+    .filter(e => e.time >= range.from && e.time <= range.to);
+
+  const byFac = new Map<string, (typeof inWindow)>();
+  for (const e of inWindow) {
+    if (!catOf.has(e.facility)) continue;          // respect the division filter
+    const arr = byFac.get(e.facility) ?? [];
+    arr.push(e);
+    byFac.set(e.facility, arr);
+  }
+
+  const overall = (c: Record<Service,RAG> | undefined): RAG => {
+    if (!c) return "na";
+    const v = [c.internet, c.bio, c.printing];
+    return v.includes("red") ? "red" : v.includes("amber") ? "amber"
+         : v.every(x => x === "na") ? "na" : "green";
+  };
+
+  const rows: ActivityRow[] = [];
+  for (const [facility, evts] of Array.from(byFac.entries())) {
+    const times = evts.map(e => e.time);
+    const recoveries  = evts.filter(e => severity[e.newVal as RAG] < severity[e.oldVal as RAG]).length;
+    const regressions = evts.length - recoveries;
+    const before = severity[overall(startState[facility])];
+    const after  = severity[overall(endState[facility])];
+    rows.push({
+      facility,
+      cat: catOf.get(facility) ?? "",
+      changes: evts.length,
+      recoveries,
+      regressions,
+      services: Array.from(new Set(evts.map(e => e.field as Service))),
+      firstAt: Math.min(...times),
+      lastAt:  Math.max(...times),
+      endedAt: overall(endState[facility]),
+      netImproved: after === before ? null : after < before,
+    });
+  }
+
+  // busiest first — that is the story of the period
+  return rows.sort((a,b) => b.changes - a.changes || b.regressions - a.regressions);
+}
+
+/** Totals for the activity table's summary line. */
+export function activityTotals(rows: ActivityRow[]) {
+  return {
+    sitesTouched: rows.length,
+    changes:      rows.reduce((s,r) => s + r.changes, 0),
+    recoveries:   rows.reduce((s,r) => s + r.recoveries, 0),
+    regressions:  rows.reduce((s,r) => s + r.regressions, 0),
+    improved:     rows.filter(r => r.netImproved === true).length,
+    worsened:     rows.filter(r => r.netImproved === false).length,
+  };
+}
