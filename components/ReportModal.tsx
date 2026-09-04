@@ -182,7 +182,7 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
   useEffect(() => {
     const update = () => {
       if (containerRef.current) {
-        const w = containerRef.current.clientWidth - 48;
+        const w = containerRef.current.clientWidth - 32;
         setScale(Math.min(w / 930, 1));
       }
     };
@@ -192,202 +192,220 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
     return () => ro.disconnect();
   }, []);
 
-  const total = facilities.length;
-  const healthPct = total > 0 ? counts.green / total : 0;
-  const hCol = healthPct >= 0.8 ? "#10B981" : healthPct >= 0.5 ? "#F59E0B" : "#EF4444";
+  const total = facilities.length || 1;
+  const healthPct = counts.green / total;
+  const hCol = healthPct >= 0.8 ? "#059669" : healthPct >= 0.5 ? "#D97706" : "#DC2626";
   const filtered = facilities.filter(f => cfg.divFilter === "all" || f.cat === cfg.divFilter);
   const ORDER: Record<string, number> = { Imarat:0, Projects:1, Graana:2, Agency21:3 };
   const sorted = [...filtered].sort((a,b) => (ORDER[a.cat]??9) - (ORDER[b.cat]??9));
   const dateStr = new Date().toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
   const timeStr = new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+  const cats = ["Imarat","Projects","Graana","Agency21"] as const;
 
-  // SVG donut helpers
-  const R35 = 35, C35 = 2*Math.PI*R35;
-  const R30 = 30, C30 = 2*Math.PI*R30;
-  const R20 = 20, C20 = 2*Math.PI*R20;
+  // Premium card: white, thin top accent bar, muted title — no dark header bars
+  const Panel = ({ title, accent="#C49A1E", children, style }: { title:string; accent?:string; children:React.ReactNode; style?:React.CSSProperties }) => (
+    <div style={{ background:"#FFFFFF", borderRadius:4, border:"1px solid #E2E8F2", display:"flex", flexDirection:"column" as const, overflow:"hidden", boxShadow:"0 1px 4px rgba(6,14,40,0.07)", ...style }}>
+      <div style={{ height:2.5, background:accent, flexShrink:0 }}/>
+      <div style={{ padding:"5px 11px 0 11px", fontSize:6, fontWeight:700, color:"#8898B4", letterSpacing:0.9, textTransform:"uppercase" as const, flexShrink:0 }}>{title}</div>
+      <div style={{ flex:1, padding:"5px 11px 9px 11px", overflow:"hidden" }}>{children}</div>
+    </div>
+  );
 
-  // Single-fill donut (for health ring)
-  const Donut1 = ({ pct, color, r=35, sz=90 }: { pct: number; color: string; r?: number; sz?: number }) => {
-    const circ = 2*Math.PI*r;
-    return (
-      <svg width={sz} height={sz} viewBox={`0 0 ${sz} ${sz}`}>
-        <circle cx={sz/2} cy={sz/2} r={r} fill="none" stroke="#E4EAF6" strokeWidth="11"/>
-        {pct>0 && <circle cx={sz/2} cy={sz/2} r={r} fill="none" stroke={color} strokeWidth="11"
-          strokeDasharray={`${circ*pct} ${circ*(1-pct)}`} strokeDashoffset={0}
-          style={{ transform:`rotate(-90deg)`, transformOrigin:`${sz/2}px ${sz/2}px` }} strokeLinecap="butt"/>}
-      </svg>
-    );
-  };
+  // Health ring helpers
+  const R38=38, C38=2*Math.PI*R38;
+  const R27=27, C27=2*Math.PI*R27;
+  const R15=15, C15=2*Math.PI*R15;
 
-  // Multi-segment donut (for status distribution)
+  // Multi-segment status donut
   const MultiDonut = () => {
-    const segs = [{v:counts.green,c:"#059669"},{v:counts.amber,c:"#D97706"},{v:counts.red,c:"#DC2626"},{v:counts.na||0,c:"#9CA3AF"}];
-    const tot = segs.reduce((s,r)=>s+r.v,0)||1;
-    let cum = 0;
+    const segs=[{v:counts.green,c:"#059669"},{v:counts.amber,c:"#D97706"},{v:counts.red,c:"#DC2626"},{v:counts.na||0,c:"#CBD5E1"}];
+    const tot=segs.reduce((s,r)=>s+r.v,0)||1;
+    let cum=0;
     return (
-      <svg width="90" height="90" viewBox="0 0 90 90">
-        <circle cx="45" cy="45" r={R30} fill="none" stroke="#E4EAF6" strokeWidth="11"/>
-        {segs.map((seg,si) => {
-          if(!seg.v) { return null; }
-          const len=C30*(seg.v/tot), off=-C30*cum;
+      <svg width="80" height="80" viewBox="0 0 80 80">
+        <circle cx="40" cy="40" r={R27} fill="none" stroke="#EEF2FA" strokeWidth="11"/>
+        {segs.map((seg,si)=>{
+          if(!seg.v) return null;
+          const len=C27*(seg.v/tot), off=-C27*cum;
           cum+=seg.v/tot;
-          return <circle key={si} cx="45" cy="45" r={R30} fill="none" stroke={seg.c} strokeWidth="11"
-            strokeDasharray={`${len} ${C30-len}`} strokeDashoffset={off}
-            style={{ transform:"rotate(-90deg)", transformOrigin:"45px 45px" }} strokeLinecap="butt"/>;
+          return <circle key={si} cx="40" cy="40" r={R27} fill="none" stroke={seg.c} strokeWidth="11"
+            strokeDasharray={`${len} ${C27-len}`} strokeDashoffset={off}
+            style={{ transform:"rotate(-90deg)", transformOrigin:"40px 40px" }} strokeLinecap="butt"/>;
         })}
       </svg>
     );
   };
 
-  // Mini service donut
-  const MiniDonut = ({ pct, color }: { pct: number; color: string }) => (
-    <svg width="50" height="50" viewBox="0 0 50 50">
-      <circle cx="25" cy="25" r={R20} fill="none" stroke="#E4EAF6" strokeWidth="8"/>
-      {pct>0 && <circle cx="25" cy="25" r={R20} fill="none" stroke={color} strokeWidth="8"
-        strokeDasharray={`${C20*pct} ${C20*(1-pct)}`} strokeDashoffset={0}
-        style={{ transform:"rotate(-90deg)", transformOrigin:"25px 25px" }} strokeLinecap="butt"/>}
-    </svg>
-  );
-
-  // Panel widget wrapper
-  const Panel = ({ title, accent="#C49A1E", children, style }: { title:string; accent?:string; children:React.ReactNode; style?:React.CSSProperties }) => (
-    <div style={{ background:"#fff", borderRadius:3, overflow:"hidden", border:"1px solid #DDE4EF", display:"flex", flexDirection:"column" as const, ...style }}>
-      <div style={{ background:"#060E1C", padding:"4px 10px", borderLeft:`3px solid ${accent}` }}>
-        <span style={{ color:accent, fontSize:7.5, fontWeight:800, letterSpacing:0.8 }}>{title}</span>
-      </div>
-      <div style={{ flex:1, padding:"8px 10px", overflow:"hidden" }}>{children}</div>
-    </div>
-  );
-
   return (
     <div ref={containerRef} style={{ width:"100%", display:"flex", flexDirection:"column" as const, alignItems:"center" }}>
       <div style={{ transform:`scale(${scale})`, transformOrigin:"top center", width:930, transition:"transform 0.15s" }}>
-        <div style={{ width:930, background:"#EEF3FB", boxShadow:"0 4px 32px rgba(0,0,0,0.22)", borderRadius:3, overflow:"hidden", fontFamily:"'Helvetica Neue',Helvetica,Arial,sans-serif" }}>
+        <div style={{ width:930, background:"#EAF0F8", fontFamily:"'Helvetica Neue',Helvetica,Arial,sans-serif", boxShadow:"0 6px 40px rgba(0,0,0,0.2)", borderRadius:4, overflow:"hidden" }}>
 
-          {/* HEADER */}
-          <div style={{ background:"#0C1A2E", padding:"12px 24px", display:"flex", alignItems:"center", borderTop:"3px solid #C49A1E" }}>
-            <div style={{ display:"flex", flexDirection:"column" as const, minWidth:150 }}>
-              {cfg.includeLogo && <div style={{ fontSize:20, fontWeight:900, color:"#fff", letterSpacing:4, fontFamily:"Georgia,serif" }}>IMARAT</div>}
-              <div style={{ fontSize:7.5, color:"#C49A1E", fontWeight:700, letterSpacing:1.5, marginTop:2 }}>GROUP OF COMPANIES</div>
-              <div style={{ fontSize:7, color:"#4A6A98" }}>IT Department</div>
+          {/* ── HEADER ── */}
+          <div style={{ background:"#060E1C", display:"flex", alignItems:"center", padding:"0 20px", height:50, borderBottom:"2px solid #C49A1E" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+              <div style={{ width:3, height:28, background:"#C49A1E", borderRadius:2, flexShrink:0 }}/>
+              <div>
+                <div style={{ fontSize:15, fontWeight:900, color:"#FFFFFF", letterSpacing:5, fontFamily:"Georgia,'Times New Roman',serif" }}>IMARAT</div>
+                <div style={{ fontSize:5.5, color:"#C49A1E", fontWeight:700, letterSpacing:1.8, marginTop:1 }}>GROUP OF COMPANIES · IT DEPARTMENT</div>
+              </div>
             </div>
-            <div style={{ width:1, background:"#1E3050", alignSelf:"stretch", margin:"0 16px" }}/>
+            <div style={{ width:1, height:26, background:"#182E50", margin:"0 16px", flexShrink:0 }}/>
             <div style={{ flex:1 }}>
-              <div style={{ fontSize:13, fontWeight:800, color:"#fff" }}>{cfg.title}</div>
-              <div style={{ fontSize:8, color:"#C49A1E", fontWeight:600, marginTop:1 }}>Executive IT Operations Dashboard · Page 1 of 3</div>
-              <div style={{ fontSize:7, color:"#4A6A98", marginTop:1 }}>{cfg.org} · {cfg.period||dateStr}</div>
+              <div style={{ fontSize:11, fontWeight:800, color:"#F0F5FF" }}>{cfg.title}</div>
+              <div style={{ fontSize:6, color:"#4A6A90", marginTop:1.5 }}>Executive IT Operations · {cfg.org} · {cfg.period||dateStr}</div>
             </div>
             <div style={{ textAlign:"right" as const }}>
-              <div style={{ fontSize:12, color:"#C49A1E", fontWeight:700 }}>{dateStr}</div>
-              <div style={{ fontSize:7.5, color:"#4A6A98", marginTop:2 }}>{timeStr}</div>
+              <div style={{ fontSize:10, color:"#C49A1E", fontWeight:700 }}>{dateStr}</div>
+              <div style={{ fontSize:5.5, color:"#3A5A80", marginTop:2 }}>{timeStr} · Page 1 of 3</div>
             </div>
           </div>
 
-          {/* DASHBOARD GRID */}
-          <div style={{ padding:"8px 10px", display:"flex", flexDirection:"column" as const, gap:7 }}>
+          {/* ── BODY ── */}
+          <div style={{ padding:"8px 10px", display:"flex", flexDirection:"column" as const, gap:6 }}>
 
-            {/* ROW 1 — 3 panels */}
-            <div style={{ display:"flex", gap:7, height:148 }}>
+            {/* ROW 1 — 3 analytical panels */}
+            <div style={{ display:"flex", gap:6, height:160 }}>
 
-              {/* A: Health Ring */}
-              <Panel title="OVERALL IT HEALTH" accent="#C49A1E" style={{ width:192 }}>
-                <div style={{ display:"flex", flexDirection:"column" as const, alignItems:"center" }}>
-                  <div style={{ position:"relative" as const, width:90, height:90 }}>
-                    <Donut1 pct={healthPct} color={hCol} r={R35} sz={90}/>
+              {/* A: Overall IT Health */}
+              <Panel title="Overall IT Health" accent="#C49A1E" style={{ width:186 }}>
+                <div style={{ display:"flex", flexDirection:"column" as const, alignItems:"center", height:"100%", justifyContent:"space-between" }}>
+                  {/* Hero ring */}
+                  <div style={{ position:"relative" as const, width:100, height:100 }}>
+                    <svg width="100" height="100" viewBox="0 0 100 100">
+                      <circle cx="50" cy="50" r="46" fill="none" stroke="#EAF0F8" strokeWidth="1"/>
+                      <circle cx="50" cy="50" r={R38} fill="none" stroke="#E2EAF6" strokeWidth="13"/>
+                      {healthPct>0 && <circle cx="50" cy="50" r={R38} fill="none" stroke={hCol} strokeWidth="13"
+                        strokeDasharray={`${C38*healthPct} ${C38*(1-healthPct)}`} strokeDashoffset="0"
+                        style={{ transform:"rotate(-90deg)", transformOrigin:"50px 50px" }}/>}
+                    </svg>
                     <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column" as const, alignItems:"center", justifyContent:"center" }}>
-                      <div style={{ fontSize:20, fontWeight:800, color:hCol, lineHeight:1 }}>{Math.round(healthPct*100)}%</div>
-                      <div style={{ fontSize:6.5, color:"#8A9AB8", fontWeight:700 }}>HEALTH</div>
+                      <div style={{ fontSize:28, fontWeight:900, color:hCol, lineHeight:"1", letterSpacing:"-1px" }}>{Math.round(healthPct*100)}%</div>
+                      <div style={{ fontSize:5.5, color:"#94A3B8", fontWeight:700, letterSpacing:0.5, marginTop:1 }}>HEALTH SCORE</div>
                     </div>
                   </div>
-                  <div style={{ fontSize:11, fontWeight:800, color:hCol, marginTop:2 }}>{counts.green}/{total}</div>
-                  <div style={{ fontSize:6.5, color:"#8A9AB8", fontWeight:600 }}>SITES OPERATIONAL</div>
-                </div>
-              </Panel>
-
-              {/* B: Status Donut */}
-              <Panel title="STATUS DISTRIBUTION" accent="#C49A1E" style={{ width:218 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                  <div style={{ position:"relative" as const, flexShrink:0 }}>
-                    <MultiDonut/>
-                    <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column" as const, alignItems:"center", justifyContent:"center" }}>
-                      <div style={{ fontSize:12, fontWeight:800, color:"#0C1A2E" }}>{total}</div>
-                      <div style={{ fontSize:5.5, color:"#8A9AB8" }}>TOTAL</div>
-                    </div>
-                  </div>
-                  <div style={{ display:"flex", flexDirection:"column" as const, gap:5 }}>
-                    {[{v:counts.green,l:"Operational",c:"#059669"},{v:counts.amber,l:"Degraded",c:"#D97706"},{v:counts.red,l:"Critical",c:"#DC2626"},{v:counts.na||0,l:"N/A",c:"#9CA3AF"}].map(s=>(
-                      <div key={s.l} style={{ display:"flex", alignItems:"center", gap:5 }}>
-                        <div style={{ width:18, height:7, borderRadius:2, background:s.c, flexShrink:0 }}/>
-                        <span style={{ fontSize:7, color:"#1A2540", flex:1 }}>{s.l}</span>
-                        <span style={{ fontSize:8, fontWeight:800, color:s.c }}>{s.v}</span>
+                  {/* Status chips */}
+                  <div style={{ display:"flex", gap:3, width:"100%" }}>
+                    {([{v:counts.green,c:"#059669",bg:"#F0FDF9",l:"OK"},{v:counts.amber,c:"#D97706",bg:"#FFFBEB",l:"DEG"},{v:counts.red,c:"#DC2626",bg:"#FFF5F5",l:"CRIT"}] as {v:number;c:string;bg:string;l:string}[]).map(s=>(
+                      <div key={s.l} style={{ flex:1, background:s.bg, border:`1px solid ${s.c}28`, borderRadius:3, padding:"4px 0", textAlign:"center" as const }}>
+                        <div style={{ fontSize:14, fontWeight:900, color:s.c, lineHeight:"1" }}>{s.v}</div>
+                        <div style={{ fontSize:4.5, color:s.c, fontWeight:700, opacity:0.75, marginTop:2 }}>{s.l}</div>
                       </div>
                     ))}
                   </div>
                 </div>
               </Panel>
 
-              {/* C: Division Performance */}
-              <Panel title="DIVISION PERFORMANCE" accent="#2C5EE8" style={{ flex:1 }}>
-                <div style={{ display:"flex", flexDirection:"column" as const, gap:6, marginTop:2 }}>
-                  {(["Imarat","Projects","Graana","Agency21"] as const).map(cat=>{
-                    const facs=facilities.filter(f=>f.cat===cat);
-                    const grn=facs.filter(f=>calcOverall(state[f.name]??defState())==="green").length;
-                    const hlth=facs.length>0?grn/facs.length:0;
-                    const cc=CAT_HEX[cat];
-                    const maxF=Math.max(...(["Imarat","Projects","Graana","Agency21"] as const).map(c=>facilities.filter(f=>f.cat===c).length),1);
-                    return (
-                      <div key={cat} style={{ display:"flex", alignItems:"center", gap:6 }}>
-                        <div style={{ width:52, fontSize:8, fontWeight:800, color:cc, flexShrink:0 }}>{cat}</div>
-                        <div style={{ flex:1, height:14, background:"#E8EDF6", borderRadius:3, position:"relative" as const, overflow:"hidden" }}>
-                          <div style={{ position:"absolute" as const, left:0, top:0, bottom:0, width:`${(facs.length/maxF)*100}%`, background:`${cc}33` }}/>
-                          <div style={{ position:"absolute" as const, left:0, top:0, bottom:0, width:`${hlth*100}%`, background:cc, borderRadius:3 }}/>
-                          {hlth>0.12&&<div style={{ position:"absolute" as const, left:5, top:0, bottom:0, display:"flex", alignItems:"center", fontSize:6.5, fontWeight:800, color:"#fff" }}>{Math.round(hlth*100)}%</div>}
+              {/* B: Status Distribution */}
+              <Panel title="Status Distribution" accent="#6366F1" style={{ width:212 }}>
+                <div style={{ display:"flex", gap:10, height:"100%", alignItems:"center" }}>
+                  <div style={{ position:"relative" as const, flexShrink:0 }}>
+                    <MultiDonut/>
+                    <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column" as const, alignItems:"center", justifyContent:"center" }}>
+                      <div style={{ fontSize:14, fontWeight:800, color:"#0F1B2D" }}>{facilities.length}</div>
+                      <div style={{ fontSize:5, color:"#94A3B8" }}>SITES</div>
+                    </div>
+                  </div>
+                  <div style={{ flex:1, display:"flex", flexDirection:"column" as const, gap:6 }}>
+                    {([{v:counts.green,l:"Operational",c:"#059669"},{v:counts.amber,l:"Degraded",c:"#D97706"},{v:counts.red,l:"Critical",c:"#DC2626"},{v:counts.na||0,l:"Not Set",c:"#94A3B8"}] as {v:number;l:string;c:string}[]).map(s=>{
+                      const pct=facilities.length>0?Math.round(s.v/facilities.length*100):0;
+                      return (
+                        <div key={s.l}>
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:2 }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+                              <div style={{ width:6, height:6, borderRadius:"50%", background:s.c, flexShrink:0 }}/>
+                              <span style={{ fontSize:6.5, color:"#374151", fontWeight:500 }}>{s.l}</span>
+                            </div>
+                            <span style={{ fontSize:7, fontWeight:800, color:s.c }}>{s.v}</span>
+                          </div>
+                          <div style={{ height:3, background:"#EEF2FA", borderRadius:1.5 }}>
+                            <div style={{ height:3, background:s.c, borderRadius:1.5, width:`${pct}%` }}/>
+                          </div>
                         </div>
-                        <div style={{ width:22, fontSize:9, fontWeight:800, color:cc, textAlign:"right" as const, flexShrink:0 }}>{facs.length}</div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+                </div>
+              </Panel>
+
+              {/* C: Division Performance */}
+              <Panel title="Division Performance" accent="#0EA5E9" style={{ flex:1 }}>
+                <div style={{ display:"flex", flexDirection:"column" as const, height:"100%", gap:6 }}>
+                  <div style={{ flex:1, display:"flex", flexDirection:"column" as const, justifyContent:"space-evenly" }}>
+                    {cats.map(cat=>{
+                      const facs=facilities.filter(f=>f.cat===cat);
+                      const grn=facs.filter(f=>calcOverall(state[f.name]??defState())==="green").length;
+                      const amb=facs.filter(f=>calcOverall(state[f.name]??defState())==="amber").length;
+                      const red=facs.filter(f=>calcOverall(state[f.name]??defState())==="red").length;
+                      const hlth=facs.length>0?grn/facs.length:0;
+                      const cc=CAT_HEX[cat];
+                      return (
+                        <div key={cat}>
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:3 }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+                              <div style={{ width:7, height:7, borderRadius:2, background:cc, flexShrink:0 }}/>
+                              <span style={{ fontSize:8, fontWeight:700, color:cc }}>{cat}</span>
+                              <span style={{ fontSize:6, color:"#94A3B8" }}>{facs.length}</span>
+                            </div>
+                            <span style={{ fontSize:8, fontWeight:800, color:cc }}>{Math.round(hlth*100)}%</span>
+                          </div>
+                          {/* Stacked health bar */}
+                          <div style={{ height:8, background:"#EEF2FA", borderRadius:3, display:"flex", overflow:"hidden" }}>
+                            {grn>0&&<div style={{ width:`${grn/facs.length*100}%`, background:"#059669" }}/>}
+                            {amb>0&&<div style={{ width:`${amb/facs.length*100}%`, background:"#D97706" }}/>}
+                            {red>0&&<div style={{ width:`${red/facs.length*100}%`, background:"#DC2626" }}/>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Ticket strip */}
+                  <div>
+                    <div style={{ fontSize:5.5, color:"#94A3B8", fontWeight:700, letterSpacing:0.6, marginBottom:4 }}>SUPPORT TICKETS</div>
+                    <div style={{ display:"flex", gap:4 }}>
+                      {([{v:autoStats.received,l:"Received",c:"#4F46E5"},{v:autoStats.resolved,l:"Resolved",c:"#059669"},{v:autoStats.pending,l:"Pending",c:"#D97706"}] as {v:number;l:string;c:string}[]).map(tk=>(
+                        <div key={tk.l} style={{ flex:1, background:"#F8FAFD", border:"1px solid #E2E8F2", borderRadius:3, padding:"4px 2px", textAlign:"center" as const }}>
+                          <div style={{ fontSize:13, fontWeight:900, color:tk.c, lineHeight:"1" }}>{tk.v}</div>
+                          <div style={{ fontSize:5, color:"#94A3B8", marginTop:1.5, fontWeight:600 }}>{tk.l}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </Panel>
             </div>
 
             {/* ROW 2 — Facility Matrix + Service Intelligence */}
-            <div style={{ display:"flex", gap:7 }}>
+            <div style={{ display:"flex", gap:6 }}>
 
-              {/* D: Facility Health Matrix */}
-              <Panel title={`FACILITY HEALTH MATRIX — ALL ${sorted.length} FACILITIES`} accent="#0E9870" style={{ flex:1 }}>
-                {/* Col headers */}
-                <div style={{ display:"flex", alignItems:"center", background:"#0C1728", borderRadius:2, padding:"2px 4px", marginBottom:1 }}>
-                  <div style={{ width:13, fontSize:5.5, color:"#5A7AA8", fontWeight:700, textAlign:"center" as const }}>#</div>
-                  <div style={{ flex:1, fontSize:5.5, color:"#8A9AB8", fontWeight:700, paddingLeft:3 }}>FACILITY</div>
-                  {["NET","BIO","PRT"].map(h=><div key={h} style={{ width:22, fontSize:5.5, color:"#8A9AB8", fontWeight:700, textAlign:"center" as const }}>{h}</div>)}
-                  <div style={{ width:52, fontSize:5.5, color:"#8A9AB8", fontWeight:700, textAlign:"center" as const }}>PERFORMANCE</div>
-                  <div style={{ width:52, fontSize:5.5, color:"#8A9AB8", fontWeight:700, textAlign:"center" as const }}>STATUS</div>
+              {/* D: Facility Health Matrix — dots only, no text badges */}
+              <Panel title={`Facility Health Matrix — ${sorted.length} Sites`} accent="#059669" style={{ flex:1 }}>
+                {/* Column headers */}
+                <div style={{ display:"flex", alignItems:"center", padding:"2px 4px 2px 10px", marginBottom:1.5, background:"#F8FAFD", borderRadius:2 }}>
+                  <div style={{ width:14, fontSize:5, color:"#94A3B8", fontWeight:700, textAlign:"center" as const, flexShrink:0 }}>#</div>
+                  <div style={{ flex:1, fontSize:5, color:"#94A3B8", fontWeight:700, paddingLeft:4 }}>FACILITY</div>
+                  {["NET","BIO","PRT"].map(h=><div key={h} style={{ width:20, fontSize:5, color:"#94A3B8", fontWeight:700, textAlign:"center" as const, flexShrink:0 }}>{h}</div>)}
+                  <div style={{ width:58, fontSize:5, color:"#94A3B8", fontWeight:700, textAlign:"center" as const, flexShrink:0 }}>HEALTH</div>
                 </div>
-                {/* Facility rows */}
                 {sorted.map((f,fi)=>{
                   const sv=state[f.name]??defState();
                   const ov=calcOverall(sv);
-                  const bc=ov==="green"?"#059669":ov==="amber"?"#D97706":ov==="red"?"#DC2626":"#9CA3AF";
-                  const bbg=ov==="green"?"#ECFDF5":ov==="amber"?"#FFFBEB":ov==="red"?"#FEF2F2":"#F4F7FC";
-                  const score=ov==="green"?1:ov==="amber"?0.62:ov==="red"?0.28:0.08;
-                  const catBdr=fi>0&&sorted[fi-1].cat!==f.cat?`1.5px solid ${CAT_HEX[f.cat]}`:undefined;
+                  const bc=ov==="green"?"#059669":ov==="amber"?"#D97706":ov==="red"?"#DC2626":"#94A3B8";
+                  const score=ov==="green"?1:ov==="amber"?0.6:ov==="red"?0.25:0.05;
+                  const isDivBreak=fi>0&&sorted[fi-1].cat!==f.cat;
                   return (
-                    <div key={f.name} style={{ display:"flex", alignItems:"center", padding:"1.2px 4px 1.2px 0", background:fi%2===0?"#fff":"#F6F9FF", borderTop:catBdr }}>
-                      <div style={{ width:3, alignSelf:"stretch", background:CAT_HEX[f.cat], flexShrink:0, borderRadius:1, marginRight:3 }}/>
-                      <div style={{ width:12, fontSize:5.5, color:"#C0CAD8", fontWeight:700, textAlign:"center" as const, flexShrink:0 }}>{fi+1}</div>
-                      <div style={{ flex:1, fontSize:6.5, color:"#0C1A2E", fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const, paddingLeft:2 }}>{f.name}</div>
+                    <div key={f.name} style={{ display:"flex", alignItems:"center", padding:"1.5px 4px 1.5px 0", background:fi%2===0?"#FFFFFF":"#F8FAFD", borderTop:isDivBreak?`1.5px solid ${CAT_HEX[f.cat]}40`:undefined }}>
+                      <div style={{ width:2.5, alignSelf:"stretch", background:CAT_HEX[f.cat], borderRadius:1, marginRight:5, flexShrink:0 }}/>
+                      <div style={{ width:11, fontSize:5, color:"#CBD5E1", textAlign:"center" as const, flexShrink:0 }}>{fi+1}</div>
+                      <div style={{ flex:1, fontSize:6, color:"#0F1B2D", fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const, paddingLeft:3 }}>{f.name}</div>
                       {([sv.internet,sv.bio,sv.printing] as RAGStatus[]).map((st,si)=>{
-                        const dc=st==="green"?"#059669":st==="amber"?"#D97706":st==="red"?"#DC2626":"#9CA3AF";
-                        return <div key={si} style={{ width:22, display:"flex", justifyContent:"center", flexShrink:0 }}><div style={{ width:8, height:8, borderRadius:"50%", background:dc }}/></div>;
+                        const dc=st==="green"?"#059669":st==="amber"?"#D97706":st==="red"?"#DC2626":"#CBD5E1";
+                        return <div key={si} style={{ width:20, display:"flex", justifyContent:"center", flexShrink:0 }}><div style={{ width:7, height:7, borderRadius:"50%", background:dc }}/></div>;
                       })}
-                      <div style={{ width:52, flexShrink:0, padding:"0 4px" }}>
-                        <div style={{ height:6, background:"#EEF2F8", borderRadius:3, position:"relative" as const, overflow:"hidden" }}>
-                          <div style={{ position:"absolute" as const, left:0, top:0, height:6, width:`${score*100}%`, background:bc, borderRadius:3 }}/>
+                      <div style={{ width:58, flexShrink:0, padding:"0 6px" }}>
+                        <div style={{ height:4, background:"#EEF2F8", borderRadius:2, overflow:"hidden" }}>
+                          <div style={{ height:"100%", width:`${score*100}%`, background:bc, borderRadius:2 }}/>
                         </div>
-                      </div>
-                      <div style={{ width:52, flexShrink:0, textAlign:"center" as const }}>
-                        <span style={{ fontSize:5.5, fontWeight:700, color:bc, background:bbg, padding:"1px 5px", borderRadius:6 }}>{ragLabel(ov)}</span>
                       </div>
                     </div>
                   );
@@ -395,41 +413,51 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
               </Panel>
 
               {/* E: Service Intelligence + Tickets */}
-              <div style={{ width:256, display:"flex", flexDirection:"column" as const, gap:7 }}>
-                <Panel title="SERVICE INTELLIGENCE" accent="#2C5EE8" style={{ flex:1 }}>
-                  <div style={{ display:"flex", flexDirection:"column" as const, gap:7 }}>
+              <div style={{ width:248, display:"flex", flexDirection:"column" as const, gap:6 }}>
+                <Panel title="Service Intelligence" accent="#6366F1" style={{ flex:1 }}>
+                  <div style={{ display:"flex", flexDirection:"column" as const, gap:8, height:"100%", justifyContent:"space-evenly" }}>
                     {(["internet","bio","printing"] as const).map((key,ki)=>{
-                      const lbl=["INTERNET","BIOMETRIC","PRINTING"][ki];
+                      const lbls=["Internet Connectivity","Biometric Systems","Print Services"];
                       const vals=sorted.map(f=>(state[f.name]??defState())[key]);
                       const sg=vals.filter(v=>v==="green").length;
+                      const sa=vals.filter(v=>v==="amber").length;
+                      const sr=vals.filter(v=>v==="red").length;
                       const sh=vals.length>0?sg/vals.length:0;
                       const shC=sh>=0.8?"#059669":sh>=0.5?"#D97706":"#DC2626";
                       return (
-                        <div key={key} style={{ display:"flex", alignItems:"center", gap:8 }}>
-                          <div style={{ position:"relative" as const, flexShrink:0 }}>
-                            <MiniDonut pct={sh} color={shC}/>
+                        <div key={key} style={{ display:"flex", alignItems:"center", gap:9 }}>
+                          <div style={{ position:"relative" as const, width:44, height:44, flexShrink:0 }}>
+                            <svg width="44" height="44" viewBox="0 0 44 44">
+                              <circle cx="22" cy="22" r={R15} fill="none" stroke="#EEF2FA" strokeWidth="7"/>
+                              {sh>0&&<circle cx="22" cy="22" r={R15} fill="none" stroke={shC} strokeWidth="7"
+                                strokeDasharray={`${C15*sh} ${C15*(1-sh)}`} strokeDashoffset="0"
+                                style={{ transform:"rotate(-90deg)", transformOrigin:"22px 22px" }}/>}
+                            </svg>
                             <div style={{ position:"absolute" as const, inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                              <span style={{ fontSize:9, fontWeight:800, color:shC }}>{Math.round(sh*100)}</span>
+                              <span style={{ fontSize:8, fontWeight:800, color:shC }}>{Math.round(sh*100)}</span>
                             </div>
                           </div>
-                          <div style={{ flex:1 }}>
-                            <div style={{ fontSize:8, fontWeight:800, color:"#0C1A2E" }}>{lbl}</div>
-                            <div style={{ height:5, background:"#EEF2F8", borderRadius:2, margin:"3px 0", position:"relative" as const, overflow:"hidden" }}>
-                              <div style={{ position:"absolute" as const, left:0, top:0, height:5, width:`${sh*100}%`, background:shC }}/>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:2.5 }}>
+                              <span style={{ fontSize:7, fontWeight:700, color:"#0F1B2D" }}>{lbls[ki]}</span>
+                              <span style={{ fontSize:6.5, color:shC, fontWeight:800 }}>{sg}/{vals.length}</span>
                             </div>
-                            <div style={{ fontSize:6, color:"#8A9AB8" }}>{sg}/{vals.length} sites active</div>
+                            <div style={{ height:4, background:"#EEF2F8", borderRadius:2 }}>
+                              <div style={{ height:4, background:shC, borderRadius:2, width:`${sh*100}%` }}/>
+                            </div>
+                            <div style={{ fontSize:5.5, color:"#94A3B8", marginTop:2 }}>{sa} degraded · {sr} critical</div>
                           </div>
                         </div>
                       );
                     })}
                   </div>
                 </Panel>
-                <Panel title="SUPPORT TICKETS" accent="#C49A1E">
-                  <div style={{ display:"flex", justifyContent:"space-around", paddingTop:4 }}>
-                    {[{v:autoStats.received,l:"Received",c:"#2C5EE8"},{v:autoStats.resolved,l:"Resolved",c:"#059669"},{v:autoStats.pending,l:"Pending",c:"#D97706"}].map(tk=>(
+                <Panel title="Support Tickets" accent="#C49A1E">
+                  <div style={{ display:"flex", justifyContent:"space-around", alignItems:"center", height:"100%" }}>
+                    {([{v:autoStats.received,l:"Received",c:"#4F46E5"},{v:autoStats.resolved,l:"Resolved",c:"#059669"},{v:autoStats.pending,l:"Pending",c:"#D97706"}] as {v:number;l:string;c:string}[]).map(tk=>(
                       <div key={tk.l} style={{ textAlign:"center" as const }}>
-                        <div style={{ fontSize:20, fontWeight:800, color:tk.c, lineHeight:1 }}>{tk.v}</div>
-                        <div style={{ fontSize:7, color:"#8A9AB8", marginTop:3, fontWeight:600 }}>{tk.l.toUpperCase()}</div>
+                        <div style={{ fontSize:26, fontWeight:900, color:tk.c, lineHeight:"1" }}>{tk.v}</div>
+                        <div style={{ fontSize:6, color:"#94A3B8", marginTop:4, fontWeight:700, letterSpacing:0.5 }}>{tk.l.toUpperCase()}</div>
                       </div>
                     ))}
                   </div>
@@ -438,25 +466,29 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
             </div>
 
             {/* INSIGHT STRIP */}
-            <div style={{ background:"#0B1D3E", borderRadius:3, padding:"6px 12px", borderLeft:"3px solid #C49A1E", display:"flex", alignItems:"center", gap:8 }}>
-              <span style={{ fontSize:8, fontWeight:800, color:"#C49A1E", flexShrink:0 }}>▸ INSIGHT</span>
-              <span style={{ fontSize:8, color:"#E0E8F8" }}>
-                {counts.red>0&&counts.amber>0?`${counts.red} critical and ${counts.amber} degraded sites require immediate attention.`:counts.red>0?`${counts.red} site${counts.red>1?"s":""} critical — service restoration is the top priority.`:counts.amber>0?`${counts.amber} site${counts.amber>1?"s":""} operating in a degraded state.`:`All ${counts.green} monitored facilities are fully operational across all divisions and services.`}
+            <div style={{ background:"#060E1C", borderRadius:3, padding:"7px 14px", display:"flex", alignItems:"center", gap:12, borderLeft:"3px solid #C49A1E" }}>
+              <span style={{ fontSize:6.5, fontWeight:800, color:"#C49A1E", letterSpacing:0.8, flexShrink:0 }}>OPERATIONAL INSIGHT</span>
+              <div style={{ width:1, height:14, background:"#1A3050", flexShrink:0 }}/>
+              <span style={{ fontSize:7.5, color:"#C8D8F0", lineHeight:"1.4" }}>
+                {counts.red>0&&counts.amber>0?`${counts.red} critical and ${counts.amber} degraded sites detected — immediate IT response required.`:counts.red>0?`${counts.red} site${counts.red>1?"s":""} currently critical — service restoration is the top operational priority.`:counts.amber>0?`${counts.amber} site${counts.amber>1?"s":""} operating in a degraded state. No critical failures at this time.`:`All ${counts.green} monitored facilities are fully operational. Internet, biometric, and print services are healthy across all divisions.`}
               </span>
             </div>
 
           </div>
 
-          {/* FOOTER */}
-          <div style={{ background:"#0C1A2E", padding:"7px 24px", display:"flex", justifyContent:"space-between", alignItems:"center", borderTop:"1px solid #C49A1E" }}>
-            <div>
-              <div style={{ fontSize:7.5, fontWeight:700, color:"#C49A1E" }}>{cfg.org}</div>
-              <div style={{ fontSize:6.5, color:"#3A5A88" }}>IT Department · it.support@imarat.com.pk</div>
+          {/* ── FOOTER ── */}
+          <div style={{ background:"#060E1C", padding:"6px 20px", display:"flex", justifyContent:"space-between", alignItems:"center", borderTop:"1px solid #182E50" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <div style={{ width:2, height:18, background:"#C49A1E", borderRadius:1 }}/>
+              <div>
+                <div style={{ fontSize:7, fontWeight:700, color:"#C49A1E" }}>{cfg.org}</div>
+                <div style={{ fontSize:5.5, color:"#253A58" }}>IT Department · it.support@imarat.com.pk</div>
+              </div>
             </div>
-            {cfg.includeTs && <div style={{ fontSize:7, color:"#8A9AB8", fontWeight:700 }}>SYSTEM GENERATED · Page 1 of 3</div>}
+            {cfg.includeTs&&<div style={{ fontSize:6, color:"#253A58", fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.6 }}>System Generated · Confidential</div>}
             <div style={{ textAlign:"right" as const }}>
-              <div style={{ fontSize:7.5, color:"#C49A1E" }}>{new Date().toLocaleDateString("en-GB")}</div>
-              <div style={{ fontSize:6.5, color:"#3A5A88" }}>imarat.com.pk</div>
+              <div style={{ fontSize:6.5, color:"#C49A1E", fontWeight:600 }}>Page 1 of 3</div>
+              <div style={{ fontSize:5.5, color:"#253A58" }}>imarat.com.pk</div>
             </div>
           </div>
 
@@ -881,13 +913,11 @@ async function generatePDF(
       txt(f.cat.slice(0,7),PAD+69,ry+rowH*0.72,3.2,CAT_C[f.cat]??NAVY,"bold","center");
       ([sv.internet,sv.bio,sv.printing] as RAGStatus[]).forEach((st,si)=>{
         const cx2=PAD+78+si*colW;
-        const cellC=st==="green"?gL:st==="amber"?aL:st==="red"?rL:nL;
-        const txtC=ragText(st);
-        frr(cx2+1,ry+0.5,colW-2,rowH-1,1,cellC);
-        txt(ragLabel(st),cx2+colW/2,ry+rowH*0.72,3.2,txtC,"bold","center");
+        frr(cx2+1,ry+0.5,colW-2,rowH-1,1,ragFill(st));
+        doc.setFillColor(...ragAccent(st)); doc.circle(cx2+colW/2,ry+rowH/2,1.4,"F");
       });
       frr(PAD+TW-22,ry+0.5,20,rowH-1,1,ragFill(ov));
-      txt(ragLabel(ov),PAD+TW-12,ry+rowH*0.72,3.2,ragText(ov),"bold","center");
+      doc.setFillColor(...ragAccent(ov)); doc.circle(PAD+TW-12,ry+rowH/2,1.8,"F");
     });
   }
 
