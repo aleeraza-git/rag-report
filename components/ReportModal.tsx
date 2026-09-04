@@ -201,119 +201,137 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
   const dateStr = new Date().toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
   const timeStr = new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
   const cats = ["Imarat","Projects","Graana","Agency21"] as const;
-  const G="#22C55E", A="#F59E0B", R="#EF4444", NA="#94A3B8";
+  // ── Color tokens ──────────────────────────────────────────────────────────
+  const BLU="#2563EB", GRN="#10B981", AMB="#F59E0B", CRT="#EF4444", SLT="#94A3B8";
+  const NAVY="#0B1D3A", PAGE="#EEF2F8", PANEL="#FFFFFF", BDR_C="#CBD5E1", MUT="#64748B";
+  const INK_C="#0F172A";
 
-  // ── Screenshot-style dashboard components ──────────────────────────────────
-  const Card = ({ title, legend, children, style }: { title:string; legend?:React.ReactNode; children:React.ReactNode; style?:React.CSSProperties }) => (
-    <div style={{ background:"#FFFFFF", borderRadius:10, border:"1px solid #E5E7EB", display:"flex", flexDirection:"column" as const, overflow:"hidden", boxShadow:"0 1px 4px rgba(0,0,0,0.06)", ...style }}>
-      <div style={{ padding:"16px 18px 0 18px", flexShrink:0 }}>
-        <div style={{ fontSize:15, fontWeight:700, color:"#111827", marginBottom:legend?8:0 }}>{title}</div>
-        {legend&&<div style={{ display:"flex", alignItems:"center", flexWrap:"wrap" as const, gap:"6px 14px", marginBottom:10 }}>{legend}</div>}
+  const healthColor = healthPct>=0.8?GRN:healthPct>=0.5?AMB:CRT;
+
+  // ── Panel card: white, 3px top accent, uppercase label title ──────────────
+  const Card = ({ title, topColor=BLU, children, style }: { title:string; topColor?:string; children:React.ReactNode; style?:React.CSSProperties }) => (
+    <div style={{ background:PANEL, borderRadius:8, border:`1px solid ${BDR_C}`, display:"flex", flexDirection:"column" as const, overflow:"hidden", boxShadow:"0 1px 4px rgba(11,29,58,0.07)", ...style }}>
+      <div style={{ height:3, background:topColor, flexShrink:0 }}/>
+      <div style={{ padding:"12px 15px 0 15px", flexShrink:0 }}>
+        <div style={{ fontSize:9.5, fontWeight:700, color:BLU, letterSpacing:"1.8px", textTransform:"uppercase" as const, fontFamily:"'DM Sans','Inter',system-ui,sans-serif", marginBottom:10 }}>{title}</div>
       </div>
-      <div style={{ flex:1, padding:"10px 18px 16px 18px", overflow:"hidden" }}>{children}</div>
+      <div style={{ flex:1, padding:"0 15px 13px 15px", overflow:"hidden" }}>{children}</div>
     </div>
   );
 
-  const Chip = ({c,l}:{c:string;l:string}) => (
+  const Dot = ({c,l}:{c:string;l:string}) => (
     <div style={{ display:"flex", alignItems:"center", gap:5 }}>
-      <div style={{ width:9,height:9,borderRadius:"50%",background:c,flexShrink:0 }}/>
-      <span style={{ fontSize:11.5,color:"#374151" }}>{l}</span>
+      <div style={{ width:7,height:7,borderRadius:"50%",background:c,flexShrink:0 }}/>
+      <span style={{ fontSize:10.5,color:MUT,fontFamily:"'DM Sans','Inter',system-ui,sans-serif" }}>{l}</span>
     </div>
   );
 
-  // Multi-segment donut (SVG)
-  const R34=34, C34=2*Math.PI*R34;
+  // Multi-segment donut
+  const RD=32, CD=2*Math.PI*RD;
   const StatusDonut = () => {
-    const segs=[{v:counts.green,c:G},{v:counts.amber,c:A},{v:counts.red,c:R},{v:counts.na||0,c:NA}];
+    const segs=[{v:counts.green,c:GRN},{v:counts.amber,c:AMB},{v:counts.red,c:CRT},{v:counts.na||0,c:SLT}];
     const tot=segs.reduce((s,r)=>s+r.v,0)||1;
     let cum=0;
     return (
-      <svg width="96" height="96" viewBox="0 0 96 96">
-        <circle cx="48" cy="48" r={R34} fill="none" stroke="#F3F4F6" strokeWidth="14"/>
+      <svg width="92" height="92" viewBox="0 0 92 92">
+        <circle cx="46" cy="46" r={RD} fill="none" stroke="#E2E8F0" strokeWidth="13"/>
         {segs.map((seg,si)=>{
           if(!seg.v) return null;
-          const len=C34*(seg.v/tot), off=-C34*cum;
+          const len=CD*(seg.v/tot), off=-CD*cum;
           cum+=seg.v/tot;
-          return <circle key={si} cx="48" cy="48" r={R34} fill="none" stroke={seg.c} strokeWidth="14"
-            strokeDasharray={`${len} ${C34-len}`} strokeDashoffset={off}
-            style={{ transform:"rotate(-90deg)", transformOrigin:"48px 48px" }} strokeLinecap="butt"/>;
+          return <circle key={si} cx="46" cy="46" r={RD} fill="none" stroke={seg.c} strokeWidth="13"
+            strokeDasharray={`${len} ${CD-len}`} strokeDashoffset={off}
+            style={{ transform:"rotate(-90deg)", transformOrigin:"46px 46px" }} strokeLinecap="butt"/>;
         })}
       </svg>
     );
   };
 
-  const insightText = counts.red>0&&counts.amber>0?`${counts.red} critical + ${counts.amber} degraded sites require immediate attention.`
-    :counts.red>0?`${counts.red} site${counts.red>1?"s":""} critical — service restoration is the top priority.`
-    :counts.amber>0?`${counts.amber} site${counts.amber>1?"s":""} degraded. No critical failures at this time.`
-    :`All ${counts.green} facilities fully operational across all services.`;
+  const insightText = counts.red>0&&counts.amber>0
+    ?`${counts.red} critical + ${counts.amber} degraded sites require immediate IT attention.`
+    :counts.red>0?`${counts.red} site${counts.red>1?"s":""} in critical state — service restoration is the priority.`
+    :counts.amber>0?`${counts.amber} site${counts.amber>1?"s":""} degraded. No critical failures detected at this time.`
+    :`All ${counts.green} facilities fully operational. All services healthy across all divisions.`;
+
+  const ff="'DM Sans','Inter',system-ui,sans-serif";
 
   return (
     <div ref={containerRef} style={{ width:"100%", display:"flex", flexDirection:"column" as const, alignItems:"center" }}>
       <div style={{ transform:`scale(${scale})`, transformOrigin:"top center", width:930, transition:"transform 0.15s" }}>
-        <div style={{ width:930, background:"#F3F4F6", fontFamily:"'Helvetica Neue',Helvetica,Arial,sans-serif", borderRadius:6, overflow:"hidden", boxShadow:"0 8px 40px rgba(0,0,0,0.18)" }}>
+        <div style={{ width:930, background:PAGE, fontFamily:ff, borderRadius:8, overflow:"hidden", boxShadow:"0 12px 48px rgba(11,29,58,0.22)" }}>
 
-          {/* HEADER — clean white with navy accent */}
-          <div style={{ background:"#FFFFFF", borderBottom:"1px solid #E5E7EB", display:"flex", alignItems:"center", padding:"0 20px", height:52 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-              <div style={{ width:3, height:28, background:"#C49A1E", borderRadius:2 }}/>
-              <div>
-                <div style={{ fontSize:14, fontWeight:900, color:"#0F172A", letterSpacing:4, fontFamily:"Georgia,serif" }}>IMARAT</div>
-                <div style={{ fontSize:8, color:"#94A3B8", fontWeight:500, letterSpacing:1 }}>Group of Companies · IT Dept</div>
+          {/* HEADER */}
+          <div style={{ background:NAVY, display:"flex", alignItems:"center", padding:"0 22px", height:54, borderBottom:`3px solid ${BLU}` }}>
+            {/* Wordmark */}
+            <div style={{ display:"flex", alignItems:"center", gap:0 }}>
+              <div style={{ width:28, height:28, borderRadius:6, background:BLU, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                <span style={{ fontSize:13, fontWeight:900, color:"#fff", letterSpacing:0.5, fontFamily:ff }}>IG</span>
+              </div>
+              <div style={{ marginLeft:10 }}>
+                <div style={{ fontSize:13, fontWeight:800, color:"#F1F5F9", letterSpacing:3, fontFamily:ff }}>IMARAT</div>
+                <div style={{ fontSize:8, color:"#64748B", letterSpacing:0.8, marginTop:1 }}>Group of Companies · IT Department</div>
               </div>
             </div>
-            <div style={{ width:1, height:24, background:"#E5E7EB", margin:"0 16px" }}/>
+            {/* Divider */}
+            <div style={{ width:1, height:28, background:"#1E3A5F", margin:"0 20px" }}/>
+            {/* Title block */}
             <div style={{ flex:1 }}>
-              <div style={{ fontSize:12, fontWeight:700, color:"#1E293B" }}>{cfg.title}</div>
-              <div style={{ fontSize:9, color:"#94A3B8", marginTop:1 }}>{cfg.org} · {cfg.period||dateStr}</div>
+              <div style={{ fontSize:13, fontWeight:700, color:"#F1F5F9" }}>{cfg.title}</div>
+              <div style={{ fontSize:9, color:"#475569", marginTop:2 }}>{cfg.org} · {cfg.period||dateStr}</div>
             </div>
+            {/* Health badge */}
+            <div style={{ background: healthPct>=0.8?"rgba(16,185,129,0.15)":healthPct>=0.5?"rgba(245,158,11,0.15)":"rgba(239,68,68,0.15)", border:`1px solid ${healthColor}`, borderRadius:20, padding:"4px 14px", marginRight:20 }}>
+              <span style={{ fontSize:11, fontWeight:700, color:healthColor }}>{Math.round(healthPct*100)}% Operational</span>
+            </div>
+            {/* Date */}
             <div style={{ textAlign:"right" as const }}>
-              <div style={{ fontSize:12, fontWeight:700, color:"#1E293B" }}>{dateStr}</div>
-              <div style={{ fontSize:9, color:"#94A3B8", marginTop:1 }}>{timeStr}</div>
+              <div style={{ fontSize:12, fontWeight:600, color:"#CBD5E1" }}>{dateStr}</div>
+              <div style={{ fontSize:9, color:"#475569", marginTop:2 }}>{timeStr}</div>
             </div>
           </div>
 
-          {/* BODY — 2×3 grid */}
+          {/* BODY */}
           <div style={{ padding:"12px", display:"flex", flexDirection:"column" as const, gap:10 }}>
 
             {/* ROW 1 */}
-            <div style={{ display:"flex", gap:10, height:202 }}>
+            <div style={{ display:"flex", gap:10, height:196 }}>
 
               {/* 1 · Health */}
-              <Card title="Health" style={{ width:272 }}>
+              <Card title="Facility Health" topColor={healthColor} style={{ width:268 }}>
                 {[
-                  {l:"Overall",v:`${Math.round(healthPct*100)}% operational`,c:hCol},
-                  {l:"Total Sites",v:`${total} monitored`,c:""},
-                  {l:"Operational",v:`${counts.green} sites`,c:G},
-                  {l:"Degraded",v:`${counts.amber} sites`,c:A},
-                  {l:"Critical",v:`${counts.red} sites`,c:R},
-                  {l:"Not Configured",v:`${counts.na||0} sites`,c:NA},
+                  {l:"Overall Health",v:`${Math.round(healthPct*100)}%`,c:healthColor,big:true},
+                  {l:"Total Sites",v:String(facilities.length),c:INK_C,big:false},
+                  {l:"Operational",v:String(counts.green),c:GRN,big:false},
+                  {l:"Degraded",v:String(counts.amber),c:AMB,big:false},
+                  {l:"Critical",v:String(counts.red),c:CRT,big:false},
+                  {l:"Not Configured",v:String(counts.na||0),c:SLT,big:false},
                 ].map((r,ri)=>(
-                  <div key={r.l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:ri<5?"1px solid #F3F4F6":"none" }}>
-                    <span style={{ fontSize:12.5, color:"#6B7280" }}>{r.l}</span>
-                    <span style={{ fontSize:12.5, fontWeight:600, color:r.c||"#111827" }}>{r.v}</span>
+                  <div key={r.l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"5.5px 0", borderBottom:ri<5?`1px solid #F1F5F9`:"none" }}>
+                    <span style={{ fontSize:11.5, color:ri===0?MUT:MUT, fontWeight:ri===0?500:400 }}>{r.l}</span>
+                    <span style={{ fontSize:ri===0?17:12.5, fontWeight:ri===0?800:600, color:r.c, fontVariantNumeric:"tabular-nums" }}>{r.v}</span>
                   </div>
                 ))}
               </Card>
 
-              {/* 2 · Status Distribution */}
-              <Card title="Status" legend={<><Chip c={G} l={`Operational (${counts.green})`}/><Chip c={A} l={`Degraded (${counts.amber})`}/><Chip c={R} l={`Critical (${counts.red})`}/></>} style={{ width:254 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:14, height:"100%" }}>
+              {/* 2 · Status */}
+              <Card title="Status Distribution" topColor={BLU} style={{ width:250 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:12, height:"100%" }}>
                   <div style={{ position:"relative" as const, flexShrink:0 }}>
                     <StatusDonut/>
                     <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column" as const, alignItems:"center", justifyContent:"center" }}>
-                      <div style={{ fontSize:22, fontWeight:800, color:"#111827" }}>{total}</div>
-                      <div style={{ fontSize:9, color:"#9CA3AF" }}>Total</div>
+                      <div style={{ fontSize:21, fontWeight:800, color:INK_C, lineHeight:1 }}>{facilities.length}</div>
+                      <div style={{ fontSize:8.5, color:SLT, marginTop:2 }}>sites</div>
                     </div>
                   </div>
-                  <div style={{ flex:1 }}>
-                    {([{v:counts.green,l:"Operational",c:G},{v:counts.amber,l:"Degraded",c:A},{v:counts.red,l:"Critical",c:R},{v:counts.na||0,l:"Not Set",c:NA}] as {v:number;l:string;c:string}[]).map(s=>(
-                      <div key={s.l} style={{ marginBottom:8 }}>
+                  <div style={{ flex:1, display:"flex", flexDirection:"column" as const, gap:7 }}>
+                    {([{v:counts.green,l:"Operational",c:GRN},{v:counts.amber,l:"Degraded",c:AMB},{v:counts.red,l:"Critical",c:CRT},{v:counts.na||0,l:"Not Set",c:SLT}]).map(s=>(
+                      <div key={s.l}>
                         <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
-                          <span style={{ fontSize:11.5, color:"#4B5563" }}>{s.l}</span>
-                          <span style={{ fontSize:12, fontWeight:700, color:s.c }}>{s.v}</span>
+                          <span style={{ fontSize:11, color:MUT }}>{s.l}</span>
+                          <span style={{ fontSize:12, fontWeight:700, color:s.c, fontVariantNumeric:"tabular-nums" }}>{s.v}</span>
                         </div>
-                        <div style={{ height:5, background:"#F3F4F6", borderRadius:3 }}>
-                          <div style={{ height:5, borderRadius:3, width:`${total>0?s.v/total*100:0}%`, background:s.c }}/>
+                        <div style={{ height:4, background:"#EEF2F8", borderRadius:2 }}>
+                          <div style={{ height:4, borderRadius:2, width:`${facilities.length>0?s.v/facilities.length*100:0}%`, background:s.c }}/>
                         </div>
                       </div>
                     ))}
@@ -321,9 +339,9 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
                 </div>
               </Card>
 
-              {/* 3 · Division Performance */}
-              <Card title="Progress" legend={<><Chip c={G} l="Operational"/><Chip c={A} l="Degraded"/><Chip c={R} l="Critical"/></>} style={{ flex:1 }}>
-                <div style={{ display:"flex", flexDirection:"column" as const, gap:10 }}>
+              {/* 3 · Division Progress */}
+              <Card title="Division Progress" topColor={BLU} style={{ flex:1 }}>
+                <div style={{ display:"flex", flexDirection:"column" as const, gap:11 }}>
                   {cats.map(cat=>{
                     const facs=facilities.filter(f=>f.cat===cat);
                     const grn=facs.filter(f=>calcOverall(state[f.name]??defState())==="green").length;
@@ -334,16 +352,16 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
                     return (
                       <div key={cat}>
                         <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                          <span style={{ fontSize:12.5, color:"#1F2937", fontWeight:600 }}>{cat}</span>
+                          <span style={{ fontSize:12, color:INK_C, fontWeight:600 }}>{cat}</span>
                           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                            <span style={{ fontSize:11, color:"#9CA3AF" }}>{facs.length} sites</span>
-                            <span style={{ fontSize:12.5, fontWeight:700, color:cc }}>{hlth}%</span>
+                            <span style={{ fontSize:10.5, color:SLT }}>{facs.length} sites</span>
+                            <span style={{ fontSize:13, fontWeight:800, color:cc, fontVariantNumeric:"tabular-nums" }}>{hlth}%</span>
                           </div>
                         </div>
-                        <div style={{ height:9, background:"#F3F4F6", borderRadius:4, display:"flex", overflow:"hidden" }}>
-                          {grn>0&&<div style={{ width:`${grn/facs.length*100}%`, background:G }}/>}
-                          {amb>0&&<div style={{ width:`${amb/facs.length*100}%`, background:A }}/>}
-                          {red>0&&<div style={{ width:`${red/facs.length*100}%`, background:R }}/>}
+                        <div style={{ height:8, background:"#EEF2F8", borderRadius:4, display:"flex", overflow:"hidden" }}>
+                          {grn>0&&<div style={{ width:`${grn/facs.length*100}%`, background:GRN }}/>}
+                          {amb>0&&<div style={{ width:`${amb/facs.length*100}%`, background:AMB }}/>}
+                          {red>0&&<div style={{ width:`${red/facs.length*100}%`, background:CRT }}/>}
                         </div>
                       </div>
                     );
@@ -353,52 +371,55 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
             </div>
 
             {/* ROW 2 */}
-            <div style={{ display:"flex", gap:10, height:220 }}>
+            <div style={{ display:"flex", gap:10, height:214 }}>
 
-              {/* 4 · Service Health */}
-              <Card title="Services" legend={<><Chip c={G} l="Healthy"/><Chip c={A} l="Degraded"/><Chip c={R} l="Down"/></>} style={{ width:272 }}>
-                <div style={{ display:"flex", flexDirection:"column" as const, gap:12 }}>
+              {/* 4 · Services */}
+              <Card title="Service Availability" topColor={BLU} style={{ width:268 }}>
+                <div style={{ display:"flex", flexDirection:"column" as const, gap:13 }}>
                   {(["internet","bio","printing"] as const).map((key,ki)=>{
-                    const lbls=["Internet Connectivity","Biometric Systems","Printing Services"];
+                    const lbls=["Internet","Biometric","Printing"];
                     const vals=sorted.map(f=>(state[f.name]??defState())[key]);
                     const sg=vals.filter(v=>v==="green").length;
                     const sa=vals.filter(v=>v==="amber").length;
                     const sr=vals.filter(v=>v==="red").length;
                     const sh=vals.length>0?sg/vals.length:0;
-                    const shC=sh>=0.8?G:sh>=0.5?A:R;
+                    const shC=sh>=0.8?GRN:sh>=0.5?AMB:CRT;
                     return (
                       <div key={key}>
                         <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                          <span style={{ fontSize:12.5, color:"#1F2937", fontWeight:600 }}>{lbls[ki]}</span>
-                          <span style={{ fontSize:12.5, fontWeight:700, color:shC }}>{sg}/{vals.length}</span>
+                          <span style={{ fontSize:12, color:INK_C, fontWeight:600 }}>{lbls[ki]}</span>
+                          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                            <span style={{ fontSize:10.5, color:MUT, fontVariantNumeric:"tabular-nums" }}>{sg}/{vals.length}</span>
+                            <span style={{ fontSize:11, fontWeight:700, color:shC }}>{Math.round(sh*100)}%</span>
+                          </div>
                         </div>
-                        <div style={{ height:9, background:"#F3F4F6", borderRadius:4, display:"flex", overflow:"hidden" }}>
-                          {sg>0&&<div style={{ width:`${sg/vals.length*100}%`, background:G }}/>}
-                          {sa>0&&<div style={{ width:`${sa/vals.length*100}%`, background:A }}/>}
-                          {sr>0&&<div style={{ width:`${sr/vals.length*100}%`, background:R }}/>}
+                        <div style={{ height:8, background:"#EEF2F8", borderRadius:4, display:"flex", overflow:"hidden" }}>
+                          {sg>0&&<div style={{ width:`${sg/vals.length*100}%`, background:GRN }}/>}
+                          {sa>0&&<div style={{ width:`${sa/vals.length*100}%`, background:AMB }}/>}
+                          {sr>0&&<div style={{ width:`${sr/vals.length*100}%`, background:CRT }}/>}
                         </div>
-                        <div style={{ fontSize:10.5, color:"#9CA3AF", marginTop:3 }}>{Math.round(sh*100)}% availability · {sa} degraded · {sr} critical</div>
+                        <div style={{ fontSize:10, color:"#94A3B8", marginTop:3 }}>{sa} degraded · {sr} critical</div>
                       </div>
                     );
                   })}
                 </div>
               </Card>
 
-              {/* 5 · Support Tickets */}
-              <Card title="Support Tickets" legend={<><Chip c="#3B82F6" l="Received"/><Chip c={G} l="Resolved"/><Chip c={A} l="Pending"/></>} style={{ width:254 }}>
-                {(() => {
+              {/* 5 · Tickets */}
+              <Card title="Support Tickets" topColor={BLU} style={{ width:250 }}>
+                {(()=>{
                   const maxV=Math.max(autoStats.received,autoStats.resolved,autoStats.pending,1);
-                  const bars=[{v:autoStats.received,c:"#3B82F6",l:"Received"},{v:autoStats.resolved,c:G,l:"Resolved"},{v:autoStats.pending,c:A,l:"Pending"}];
-                  const barH=100;
+                  const bars=[{v:autoStats.received,c:BLU,l:"Received"},{v:autoStats.resolved,c:GRN,l:"Resolved"},{v:autoStats.pending,c:AMB,l:"Pending"}];
+                  const barH=108;
                   return (
-                    <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-around", height:barH+40, paddingTop:8 }}>
+                    <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-around", height:barH+36 }}>
                       {bars.map(b=>(
-                        <div key={b.l} style={{ display:"flex", flexDirection:"column" as const, alignItems:"center", gap:6, width:56 }}>
-                          <span style={{ fontSize:18, fontWeight:800, color:b.c }}>{b.v}</span>
-                          <div style={{ width:"100%", height:barH, background:"#F3F4F6", borderRadius:6, display:"flex", alignItems:"flex-end" }}>
-                            <div style={{ width:"100%", background:b.c, borderRadius:6, height:`${Math.max(b.v/maxV*100,4)}%`, transition:"height 0.4s" }}/>
+                        <div key={b.l} style={{ display:"flex", flexDirection:"column" as const, alignItems:"center", gap:5, width:58 }}>
+                          <span style={{ fontSize:20, fontWeight:800, color:b.c, lineHeight:1, fontVariantNumeric:"tabular-nums" }}>{b.v}</span>
+                          <div style={{ width:"100%", height:barH, background:"#EEF2F8", borderRadius:5, display:"flex", alignItems:"flex-end", overflow:"hidden" }}>
+                            <div style={{ width:"100%", background:b.c, borderRadius:5, height:`${Math.max(b.v/maxV*100,4)}%` }}/>
                           </div>
-                          <span style={{ fontSize:10.5, color:"#6B7280", textAlign:"center" as const }}>{b.l}</span>
+                          <span style={{ fontSize:10, color:MUT, textAlign:"center" as const }}>{b.l}</span>
                         </div>
                       ))}
                     </div>
@@ -406,50 +427,48 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
                 })()}
               </Card>
 
-              {/* 6 · Facility Workload (dot grid) */}
-              <Card title="Facility Overview" legend={<><Chip c={G} l="Operational"/><Chip c={A} l="Degraded"/><Chip c={R} l="Critical"/></>} style={{ flex:1 }}>
-                {(() => {
-                  const COLS=6;
-                  const dotSz=22;
-                  const gap=6;
-                  return (
-                    <div style={{ display:"flex", flexWrap:"wrap" as const, gap:gap }}>
-                      {sorted.map((f,fi)=>{
-                        const ov=calcOverall(state[f.name]??defState());
-                        const c=ov==="green"?G:ov==="amber"?A:ov==="red"?R:NA;
-                        const bg=ov==="green"?"#F0FDF4":ov==="amber"?"#FFFBEB":ov==="red"?"#FEF2F2":"#F8FAFC";
-                        return (
-                          <div key={f.name} title={f.name} style={{ width:dotSz, height:dotSz, borderRadius:6, background:bg, border:`1.5px solid ${c}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:8, fontWeight:700, color:c, flexShrink:0 }}>
-                            {fi+1}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
+              {/* 6 · Facility Grid */}
+              <Card title="Facility Overview" topColor={BLU} style={{ flex:1 }}>
+                <div style={{ display:"flex", flexWrap:"wrap" as const, gap:5 }}>
+                  {sorted.map((f,fi)=>{
+                    const ov=calcOverall(state[f.name]??defState());
+                    const c=ov==="green"?GRN:ov==="amber"?AMB:ov==="red"?CRT:SLT;
+                    const bg=ov==="green"?"#ECFDF5":ov==="amber"?"#FFFBEB":ov==="red"?"#FEF2F2":"#F8FAFC";
+                    return (
+                      <div key={f.name} title={f.name} style={{ width:24, height:24, borderRadius:5, background:bg, border:`1.5px solid ${c}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:8.5, fontWeight:700, color:c, flexShrink:0, fontVariantNumeric:"tabular-nums" }}>
+                        {fi+1}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ display:"flex", gap:14, marginTop:10 }}>
+                  <Dot c={GRN} l={`${counts.green} OK`}/>
+                  <Dot c={AMB} l={`${counts.amber} Degraded`}/>
+                  <Dot c={CRT} l={`${counts.red} Critical`}/>
+                </div>
               </Card>
             </div>
 
             {/* INSIGHT STRIP */}
-            <div style={{ background:"#1E293B", borderRadius:6, padding:"9px 16px", display:"flex", alignItems:"center", gap:10 }}>
-              <div style={{ width:3, height:22, background:"#C49A1E", borderRadius:2, flexShrink:0 }}/>
-              <span style={{ fontSize:11, fontWeight:700, color:"#C49A1E", flexShrink:0 }}>Insight</span>
-              <span style={{ fontSize:12, color:"#CBD5E1" }}>{insightText}</span>
+            <div style={{ background:"#0B1D3A", borderRadius:6, padding:"10px 18px", display:"flex", alignItems:"center", gap:14, borderLeft:`4px solid ${BLU}` }}>
+              <span style={{ fontSize:9.5, fontWeight:700, color:BLU, letterSpacing:"1.5px", textTransform:"uppercase" as const, flexShrink:0 }}>AI Insight</span>
+              <div style={{ width:1, height:16, background:"#1E3A5F", flexShrink:0 }}/>
+              <span style={{ fontSize:12, color:"#CBD5E1", lineHeight:1.5 }}>{insightText}</span>
             </div>
 
           </div>
 
           {/* FOOTER */}
-          <div style={{ background:"#FFFFFF", borderTop:"1px solid #E5E7EB", padding:"8px 20px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-            <div style={{ fontSize:11, color:"#94A3B8" }}>{cfg.org} · IT Department · it.support@imarat.com.pk</div>
-            {cfg.includeTs&&<div style={{ fontSize:11, color:"#CBD5E1" }}>System Generated · Confidential</div>}
-            <div style={{ fontSize:11, color:"#94A3B8" }}>imarat.com.pk · {dateStr}</div>
+          <div style={{ background:NAVY, borderTop:`1px solid #1E3A5F`, padding:"8px 22px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div style={{ fontSize:10.5, color:"#475569" }}>{cfg.org} · IT Department · it.support@imarat.com.pk</div>
+            {cfg.includeTs&&<div style={{ fontSize:10.5, color:"#334155" }}>Confidential · System Generated</div>}
+            <div style={{ fontSize:10.5, color:"#475569" }}>imarat.com.pk · {dateStr}</div>
           </div>
 
         </div>
       </div>
-      <div style={{ fontSize:11, color:"#8A9AB8", marginTop:12, fontStyle:"italic" }}>
-        Single Page · RAG Dashboard · {cfg.orientation==="landscape"?"A4 Landscape":"A4 Portrait"}
+      <div style={{ fontSize:11, color:"#64748B", marginTop:12, fontFamily:ff }}>
+        Single Page · A4 {cfg.orientation==="landscape"?"Landscape":"Portrait"} · RAG Report
       </div>
     </div>
   );
@@ -567,9 +586,10 @@ async function generatePDF(
   const redN      = counts.red;
   const healthPct = total>0 ? grnN/total : 0;
 
-  const NAVY:RGB=[6,14,28], NAVYM:RGB=[12,24,50], GOLD:RGB=[196,154,30];
-  const WHITE:RGB=[255,255,255], INK:RGB=[18,28,54], MUTED:RGB=[100,116,150];
-  const BDR:RGB=[218,226,240], BGLT:RGB=[246,249,254];
+  const NAVY:RGB=[11,29,58], NAVYM:RGB=[11,29,58], GOLD:RGB=[37,99,235];
+  const WHITE:RGB=[255,255,255], INK:RGB=[15,23,42], MUTED:RGB=[100,116,139];
+  const BDR:RGB=[203,213,225], BGLT:RGB=[238,242,248];
+  const BLUE:RGB=[37,99,235];
 
   const fr  = (x:number,y:number,w:number,h:number,c:RGB) => { doc.setFillColor(...c); doc.rect(x,y,w,h,"F"); };
   const frr = (x:number,y:number,w:number,h:number,r:number,c:RGB) => { doc.setFillColor(...c); doc.roundedRect(x,y,w,h,r,r,"F"); };
@@ -591,49 +611,53 @@ async function generatePDF(
     (doc as any).lines(lines,pts[0][0],pts[0][1],[1,1],"F",true);
   };
 
-  // Panel: white card, accent left bar, bold title, separator rule
-  const panel = (x:number,y:number,w:number,h:number,title:string,accent:RGB=GOLD) => {
+  // Panel: white card, 3pt blue top accent bar, uppercase label title, separator
+  const panel = (x:number,y:number,w:number,h:number,title:string,accent:RGB=BLUE) => {
     frr(x,y,w,h,2.5,WHITE);
     doc.setDrawColor(...BDR); doc.setLineWidth(0.25); doc.roundedRect(x,y,w,h,2.5,2.5,"S");
-    // left accent bar
-    doc.setFillColor(...accent); doc.roundedRect(x,y+4,2.5,8,1,1,"F");
-    txt(title,x+6,y+9,7,INK,"bold");
-    // title separator
-    doc.setDrawColor(...BDR); doc.setLineWidth(0.2); doc.line(x+4,y+11.5,x+w-4,y+11.5);
+    // 2mm top accent stripe
+    doc.setFillColor(...accent); doc.roundedRect(x,y,w,2,1,1,"F");
+    // uppercase label title in blue
+    doc.setFont("helvetica","bold"); doc.setFontSize(5); doc.setTextColor(...BLUE);
+    doc.text(title,x+5,y+8);
+    // thin rule
+    doc.setDrawColor(...BDR); doc.setLineWidth(0.2); doc.line(x+4,y+10,x+w-4,y+10);
   };
 
   const TOTPG = 1;
   const drawShell = (pg:number, _subtitle="") => {
-    // Light-gray page background
-    fr(0,0,PW,PH,[240,242,245] as RGB);
-    // 2.5mm gold top stripe
-    fr(0,0,PW,2.5,GOLD);
-    // White header
-    fr(0,2.5,PW,HDR-2.5,WHITE);
-    doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.line(0,HDR,PW,HDR);
-    // IMARAT block
-    fr(PAD,6,3,14,GOLD);
-    txt("IMARAT",PAD+6.5,14,13,[6,14,28] as RGB,"bold");
-    txt("Group of Companies · IT Dept",PAD+6.5,19.5,4,MUTED);
+    // Ice-blue page background
+    fr(0,0,PW,PH,BGLT);
+    // Dark navy header
+    fr(0,0,PW,HDR,NAVY);
+    // Blue accent stripe at very top
+    fr(0,0,PW,2.5,BLUE);
+    // IG monogram box
+    frr(PAD,5,10,13,1.5,BLUE);
+    txt("IG",PAD+5,13,7,WHITE,"bold","center");
+    // IMARAT wordmark
+    txt("IMARAT",PAD+14,12,11,WHITE,"bold");
+    txt("Group of Companies · IT Dept",PAD+14,18,3.8,MUTED);
     // Vertical divider
-    doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.line(PAD+58,5,PAD+58,HDR-2);
-    // Report title + org
-    txt(cfg.title,PAD+62,13,9,INK,"bold");
-    txt(`${cfg.org}  ·  ${cfg.period||dateStr}`,PAD+62,19.5,4.5,MUTED);
-    // Badge: RAG Dashboard
-    frr(PW/2-18,7,36,8,2,[240,242,245] as RGB);
-    doc.setDrawColor(...BDR); doc.setLineWidth(0.25); doc.roundedRect(PW/2-18,7,36,8,2,2,"S");
-    txt("EXECUTIVE RAG DASHBOARD",PW/2,13,4.5,MUTED,"bold","center");
-    // Date/time right
-    txt(dateStr,PW-PAD,13,8,INK,"bold","right");
-    txt(timeStr,PW-PAD,19.5,4.5,MUTED,"normal","right");
-    // White footer
-    fr(0,FTR_Y,PW,PH-FTR_Y,WHITE);
-    doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.line(0,FTR_Y,PW,FTR_Y);
+    doc.setDrawColor(30,58,95); doc.setLineWidth(0.4); doc.line(PAD+56,4,PAD+56,HDR-3);
+    // Report title
+    txt(cfg.title,PAD+60,12,9,WHITE,"bold");
+    txt(`${cfg.org}  ·  ${cfg.period||dateStr}`,PAD+60,18,3.8,MUTED);
+    // Center badge
+    frr(PW/2-22,6.5,44,10,2,BLUE);
+    txt("EXECUTIVE RAG REPORT",PW/2,13.5,4.5,WHITE,"bold","center");
+    // Date right
+    txt(dateStr,PW-PAD,12,8,WHITE,"bold","right");
+    txt(timeStr,PW-PAD,18,3.8,MUTED,"normal","right");
+    // Blue rule at bottom of header
+    fr(0,HDR-1,PW,1,BLUE);
+    // Dark navy footer (matches header)
+    fr(0,FTR_Y,PW,PH-FTR_Y,NAVY);
+    fr(0,FTR_Y,PW,0.5,BLUE);
     const fy=FTR_Y+4;
-    txt(`${cfg.org}  ·  IT Department  ·  it.support@imarat.com.pk`,PAD,fy+3,4.5,MUTED);
-    if(cfg.includeTs) txt("CONFIDENTIAL  ·  SYSTEM GENERATED",PW/2,fy+3,4,MUTED,"bold","center");
-    txt(`Page ${pg} of ${TOTPG}  ·  imarat.com.pk`,PW-PAD,fy+3,4.5,MUTED,"normal","right");
+    txt(`${cfg.org}  ·  IT Department  ·  it.support@imarat.com.pk`,PAD,fy+2,4,MUTED);
+    if(cfg.includeTs) txt("CONFIDENTIAL  ·  SYSTEM GENERATED",PW/2,fy+2,3.8,MUTED,"bold","center");
+    txt(`Page ${pg} / ${TOTPG}  ·  imarat.com.pk`,PW-PAD,fy+2,4,MUTED,"normal","right");
   };
 
   const insight = (() => {
@@ -674,9 +698,9 @@ async function generatePDF(
     rows.forEach((r,ri)=>{
       const ry=BT+14+ri*rowH;
       if(r.highlight){
-        frr(P_X(0)+4,ry-1,PW3-8,rowH-1,1.5,hC);
+        frr(P_X(0)+4,ry-1,PW3-8,rowH-1,2,hC);
         txt(r.l,P_X(0)+8,ry+rowH/2+1.5,5.5,WHITE,"normal");
-        txt(r.v,P_X(0)+PW3-8,ry+rowH/2+1.5,7,WHITE,"bold","right");
+        txt(r.v,P_X(0)+PW3-8,ry+rowH/2+1.5,9,WHITE,"bold","right");
       } else {
         if(ri>0){ doc.setDrawColor(...BDR); doc.setLineWidth(0.15); doc.line(P_X(0)+4,ry-0.5,P_X(0)+PW3-4,ry-0.5); }
         txt(r.l,P_X(0)+6,ry+rowH/2+1.5,5.5,MUTED,"normal");
@@ -803,12 +827,13 @@ async function generatePDF(
   // ── Insight strip ────────────────────────────────────────────────────────
   {
     const iY=FTR_Y-12, iH=11;
-    frr(PAD,iY,TW,iH,2.5,[22,30,50] as RGB);
-    // gold left accent
-    doc.setFillColor(...GOLD); doc.roundedRect(PAD,iY,3,iH,1.5,1.5,"F");
-    txt("INSIGHT",PAD+7,iY+4,5.5,GOLD,"bold");
-    txt("·",PAD+24,iY+4,6,GOLD,"normal");
-    txt(insight,PAD+28,iY+4,5,[203,213,225] as RGB,"normal");
+    frr(PAD,iY,TW,iH,2.5,NAVY);
+    // blue left border (4mm thick, full height)
+    frr(PAD,iY,4,iH,1.5,BLUE);
+    txt("AI INSIGHT",PAD+8,iY+4,4.5,BLUE,"bold");
+    // divider dot
+    doc.setFillColor(...MUTED); doc.circle(PAD+30,iY+5.5,0.8,"F");
+    txt(insight,PAD+34,iY+4,4.5,[203,213,225] as RGB,"normal");
   }
 
   doc.save(fileName);
