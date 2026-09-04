@@ -104,6 +104,7 @@ export default function Dashboard() {
   const [activityLog, setLog]   = useState<ActivityLog[]>([]);
   const [, setDowntime]         = useState<DowntimeRecord[]>([]);
   const [selected, setSelected] = useState<string|null>(null);
+  const [saveError, setSaveError] = useState<string|null>(null);
   const [windowDays, setWindow] = useState(14);
 
   const saveTimer      = useRef<ReturnType<typeof setTimeout>|null>(null);
@@ -156,17 +157,31 @@ export default function Dashboard() {
   const addLog = useCallback(async (entry: Omit<ActivityLog,"id"|"ts">) => {
     const log: ActivityLog = { ...entry, id:uid(), ts:nowFull() };
     setLog(prev=>[{...log, at:new Date().toISOString()} as any, ...prev].slice(0,LOG_CAP));
-    await apiFetch("/api/activity-log",{
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ id:log.id, data:log }),
-    });
+    try {
+      await apiFetch("/api/activity-log",{
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ id:log.id, data:log }),
+      });
+    } catch (err) {
+      console.error("Failed to write activity log", err);
+      setSaveError("Could not write to the activity log — this change will be missing from reports.");
+    }
   },[apiFetch]);
 
   const saveFacility = useCallback(async (name:string, data:FacState, oldData:FacState, changedField:string) => {
-    await apiFetch("/api/facilities",{
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ id:name, data }),
-    });
+    // A failed write used to reject into nothing: the row updated optimistically,
+    // the POST 500'd, and the operator had no way to know the change was lost.
+    try {
+      await apiFetch("/api/facilities",{
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ id:name, data }),
+      });
+      setSaveError(null);
+    } catch (err) {
+      console.error("Failed to save facility", name, err);
+      setSaveError(`Could not save ${name}. The change is NOT recorded — check the server.`);
+      return;
+    }
     const oldVal = String((oldData as any)[changedField] || "");
     const newVal = String((data as any)[changedField] || "");
     if(oldVal===newVal){ setLastSync(nowTime()); return; }
@@ -327,6 +342,19 @@ export default function Dashboard() {
 
         {/* ── Content ─────────────────────────────────────────────────────── */}
         <main style={{ padding:"26px 32px 64px", maxWidth:1320, width:"100%" }}>
+          {saveError && (
+            <div role="alert" style={{ display:"flex", alignItems:"center", gap:12, marginBottom:18,
+                  padding:"11px 14px", background:T.critBg, borderLeft:`3px solid ${T.crit}`, borderRadius:4 }}>
+              <span style={{ fontFamily:T.sans, fontSize:12.5, color:T.crit, fontWeight:600, flex:1 }}>
+                {saveError}
+              </span>
+              <button onClick={()=>setSaveError(null)}
+                style={{ background:"none", border:"none", cursor:"pointer", color:T.crit,
+                         fontFamily:T.sans, fontSize:11.5, textDecoration:"underline" }}>
+                Dismiss
+              </button>
+            </div>
+          )}
           <header style={{ display:"flex", alignItems:"flex-end", gap:16, marginBottom:24,
                            paddingBottom:16, borderBottom:`1px solid ${T.line}` }}>
             <div>
