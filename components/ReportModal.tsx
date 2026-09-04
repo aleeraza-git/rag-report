@@ -194,308 +194,262 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
 
   const total = facilities.length || 1;
   const healthPct = counts.green / total;
-  const hCol = healthPct >= 0.8 ? "#059669" : healthPct >= 0.5 ? "#D97706" : "#DC2626";
+  const hCol = healthPct >= 0.8 ? "#22C55E" : healthPct >= 0.5 ? "#F59E0B" : "#EF4444";
   const filtered = facilities.filter(f => cfg.divFilter === "all" || f.cat === cfg.divFilter);
   const ORDER: Record<string, number> = { Imarat:0, Projects:1, Graana:2, Agency21:3 };
   const sorted = [...filtered].sort((a,b) => (ORDER[a.cat]??9) - (ORDER[b.cat]??9));
   const dateStr = new Date().toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
   const timeStr = new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
   const cats = ["Imarat","Projects","Graana","Agency21"] as const;
+  const G="#22C55E", A="#F59E0B", R="#EF4444", NA="#94A3B8";
 
-  // Premium card: white, thin top accent bar, muted title — no dark header bars
-  const Panel = ({ title, accent="#C49A1E", children, style }: { title:string; accent?:string; children:React.ReactNode; style?:React.CSSProperties }) => (
-    <div style={{ background:"#FFFFFF", borderRadius:4, border:"1px solid #E2E8F2", display:"flex", flexDirection:"column" as const, overflow:"hidden", boxShadow:"0 1px 4px rgba(6,14,40,0.07)", ...style }}>
-      <div style={{ height:2.5, background:accent, flexShrink:0 }}/>
-      <div style={{ padding:"5px 11px 0 11px", fontSize:6, fontWeight:700, color:"#8898B4", letterSpacing:0.9, textTransform:"uppercase" as const, flexShrink:0 }}>{title}</div>
-      <div style={{ flex:1, padding:"5px 11px 9px 11px", overflow:"hidden" }}>{children}</div>
+  // ── Screenshot-style dashboard components ──────────────────────────────────
+  const Card = ({ title, legend, children, style }: { title:string; legend?:React.ReactNode; children:React.ReactNode; style?:React.CSSProperties }) => (
+    <div style={{ background:"#FFFFFF", borderRadius:10, border:"1px solid #E5E7EB", display:"flex", flexDirection:"column" as const, overflow:"hidden", boxShadow:"0 1px 4px rgba(0,0,0,0.06)", ...style }}>
+      <div style={{ padding:"16px 18px 0 18px", flexShrink:0 }}>
+        <div style={{ fontSize:15, fontWeight:700, color:"#111827", marginBottom:legend?8:0 }}>{title}</div>
+        {legend&&<div style={{ display:"flex", alignItems:"center", flexWrap:"wrap" as const, gap:"6px 14px", marginBottom:10 }}>{legend}</div>}
+      </div>
+      <div style={{ flex:1, padding:"10px 18px 16px 18px", overflow:"hidden" }}>{children}</div>
     </div>
   );
 
-  // Health ring helpers
-  const R38=38, C38=2*Math.PI*R38;
-  const R27=27, C27=2*Math.PI*R27;
-  const R15=15, C15=2*Math.PI*R15;
+  const Chip = ({c,l}:{c:string;l:string}) => (
+    <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+      <div style={{ width:9,height:9,borderRadius:"50%",background:c,flexShrink:0 }}/>
+      <span style={{ fontSize:11.5,color:"#374151" }}>{l}</span>
+    </div>
+  );
 
-  // Multi-segment status donut
-  const MultiDonut = () => {
-    const segs=[{v:counts.green,c:"#059669"},{v:counts.amber,c:"#D97706"},{v:counts.red,c:"#DC2626"},{v:counts.na||0,c:"#CBD5E1"}];
+  // Multi-segment donut (SVG)
+  const R34=34, C34=2*Math.PI*R34;
+  const StatusDonut = () => {
+    const segs=[{v:counts.green,c:G},{v:counts.amber,c:A},{v:counts.red,c:R},{v:counts.na||0,c:NA}];
     const tot=segs.reduce((s,r)=>s+r.v,0)||1;
     let cum=0;
     return (
-      <svg width="80" height="80" viewBox="0 0 80 80">
-        <circle cx="40" cy="40" r={R27} fill="none" stroke="#EEF2FA" strokeWidth="11"/>
+      <svg width="96" height="96" viewBox="0 0 96 96">
+        <circle cx="48" cy="48" r={R34} fill="none" stroke="#F3F4F6" strokeWidth="14"/>
         {segs.map((seg,si)=>{
           if(!seg.v) return null;
-          const len=C27*(seg.v/tot), off=-C27*cum;
+          const len=C34*(seg.v/tot), off=-C34*cum;
           cum+=seg.v/tot;
-          return <circle key={si} cx="40" cy="40" r={R27} fill="none" stroke={seg.c} strokeWidth="11"
-            strokeDasharray={`${len} ${C27-len}`} strokeDashoffset={off}
-            style={{ transform:"rotate(-90deg)", transformOrigin:"40px 40px" }} strokeLinecap="butt"/>;
+          return <circle key={si} cx="48" cy="48" r={R34} fill="none" stroke={seg.c} strokeWidth="14"
+            strokeDasharray={`${len} ${C34-len}`} strokeDashoffset={off}
+            style={{ transform:"rotate(-90deg)", transformOrigin:"48px 48px" }} strokeLinecap="butt"/>;
         })}
       </svg>
     );
   };
 
+  const insightText = counts.red>0&&counts.amber>0?`${counts.red} critical + ${counts.amber} degraded sites require immediate attention.`
+    :counts.red>0?`${counts.red} site${counts.red>1?"s":""} critical — service restoration is the top priority.`
+    :counts.amber>0?`${counts.amber} site${counts.amber>1?"s":""} degraded. No critical failures at this time.`
+    :`All ${counts.green} facilities fully operational across all services.`;
+
   return (
     <div ref={containerRef} style={{ width:"100%", display:"flex", flexDirection:"column" as const, alignItems:"center" }}>
       <div style={{ transform:`scale(${scale})`, transformOrigin:"top center", width:930, transition:"transform 0.15s" }}>
-        <div style={{ width:930, background:"#EAF0F8", fontFamily:"'Helvetica Neue',Helvetica,Arial,sans-serif", boxShadow:"0 6px 40px rgba(0,0,0,0.2)", borderRadius:4, overflow:"hidden" }}>
+        <div style={{ width:930, background:"#F3F4F6", fontFamily:"'Helvetica Neue',Helvetica,Arial,sans-serif", borderRadius:6, overflow:"hidden", boxShadow:"0 8px 40px rgba(0,0,0,0.18)" }}>
 
-          {/* ── HEADER ── */}
-          <div style={{ background:"#060E1C", display:"flex", alignItems:"center", padding:"0 20px", height:50, borderBottom:"2px solid #C49A1E" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-              <div style={{ width:3, height:28, background:"#C49A1E", borderRadius:2, flexShrink:0 }}/>
+          {/* HEADER — clean white with navy accent */}
+          <div style={{ background:"#FFFFFF", borderBottom:"1px solid #E5E7EB", display:"flex", alignItems:"center", padding:"0 20px", height:52 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <div style={{ width:3, height:28, background:"#C49A1E", borderRadius:2 }}/>
               <div>
-                <div style={{ fontSize:15, fontWeight:900, color:"#FFFFFF", letterSpacing:5, fontFamily:"Georgia,'Times New Roman',serif" }}>IMARAT</div>
-                <div style={{ fontSize:5.5, color:"#C49A1E", fontWeight:700, letterSpacing:1.8, marginTop:1 }}>GROUP OF COMPANIES · IT DEPARTMENT</div>
+                <div style={{ fontSize:14, fontWeight:900, color:"#0F172A", letterSpacing:4, fontFamily:"Georgia,serif" }}>IMARAT</div>
+                <div style={{ fontSize:8, color:"#94A3B8", fontWeight:500, letterSpacing:1 }}>Group of Companies · IT Dept</div>
               </div>
             </div>
-            <div style={{ width:1, height:26, background:"#182E50", margin:"0 16px", flexShrink:0 }}/>
+            <div style={{ width:1, height:24, background:"#E5E7EB", margin:"0 16px" }}/>
             <div style={{ flex:1 }}>
-              <div style={{ fontSize:11, fontWeight:800, color:"#F0F5FF" }}>{cfg.title}</div>
-              <div style={{ fontSize:6, color:"#4A6A90", marginTop:1.5 }}>Executive IT Operations · {cfg.org} · {cfg.period||dateStr}</div>
+              <div style={{ fontSize:12, fontWeight:700, color:"#1E293B" }}>{cfg.title}</div>
+              <div style={{ fontSize:9, color:"#94A3B8", marginTop:1 }}>{cfg.org} · {cfg.period||dateStr}</div>
             </div>
             <div style={{ textAlign:"right" as const }}>
-              <div style={{ fontSize:10, color:"#C49A1E", fontWeight:700 }}>{dateStr}</div>
-              <div style={{ fontSize:5.5, color:"#3A5A80", marginTop:2 }}>{timeStr} · Page 1 of 3</div>
+              <div style={{ fontSize:12, fontWeight:700, color:"#1E293B" }}>{dateStr}</div>
+              <div style={{ fontSize:9, color:"#94A3B8", marginTop:1 }}>{timeStr}</div>
             </div>
           </div>
 
-          {/* ── BODY ── */}
-          <div style={{ padding:"8px 10px", display:"flex", flexDirection:"column" as const, gap:6 }}>
+          {/* BODY — 2×3 grid */}
+          <div style={{ padding:"12px", display:"flex", flexDirection:"column" as const, gap:10 }}>
 
-            {/* ROW 1 — 3 analytical panels */}
-            <div style={{ display:"flex", gap:6, height:160 }}>
+            {/* ROW 1 */}
+            <div style={{ display:"flex", gap:10, height:202 }}>
 
-              {/* A: Overall IT Health */}
-              <Panel title="Overall IT Health" accent="#C49A1E" style={{ width:186 }}>
-                <div style={{ display:"flex", flexDirection:"column" as const, alignItems:"center", height:"100%", justifyContent:"space-between" }}>
-                  {/* Hero ring */}
-                  <div style={{ position:"relative" as const, width:100, height:100 }}>
-                    <svg width="100" height="100" viewBox="0 0 100 100">
-                      <circle cx="50" cy="50" r="46" fill="none" stroke="#EAF0F8" strokeWidth="1"/>
-                      <circle cx="50" cy="50" r={R38} fill="none" stroke="#E2EAF6" strokeWidth="13"/>
-                      {healthPct>0 && <circle cx="50" cy="50" r={R38} fill="none" stroke={hCol} strokeWidth="13"
-                        strokeDasharray={`${C38*healthPct} ${C38*(1-healthPct)}`} strokeDashoffset="0"
-                        style={{ transform:"rotate(-90deg)", transformOrigin:"50px 50px" }}/>}
-                    </svg>
+              {/* 1 · Health */}
+              <Card title="Health" style={{ width:272 }}>
+                {[
+                  {l:"Overall",v:`${Math.round(healthPct*100)}% operational`,c:hCol},
+                  {l:"Total Sites",v:`${total} monitored`,c:""},
+                  {l:"Operational",v:`${counts.green} sites`,c:G},
+                  {l:"Degraded",v:`${counts.amber} sites`,c:A},
+                  {l:"Critical",v:`${counts.red} sites`,c:R},
+                  {l:"Not Configured",v:`${counts.na||0} sites`,c:NA},
+                ].map((r,ri)=>(
+                  <div key={r.l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:ri<5?"1px solid #F3F4F6":"none" }}>
+                    <span style={{ fontSize:12.5, color:"#6B7280" }}>{r.l}</span>
+                    <span style={{ fontSize:12.5, fontWeight:600, color:r.c||"#111827" }}>{r.v}</span>
+                  </div>
+                ))}
+              </Card>
+
+              {/* 2 · Status Distribution */}
+              <Card title="Status" legend={<><Chip c={G} l={`Operational (${counts.green})`}/><Chip c={A} l={`Degraded (${counts.amber})`}/><Chip c={R} l={`Critical (${counts.red})`}/></>} style={{ width:254 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:14, height:"100%" }}>
+                  <div style={{ position:"relative" as const, flexShrink:0 }}>
+                    <StatusDonut/>
                     <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column" as const, alignItems:"center", justifyContent:"center" }}>
-                      <div style={{ fontSize:28, fontWeight:900, color:hCol, lineHeight:"1", letterSpacing:"-1px" }}>{Math.round(healthPct*100)}%</div>
-                      <div style={{ fontSize:5.5, color:"#94A3B8", fontWeight:700, letterSpacing:0.5, marginTop:1 }}>HEALTH SCORE</div>
+                      <div style={{ fontSize:22, fontWeight:800, color:"#111827" }}>{total}</div>
+                      <div style={{ fontSize:9, color:"#9CA3AF" }}>Total</div>
                     </div>
                   </div>
-                  {/* Status chips */}
-                  <div style={{ display:"flex", gap:3, width:"100%" }}>
-                    {([{v:counts.green,c:"#059669",bg:"#F0FDF9",l:"OK"},{v:counts.amber,c:"#D97706",bg:"#FFFBEB",l:"DEG"},{v:counts.red,c:"#DC2626",bg:"#FFF5F5",l:"CRIT"}] as {v:number;c:string;bg:string;l:string}[]).map(s=>(
-                      <div key={s.l} style={{ flex:1, background:s.bg, border:`1px solid ${s.c}28`, borderRadius:3, padding:"4px 0", textAlign:"center" as const }}>
-                        <div style={{ fontSize:14, fontWeight:900, color:s.c, lineHeight:"1" }}>{s.v}</div>
-                        <div style={{ fontSize:4.5, color:s.c, fontWeight:700, opacity:0.75, marginTop:2 }}>{s.l}</div>
+                  <div style={{ flex:1 }}>
+                    {([{v:counts.green,l:"Operational",c:G},{v:counts.amber,l:"Degraded",c:A},{v:counts.red,l:"Critical",c:R},{v:counts.na||0,l:"Not Set",c:NA}] as {v:number;l:string;c:string}[]).map(s=>(
+                      <div key={s.l} style={{ marginBottom:8 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                          <span style={{ fontSize:11.5, color:"#4B5563" }}>{s.l}</span>
+                          <span style={{ fontSize:12, fontWeight:700, color:s.c }}>{s.v}</span>
+                        </div>
+                        <div style={{ height:5, background:"#F3F4F6", borderRadius:3 }}>
+                          <div style={{ height:5, borderRadius:3, width:`${total>0?s.v/total*100:0}%`, background:s.c }}/>
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
-              </Panel>
+              </Card>
 
-              {/* B: Status Distribution */}
-              <Panel title="Status Distribution" accent="#6366F1" style={{ width:212 }}>
-                <div style={{ display:"flex", gap:10, height:"100%", alignItems:"center" }}>
-                  <div style={{ position:"relative" as const, flexShrink:0 }}>
-                    <MultiDonut/>
-                    <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column" as const, alignItems:"center", justifyContent:"center" }}>
-                      <div style={{ fontSize:14, fontWeight:800, color:"#0F1B2D" }}>{facilities.length}</div>
-                      <div style={{ fontSize:5, color:"#94A3B8" }}>SITES</div>
-                    </div>
-                  </div>
-                  <div style={{ flex:1, display:"flex", flexDirection:"column" as const, gap:6 }}>
-                    {([{v:counts.green,l:"Operational",c:"#059669"},{v:counts.amber,l:"Degraded",c:"#D97706"},{v:counts.red,l:"Critical",c:"#DC2626"},{v:counts.na||0,l:"Not Set",c:"#94A3B8"}] as {v:number;l:string;c:string}[]).map(s=>{
-                      const pct=facilities.length>0?Math.round(s.v/facilities.length*100):0;
-                      return (
-                        <div key={s.l}>
-                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:2 }}>
-                            <div style={{ display:"flex", alignItems:"center", gap:5 }}>
-                              <div style={{ width:6, height:6, borderRadius:"50%", background:s.c, flexShrink:0 }}/>
-                              <span style={{ fontSize:6.5, color:"#374151", fontWeight:500 }}>{s.l}</span>
-                            </div>
-                            <span style={{ fontSize:7, fontWeight:800, color:s.c }}>{s.v}</span>
-                          </div>
-                          <div style={{ height:3, background:"#EEF2FA", borderRadius:1.5 }}>
-                            <div style={{ height:3, background:s.c, borderRadius:1.5, width:`${pct}%` }}/>
+              {/* 3 · Division Performance */}
+              <Card title="Progress" legend={<><Chip c={G} l="Operational"/><Chip c={A} l="Degraded"/><Chip c={R} l="Critical"/></>} style={{ flex:1 }}>
+                <div style={{ display:"flex", flexDirection:"column" as const, gap:10 }}>
+                  {cats.map(cat=>{
+                    const facs=facilities.filter(f=>f.cat===cat);
+                    const grn=facs.filter(f=>calcOverall(state[f.name]??defState())==="green").length;
+                    const amb=facs.filter(f=>calcOverall(state[f.name]??defState())==="amber").length;
+                    const red=facs.filter(f=>calcOverall(state[f.name]??defState())==="red").length;
+                    const hlth=facs.length>0?Math.round(grn/facs.length*100):0;
+                    const cc=CAT_HEX[cat];
+                    return (
+                      <div key={cat}>
+                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                          <span style={{ fontSize:12.5, color:"#1F2937", fontWeight:600 }}>{cat}</span>
+                          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                            <span style={{ fontSize:11, color:"#9CA3AF" }}>{facs.length} sites</span>
+                            <span style={{ fontSize:12.5, fontWeight:700, color:cc }}>{hlth}%</span>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                        <div style={{ height:9, background:"#F3F4F6", borderRadius:4, display:"flex", overflow:"hidden" }}>
+                          {grn>0&&<div style={{ width:`${grn/facs.length*100}%`, background:G }}/>}
+                          {amb>0&&<div style={{ width:`${amb/facs.length*100}%`, background:A }}/>}
+                          {red>0&&<div style={{ width:`${red/facs.length*100}%`, background:R }}/>}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              </Panel>
+              </Card>
+            </div>
 
-              {/* C: Division Performance */}
-              <Panel title="Division Performance" accent="#0EA5E9" style={{ flex:1 }}>
-                <div style={{ display:"flex", flexDirection:"column" as const, height:"100%", gap:6 }}>
-                  <div style={{ flex:1, display:"flex", flexDirection:"column" as const, justifyContent:"space-evenly" }}>
-                    {cats.map(cat=>{
-                      const facs=facilities.filter(f=>f.cat===cat);
-                      const grn=facs.filter(f=>calcOverall(state[f.name]??defState())==="green").length;
-                      const amb=facs.filter(f=>calcOverall(state[f.name]??defState())==="amber").length;
-                      const red=facs.filter(f=>calcOverall(state[f.name]??defState())==="red").length;
-                      const hlth=facs.length>0?grn/facs.length:0;
-                      const cc=CAT_HEX[cat];
-                      return (
-                        <div key={cat}>
-                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:3 }}>
-                            <div style={{ display:"flex", alignItems:"center", gap:5 }}>
-                              <div style={{ width:7, height:7, borderRadius:2, background:cc, flexShrink:0 }}/>
-                              <span style={{ fontSize:8, fontWeight:700, color:cc }}>{cat}</span>
-                              <span style={{ fontSize:6, color:"#94A3B8" }}>{facs.length}</span>
-                            </div>
-                            <span style={{ fontSize:8, fontWeight:800, color:cc }}>{Math.round(hlth*100)}%</span>
-                          </div>
-                          {/* Stacked health bar */}
-                          <div style={{ height:8, background:"#EEF2FA", borderRadius:3, display:"flex", overflow:"hidden" }}>
-                            {grn>0&&<div style={{ width:`${grn/facs.length*100}%`, background:"#059669" }}/>}
-                            {amb>0&&<div style={{ width:`${amb/facs.length*100}%`, background:"#D97706" }}/>}
-                            {red>0&&<div style={{ width:`${red/facs.length*100}%`, background:"#DC2626" }}/>}
-                          </div>
+            {/* ROW 2 */}
+            <div style={{ display:"flex", gap:10, height:220 }}>
+
+              {/* 4 · Service Health */}
+              <Card title="Services" legend={<><Chip c={G} l="Healthy"/><Chip c={A} l="Degraded"/><Chip c={R} l="Down"/></>} style={{ width:272 }}>
+                <div style={{ display:"flex", flexDirection:"column" as const, gap:12 }}>
+                  {(["internet","bio","printing"] as const).map((key,ki)=>{
+                    const lbls=["Internet Connectivity","Biometric Systems","Printing Services"];
+                    const vals=sorted.map(f=>(state[f.name]??defState())[key]);
+                    const sg=vals.filter(v=>v==="green").length;
+                    const sa=vals.filter(v=>v==="amber").length;
+                    const sr=vals.filter(v=>v==="red").length;
+                    const sh=vals.length>0?sg/vals.length:0;
+                    const shC=sh>=0.8?G:sh>=0.5?A:R;
+                    return (
+                      <div key={key}>
+                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                          <span style={{ fontSize:12.5, color:"#1F2937", fontWeight:600 }}>{lbls[ki]}</span>
+                          <span style={{ fontSize:12.5, fontWeight:700, color:shC }}>{sg}/{vals.length}</span>
                         </div>
-                      );
-                    })}
-                  </div>
-                  {/* Ticket strip */}
-                  <div>
-                    <div style={{ fontSize:5.5, color:"#94A3B8", fontWeight:700, letterSpacing:0.6, marginBottom:4 }}>SUPPORT TICKETS</div>
-                    <div style={{ display:"flex", gap:4 }}>
-                      {([{v:autoStats.received,l:"Received",c:"#4F46E5"},{v:autoStats.resolved,l:"Resolved",c:"#059669"},{v:autoStats.pending,l:"Pending",c:"#D97706"}] as {v:number;l:string;c:string}[]).map(tk=>(
-                        <div key={tk.l} style={{ flex:1, background:"#F8FAFD", border:"1px solid #E2E8F2", borderRadius:3, padding:"4px 2px", textAlign:"center" as const }}>
-                          <div style={{ fontSize:13, fontWeight:900, color:tk.c, lineHeight:"1" }}>{tk.v}</div>
-                          <div style={{ fontSize:5, color:"#94A3B8", marginTop:1.5, fontWeight:600 }}>{tk.l}</div>
+                        <div style={{ height:9, background:"#F3F4F6", borderRadius:4, display:"flex", overflow:"hidden" }}>
+                          {sg>0&&<div style={{ width:`${sg/vals.length*100}%`, background:G }}/>}
+                          {sa>0&&<div style={{ width:`${sa/vals.length*100}%`, background:A }}/>}
+                          {sr>0&&<div style={{ width:`${sr/vals.length*100}%`, background:R }}/>}
+                        </div>
+                        <div style={{ fontSize:10.5, color:"#9CA3AF", marginTop:3 }}>{Math.round(sh*100)}% availability · {sa} degraded · {sr} critical</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+
+              {/* 5 · Support Tickets */}
+              <Card title="Support Tickets" legend={<><Chip c="#3B82F6" l="Received"/><Chip c={G} l="Resolved"/><Chip c={A} l="Pending"/></>} style={{ width:254 }}>
+                {(() => {
+                  const maxV=Math.max(autoStats.received,autoStats.resolved,autoStats.pending,1);
+                  const bars=[{v:autoStats.received,c:"#3B82F6",l:"Received"},{v:autoStats.resolved,c:G,l:"Resolved"},{v:autoStats.pending,c:A,l:"Pending"}];
+                  const barH=100;
+                  return (
+                    <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-around", height:barH+40, paddingTop:8 }}>
+                      {bars.map(b=>(
+                        <div key={b.l} style={{ display:"flex", flexDirection:"column" as const, alignItems:"center", gap:6, width:56 }}>
+                          <span style={{ fontSize:18, fontWeight:800, color:b.c }}>{b.v}</span>
+                          <div style={{ width:"100%", height:barH, background:"#F3F4F6", borderRadius:6, display:"flex", alignItems:"flex-end" }}>
+                            <div style={{ width:"100%", background:b.c, borderRadius:6, height:`${Math.max(b.v/maxV*100,4)}%`, transition:"height 0.4s" }}/>
+                          </div>
+                          <span style={{ fontSize:10.5, color:"#6B7280", textAlign:"center" as const }}>{b.l}</span>
                         </div>
                       ))}
                     </div>
-                  </div>
-                </div>
-              </Panel>
-            </div>
+                  );
+                })()}
+              </Card>
 
-            {/* ROW 2 — Facility Matrix + Service Intelligence */}
-            <div style={{ display:"flex", gap:6 }}>
-
-              {/* D: Facility Health Matrix — dots only, no text badges */}
-              <Panel title={`Facility Health Matrix — ${sorted.length} Sites`} accent="#059669" style={{ flex:1 }}>
-                {/* Column headers */}
-                <div style={{ display:"flex", alignItems:"center", padding:"2px 4px 2px 10px", marginBottom:1.5, background:"#F8FAFD", borderRadius:2 }}>
-                  <div style={{ width:14, fontSize:5, color:"#94A3B8", fontWeight:700, textAlign:"center" as const, flexShrink:0 }}>#</div>
-                  <div style={{ flex:1, fontSize:5, color:"#94A3B8", fontWeight:700, paddingLeft:4 }}>FACILITY</div>
-                  {["NET","BIO","PRT"].map(h=><div key={h} style={{ width:20, fontSize:5, color:"#94A3B8", fontWeight:700, textAlign:"center" as const, flexShrink:0 }}>{h}</div>)}
-                  <div style={{ width:58, fontSize:5, color:"#94A3B8", fontWeight:700, textAlign:"center" as const, flexShrink:0 }}>HEALTH</div>
-                </div>
-                {sorted.map((f,fi)=>{
-                  const sv=state[f.name]??defState();
-                  const ov=calcOverall(sv);
-                  const bc=ov==="green"?"#059669":ov==="amber"?"#D97706":ov==="red"?"#DC2626":"#94A3B8";
-                  const score=ov==="green"?1:ov==="amber"?0.6:ov==="red"?0.25:0.05;
-                  const isDivBreak=fi>0&&sorted[fi-1].cat!==f.cat;
+              {/* 6 · Facility Workload (dot grid) */}
+              <Card title="Facility Overview" legend={<><Chip c={G} l="Operational"/><Chip c={A} l="Degraded"/><Chip c={R} l="Critical"/></>} style={{ flex:1 }}>
+                {(() => {
+                  const COLS=6;
+                  const dotSz=22;
+                  const gap=6;
                   return (
-                    <div key={f.name} style={{ display:"flex", alignItems:"center", padding:"1.5px 4px 1.5px 0", background:fi%2===0?"#FFFFFF":"#F8FAFD", borderTop:isDivBreak?`1.5px solid ${CAT_HEX[f.cat]}40`:undefined }}>
-                      <div style={{ width:2.5, alignSelf:"stretch", background:CAT_HEX[f.cat], borderRadius:1, marginRight:5, flexShrink:0 }}/>
-                      <div style={{ width:11, fontSize:5, color:"#CBD5E1", textAlign:"center" as const, flexShrink:0 }}>{fi+1}</div>
-                      <div style={{ flex:1, fontSize:6, color:"#0F1B2D", fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const, paddingLeft:3 }}>{f.name}</div>
-                      {([sv.internet,sv.bio,sv.printing] as RAGStatus[]).map((st,si)=>{
-                        const dc=st==="green"?"#059669":st==="amber"?"#D97706":st==="red"?"#DC2626":"#CBD5E1";
-                        return <div key={si} style={{ width:20, display:"flex", justifyContent:"center", flexShrink:0 }}><div style={{ width:7, height:7, borderRadius:"50%", background:dc }}/></div>;
+                    <div style={{ display:"flex", flexWrap:"wrap" as const, gap:gap }}>
+                      {sorted.map((f,fi)=>{
+                        const ov=calcOverall(state[f.name]??defState());
+                        const c=ov==="green"?G:ov==="amber"?A:ov==="red"?R:NA;
+                        const bg=ov==="green"?"#F0FDF4":ov==="amber"?"#FFFBEB":ov==="red"?"#FEF2F2":"#F8FAFC";
+                        return (
+                          <div key={f.name} title={f.name} style={{ width:dotSz, height:dotSz, borderRadius:6, background:bg, border:`1.5px solid ${c}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:8, fontWeight:700, color:c, flexShrink:0 }}>
+                            {fi+1}
+                          </div>
+                        );
                       })}
-                      <div style={{ width:58, flexShrink:0, padding:"0 6px" }}>
-                        <div style={{ height:4, background:"#EEF2F8", borderRadius:2, overflow:"hidden" }}>
-                          <div style={{ height:"100%", width:`${score*100}%`, background:bc, borderRadius:2 }}/>
-                        </div>
-                      </div>
                     </div>
                   );
-                })}
-              </Panel>
-
-              {/* E: Service Intelligence + Tickets */}
-              <div style={{ width:248, display:"flex", flexDirection:"column" as const, gap:6 }}>
-                <Panel title="Service Intelligence" accent="#6366F1" style={{ flex:1 }}>
-                  <div style={{ display:"flex", flexDirection:"column" as const, gap:8, height:"100%", justifyContent:"space-evenly" }}>
-                    {(["internet","bio","printing"] as const).map((key,ki)=>{
-                      const lbls=["Internet Connectivity","Biometric Systems","Print Services"];
-                      const vals=sorted.map(f=>(state[f.name]??defState())[key]);
-                      const sg=vals.filter(v=>v==="green").length;
-                      const sa=vals.filter(v=>v==="amber").length;
-                      const sr=vals.filter(v=>v==="red").length;
-                      const sh=vals.length>0?sg/vals.length:0;
-                      const shC=sh>=0.8?"#059669":sh>=0.5?"#D97706":"#DC2626";
-                      return (
-                        <div key={key} style={{ display:"flex", alignItems:"center", gap:9 }}>
-                          <div style={{ position:"relative" as const, width:44, height:44, flexShrink:0 }}>
-                            <svg width="44" height="44" viewBox="0 0 44 44">
-                              <circle cx="22" cy="22" r={R15} fill="none" stroke="#EEF2FA" strokeWidth="7"/>
-                              {sh>0&&<circle cx="22" cy="22" r={R15} fill="none" stroke={shC} strokeWidth="7"
-                                strokeDasharray={`${C15*sh} ${C15*(1-sh)}`} strokeDashoffset="0"
-                                style={{ transform:"rotate(-90deg)", transformOrigin:"22px 22px" }}/>}
-                            </svg>
-                            <div style={{ position:"absolute" as const, inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                              <span style={{ fontSize:8, fontWeight:800, color:shC }}>{Math.round(sh*100)}</span>
-                            </div>
-                          </div>
-                          <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:2.5 }}>
-                              <span style={{ fontSize:7, fontWeight:700, color:"#0F1B2D" }}>{lbls[ki]}</span>
-                              <span style={{ fontSize:6.5, color:shC, fontWeight:800 }}>{sg}/{vals.length}</span>
-                            </div>
-                            <div style={{ height:4, background:"#EEF2F8", borderRadius:2 }}>
-                              <div style={{ height:4, background:shC, borderRadius:2, width:`${sh*100}%` }}/>
-                            </div>
-                            <div style={{ fontSize:5.5, color:"#94A3B8", marginTop:2 }}>{sa} degraded · {sr} critical</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </Panel>
-                <Panel title="Support Tickets" accent="#C49A1E">
-                  <div style={{ display:"flex", justifyContent:"space-around", alignItems:"center", height:"100%" }}>
-                    {([{v:autoStats.received,l:"Received",c:"#4F46E5"},{v:autoStats.resolved,l:"Resolved",c:"#059669"},{v:autoStats.pending,l:"Pending",c:"#D97706"}] as {v:number;l:string;c:string}[]).map(tk=>(
-                      <div key={tk.l} style={{ textAlign:"center" as const }}>
-                        <div style={{ fontSize:26, fontWeight:900, color:tk.c, lineHeight:"1" }}>{tk.v}</div>
-                        <div style={{ fontSize:6, color:"#94A3B8", marginTop:4, fontWeight:700, letterSpacing:0.5 }}>{tk.l.toUpperCase()}</div>
-                      </div>
-                    ))}
-                  </div>
-                </Panel>
-              </div>
+                })()}
+              </Card>
             </div>
 
             {/* INSIGHT STRIP */}
-            <div style={{ background:"#060E1C", borderRadius:3, padding:"7px 14px", display:"flex", alignItems:"center", gap:12, borderLeft:"3px solid #C49A1E" }}>
-              <span style={{ fontSize:6.5, fontWeight:800, color:"#C49A1E", letterSpacing:0.8, flexShrink:0 }}>OPERATIONAL INSIGHT</span>
-              <div style={{ width:1, height:14, background:"#1A3050", flexShrink:0 }}/>
-              <span style={{ fontSize:7.5, color:"#C8D8F0", lineHeight:"1.4" }}>
-                {counts.red>0&&counts.amber>0?`${counts.red} critical and ${counts.amber} degraded sites detected — immediate IT response required.`:counts.red>0?`${counts.red} site${counts.red>1?"s":""} currently critical — service restoration is the top operational priority.`:counts.amber>0?`${counts.amber} site${counts.amber>1?"s":""} operating in a degraded state. No critical failures at this time.`:`All ${counts.green} monitored facilities are fully operational. Internet, biometric, and print services are healthy across all divisions.`}
-              </span>
+            <div style={{ background:"#1E293B", borderRadius:6, padding:"9px 16px", display:"flex", alignItems:"center", gap:10 }}>
+              <div style={{ width:3, height:22, background:"#C49A1E", borderRadius:2, flexShrink:0 }}/>
+              <span style={{ fontSize:11, fontWeight:700, color:"#C49A1E", flexShrink:0 }}>Insight</span>
+              <span style={{ fontSize:12, color:"#CBD5E1" }}>{insightText}</span>
             </div>
 
           </div>
 
-          {/* ── FOOTER ── */}
-          <div style={{ background:"#060E1C", padding:"6px 20px", display:"flex", justifyContent:"space-between", alignItems:"center", borderTop:"1px solid #182E50" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-              <div style={{ width:2, height:18, background:"#C49A1E", borderRadius:1 }}/>
-              <div>
-                <div style={{ fontSize:7, fontWeight:700, color:"#C49A1E" }}>{cfg.org}</div>
-                <div style={{ fontSize:5.5, color:"#253A58" }}>IT Department · it.support@imarat.com.pk</div>
-              </div>
-            </div>
-            {cfg.includeTs&&<div style={{ fontSize:6, color:"#253A58", fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.6 }}>System Generated · Confidential</div>}
-            <div style={{ textAlign:"right" as const }}>
-              <div style={{ fontSize:6.5, color:"#C49A1E", fontWeight:600 }}>Page 1 of 3</div>
-              <div style={{ fontSize:5.5, color:"#253A58" }}>imarat.com.pk</div>
-            </div>
+          {/* FOOTER */}
+          <div style={{ background:"#FFFFFF", borderTop:"1px solid #E5E7EB", padding:"8px 20px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div style={{ fontSize:11, color:"#94A3B8" }}>{cfg.org} · IT Department · it.support@imarat.com.pk</div>
+            {cfg.includeTs&&<div style={{ fontSize:11, color:"#CBD5E1" }}>System Generated · Confidential</div>}
+            <div style={{ fontSize:11, color:"#94A3B8" }}>imarat.com.pk · {dateStr}</div>
           </div>
 
         </div>
       </div>
       <div style={{ fontSize:11, color:"#8A9AB8", marginTop:12, fontStyle:"italic" }}>
-        Page 1 of 3 · Executive BI Dashboard · {cfg.orientation==="landscape"?"A4 Landscape":"A4 Portrait"}
+        Single Page · RAG Dashboard · {cfg.orientation==="landscape"?"A4 Landscape":"A4 Portrait"}
       </div>
     </div>
   );
@@ -646,7 +600,7 @@ async function generatePDF(
     txt(title,x+5,y+4.5,4,GOLD,"bold");
   };
 
-  const TOTPG = 3;
+  const TOTPG = 1;
   const drawShell = (pg:number, subtitle="") => {
     fr(0,0,PW,PH,BGLT);
     fr(0,0,PW,HDR,NAVY);
@@ -686,432 +640,139 @@ async function generatePDF(
   drawShell(1,"Executive BI Dashboard");
   const BT = BODY_TOP + 1;
 
-  // Row 1 layout: Panel A (health ring) w=64 | Panel B (status donut) w=74 | Panel C (division bars) flex
-  const R1H = 66, R1Y = BT;
-  const PA_W=63, PB_W=73, PC_W=TW-PA_W-PB_W-4;
-  const PA_X=PAD, PB_X=PAD+PA_W+2, PC_X=PAD+PA_W+PB_W+4;
+  // (old Row 1 variables no longer used)
 
-  // ── Panel A: Overall Health Ring ─────────────────────────────────────────
-  panel(PA_X,R1Y,PA_W,R1H,"OVERALL IT HEALTH");
+  // ══ 2×3 panel grid (single page) ════════════════════════════════════════
+  const PW3=(TW-4)/3, GAP3=2;
+  const ROW_H=(FTR_Y-BT-12)/2, ROW2_Y=BT+ROW_H+GAP3;
+  const P_X=(i:number)=>PAD+i*(PW3+GAP3);
+  const hC:RGB=healthPct>=0.8?gC:healthPct>=0.5?aC:rC;
+
+  // ── Panel 1: Health ──────────────────────────────────────────────────────
+  panel(P_X(0),BT,PW3,ROW_H,"HEALTH");
   {
-    const cx=PA_X+PA_W/2, cy=R1Y+38, RO=18, RI=12;
-    const hC:RGB = healthPct>=0.8?gC:healthPct>=0.5?aC:rC;
-    drawArc(cx,cy,RO,RI,-90,270,[228,234,246] as RGB);
-    if(healthPct>0) drawArc(cx,cy,RO,RI,-90,-90+360*healthPct,hC);
-    doc.setFillColor(...WHITE); doc.circle(cx,cy,RI-0.3,"F");
-    txt(`${Math.round(healthPct*100)}%`,cx,cy+2.5,10,hC,"bold","center");
-    txt("HEALTH",cx,cy+7,3.5,MUTED,"bold","center");
-    // stat strip below ring
-    const stY=R1Y+R1H-14;
-    ([{v:grnN,l:"OK",c:gC,bg:gL},{v:ambN,l:"DEG",c:aC,bg:aL},{v:redN,l:"CRIT",c:rC,bg:rL}] as {v:number;l:string;c:RGB;bg:RGB}[]).forEach((st,si)=>{
-      const sx=PA_X+4+si*19;
-      frr(sx,stY,17,11,1.5,st.bg);
-      txt(String(st.v),sx+8.5,stY+7,8,st.c,"bold","center");
-      txt(st.l,sx+8.5,stY+11.5,3,MUTED,"bold","center");
+    ([
+      {l:"Overall",v:`${Math.round(healthPct*100)}% operational`,c:hC},
+      {l:"Total Sites",v:`${sorted.length} monitored`,c:MUTED},
+      {l:"Operational",v:`${grnN} sites`,c:gC},
+      {l:"Degraded",v:`${ambN} sites`,c:aC},
+      {l:"Critical",v:`${redN} sites`,c:rC},
+      {l:"Not Set",v:`${counts.na||0} sites`,c:nC},
+    ] as {l:string;v:string;c:RGB}[]).forEach((r,ri)=>{
+      const ry=BT+9+ri*((ROW_H-11)/6);
+      if(ri>0){ doc.setDrawColor(...BDR); doc.setLineWidth(0.1); doc.line(P_X(0)+3,ry-0.5,P_X(0)+PW3-3,ry-0.5); }
+      txt(r.l,P_X(0)+4,ry+4,4,MUTED,"normal");
+      txt(r.v,P_X(0)+PW3-4,ry+4,4.5,r.c,"bold","right");
     });
-    txt(`${sorted.length} SITES`,cx,R1Y+11.5,3.5,MUTED,"bold","center");
   }
 
-  // ── Panel B: Status Distribution Donut ──────────────────────────────────
-  panel(PB_X,R1Y,PB_W,R1H,"STATUS DISTRIBUTION");
+  // ── Panel 2: Status ───────────────────────────────────────────────────────
+  panel(P_X(1),BT,PW3,ROW_H,"STATUS");
   {
-    const cx=PB_X+30, cy=R1Y+37, RO=18, RI=12;
-    const segs=[
-      {v:grnN,c:gC},{v:ambN,c:aC},{v:redN,c:rC},{v:counts.na||0,c:nC}
-    ] as {v:number;c:RGB}[];
+    const cx=P_X(1)+PW3*0.35, cy=BT+ROW_H/2, RO=16, RI=10;
+    const segs=[{v:grnN,c:gC},{v:ambN,c:aC},{v:redN,c:rC},{v:counts.na||0,c:nC}] as {v:number;c:RGB}[];
     const tot=segs.reduce((s,r)=>s+r.v,0)||1;
     drawArc(cx,cy,RO,RI,-90,270,[228,234,246] as RGB);
-    let cumAngle=-90;
-    segs.forEach(seg=>{
-      if(!seg.v) return;
-      const span=360*seg.v/tot;
-      drawArc(cx,cy,RO,RI,cumAngle,cumAngle+span,seg.c);
-      cumAngle+=span;
-    });
+    let ca=-90;
+    segs.forEach(seg=>{ if(!seg.v) return; const sp=360*seg.v/tot; drawArc(cx,cy,RO,RI,ca,ca+sp,seg.c); ca+=sp; });
     doc.setFillColor(...WHITE); doc.circle(cx,cy,RI-0.3,"F");
-    txt(String(grnN+ambN+redN),cx,cy+2,8,INK,"bold","center");
-    txt("TOTAL",cx,cy+6.5,3.5,MUTED,"bold","center");
-    // legend
-    const legX=PB_X+42, legY=R1Y+12;
+    txt(String(sorted.length),cx,cy+2,8,INK,"bold","center");
+    const legX=P_X(1)+PW3*0.65, legY=BT+9;
     ([{l:"Operational",v:grnN,c:gC},{l:"Degraded",v:ambN,c:aC},{l:"Critical",v:redN,c:rC},{l:"Not Set",v:counts.na||0,c:nC}] as {l:string;v:number;c:RGB}[]).forEach((lk,li)=>{
-      const ly=legY+li*10;
-      doc.setFillColor(...lk.c); doc.circle(legX+2,ly,2.2,"F");
-      txt(lk.l,legX+6,ly+1.2,3.8,INK);
-      txt(String(lk.v),PB_X+PB_W-3,ly+1.2,4,lk.c,"bold","right");
-    });
-    // pct bar across bottom
-    const barX=PB_X+4, barW=PB_W-8, barY=R1Y+R1H-9;
-    let bx=barX;
-    segs.forEach(seg=>{
-      const bw=(barW*seg.v/tot);
-      if(bw>0){ frr(bx,barY,bw,4.5,0,seg.c); bx+=bw; }
-    });
-    doc.setDrawColor(...BDR); doc.setLineWidth(0.15); doc.roundedRect(barX,barY,barW,4.5,0,0,"S");
-  }
-
-  // ── Panel C: Division Performance Bars ──────────────────────────────────
-  panel(PC_X,R1Y,PC_W,R1H,"DIVISION PERFORMANCE");
-  {
-    const maxFacs=Math.max(...CATS.map(c=>sorted.filter(f=>f.cat===c).length),1);
-    CATS.forEach((cat,ci)=>{
-      const facs=sorted.filter(f=>f.cat===cat);
-      const grn=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="green").length;
-      const hlth=facs.length>0?grn/facs.length:0;
-      const cc=CAT_C[cat];
-      const barY=R1Y+9+ci*13;
-      txt(cat,PC_X+4,barY+6,4,cc,"bold");
-      const barX=PC_X+30, barW=PC_W-44;
-      frr(barX,barY+1,barW,6,3,[228,234,246] as RGB);
-      if(hlth>0) frr(barX,barY+1,Math.max(barW*hlth,4),6,3,cc);
-      txt(`${Math.round(hlth*100)}%`,PC_X+PC_W-4,barY+6.5,4.5,cc,"bold","right");
-      txt(`${facs.length}`,barX-6,barY+6.5,3.8,MUTED,"normal","center");
-    });
-    // tickets strip
-    const tkY=R1Y+R1H-11;
-    doc.setDrawColor(...BDR); doc.setLineWidth(0.15); doc.line(PC_X+3,tkY-1,PC_X+PC_W-3,tkY-1);
-    txt("TICKETS",PC_X+4,tkY+3.5,3.5,MUTED,"bold");
-    ([{v:autoStats.received,l:"Received"},{v:autoStats.resolved,l:"Resolved"},{v:autoStats.pending,l:"Pending"}]).forEach((tk,ti)=>{
-      const tx=PC_X+PC_W-54+ti*18;
-      frr(tx,tkY-0.5,16,9,1.5,ti===2?aL:gL);
-      txt(String(tk.v),tx+8,tkY+5.5,6,ti===2?aC:gC,"bold","center");
+      const ly=legY+li*((ROW_H-12)/4);
+      doc.setFillColor(...lk.c); doc.circle(legX+2,ly+2,1.8,"F");
+      txt(lk.l,legX+6,ly+3,3.8,INK);
+      txt(String(lk.v),P_X(1)+PW3-4,ly+3,4.5,lk.c,"bold","right");
+      const bW=(PW3-legX+P_X(1)-12)*lk.v/tot;
+      frr(legX+6,ly+5.5,PW3-legX+P_X(1)-14,3,1.5,[228,234,246] as RGB);
+      if(lk.v>0) frr(legX+6,ly+5.5,Math.max(bW,2),3,1.5,lk.c);
     });
   }
 
-  // Row 2 layout: Panel D (facility matrix) flex | Panel E (service intel) w=78
-  const R2Y = R1Y + R1H + 3;
-  const PE_W=78, PD_W=TW-PE_W-2;
-  const PD_X=PAD, PE_X=PAD+PD_W+2;
-  const R2H = FTR_Y - R2Y - 14;
-
-  // ── Panel D: Facility Health Matrix ─────────────────────────────────────
-  panel(PD_X,R2Y,PD_W,R2H,"FACILITY HEALTH MATRIX");
+  // ── Panel 3: Division Progress ────────────────────────────────────────────
+  panel(P_X(2),BT,PW3,ROW_H,"PROGRESS");
   {
-    const rowH = Math.min(6, (R2H-8)/sorted.length);
-    const dotSz=1.5;
-    // column header
-    const hdrY=R2Y+8.5;
-    txt("FACILITY",PD_X+14,hdrY,3,MUTED,"bold");
-    txt("NET",PD_X+PD_W-47,hdrY,3,MUTED,"bold","center");
-    txt("BIO",PD_X+PD_W-37,hdrY,3,MUTED,"bold","center");
-    txt("PRT",PD_X+PD_W-27,hdrY,3,MUTED,"bold","center");
-    txt("HEALTH",PD_X+PD_W-15,hdrY,3,MUTED,"bold","center");
-    txt("STATUS",PD_X+PD_W-3,hdrY,3,MUTED,"bold","right");
-    sorted.forEach((f,fi)=>{
-      const sv=state[f.name]??defaultState();
-      const ov=calcOverall(sv);
-      const ry=R2Y+12+fi*rowH;
-      fr(PD_X,ry,PD_W,rowH,fi%2===0?WHITE:[244,247,252] as RGB);
-      // div stripe
-      fr(PD_X,ry,2,rowH,CAT_C[f.cat]??NAVY);
-      // rank
-      txt(String(fi+1),PD_X+6,ry+rowH*0.72,3,MUTED,"normal","center");
-      // name
-      const nm=f.name.length>22?f.name.slice(0,20)+"…":f.name;
-      txt(nm,PD_X+12,ry+rowH*0.72,3.5,INK,"bold");
-      // service dots
-      ([sv.internet,sv.bio,sv.printing] as RAGStatus[]).forEach((st,si)=>{
-        const dx=PD_X+PD_W-47+si*10;
-        doc.setFillColor(...ragAccent(st)); doc.circle(dx,ry+rowH/2,dotSz,"F");
-      });
-      // mini health bar
-      const score=ov==="green"?1:ov==="amber"?0.6:ov==="red"?0.25:0.05;
-      pbar(PD_X+PD_W-24,ry+rowH/2-1.5,18,3,score,ragAccent(ov));
-      // status badge
-      frr(PD_X+PD_W-5,ry+rowH/2-2,4,4,2,ragAccent(ov));
-    });
-  }
-
-  // ── Panel E: Service Intelligence + Tickets ──────────────────────────────
-  panel(PE_X,R2Y,PE_W,R2H,"SERVICE INTELLIGENCE");
-  {
-    const svcDefs=[
-      {lbl:"INTERNET",key:"internet" as keyof FacilityState,c:gC},
-      {lbl:"BIOMETRIC",key:"bio" as keyof FacilityState,c:[44,94,232] as RGB},
-      {lbl:"PRINTING",key:"printing" as keyof FacilityState,c:[110,40,210] as RGB},
-    ];
-    const svcH = (R2H-24)/3;
-    svcDefs.forEach((svc,si)=>{
-      const vals=sorted.map(f=>(state[f.name]??defaultState())[svc.key] as RAGStatus);
-      const sg=vals.filter(v=>v==="green").length;
-      const sa=vals.filter(v=>v==="amber").length;
-      const sr=vals.filter(v=>v==="red").length;
-      const sh=vals.length>0?sg/vals.length:0;
-      const shC:RGB=sh>=0.8?gC:sh>=0.5?aC:rC;
-      const sy=R2Y+8+si*(svcH+2);
-      frr(PE_X+3,sy,PE_W-6,svcH,1.5,BGLT);
-      // donut
-      const cx=PE_X+16, cy=sy+svcH/2, RO=8, RI=5;
-      drawArc(cx,cy,RO,RI,-90,270,[218,226,240] as RGB);
-      if(sh>0) drawArc(cx,cy,RO,RI,-90,-90+360*sh,shC);
-      doc.setFillColor(...[246,249,254] as RGB); doc.circle(cx,cy,RI-0.2,"F");
-      txt(`${Math.round(sh*100)}`,cx,cy+1.5,4.5,shC,"bold","center");
-      // label + bars
-      txt(svc.lbl,PE_X+27,sy+5,4,MUTED,"bold");
-      txt(`${sg}/${vals.length}`,PE_X+PE_W-5,sy+5,4,shC,"bold","right");
-      const bY=sy+8;
-      ([{v:sg,c:gC,l:"OK"},{v:sa,c:aC,l:"DEG"},{v:sr,c:rC,l:"CRIT"}] as {v:number;c:RGB;l:string}[]).forEach((bk,bi)=>{
-        const bW=(PE_W-36)*bk.v/(vals.length||1);
-        const bX=PE_X+27+bi*(PE_W-36)/3;
-        frr(bX,bY,PE_W-36-2,4,2,[228,234,246] as RGB);
-        if(bk.v>0) frr(bX,bY,Math.max(bW,2),4,2,bk.c);
-        txt(bk.l,bX+1,bY+3,2.8,MUTED);
-      });
-    });
-
-    // Tickets mini panel
-    const tkY=R2Y+R2H-22;
-    doc.setDrawColor(...BDR); doc.setLineWidth(0.15); doc.line(PE_X+3,tkY,PE_X+PE_W-3,tkY);
-    txt("SUPPORT TICKETS",PE_X+PE_W/2,tkY+4.5,4,MUTED,"bold","center");
-    ([{v:autoStats.received,l:"Received",c:[44,94,232] as RGB},{v:autoStats.resolved,l:"Resolved",c:gC},{v:autoStats.pending,l:"Pending",c:aC}] as {v:number;l:string;c:RGB}[]).forEach((tk,ti)=>{
-      const tx=PE_X+12+ti*22;
-      txt(String(tk.v),tx,tkY+13,11,tk.c,"bold","center");
-      txt(tk.l,tx,tkY+17.5,3.2,MUTED,"normal","center");
-    });
-  }
-
-  // ── Insight strip ────────────────────────────────────────────────────────
-  {
-    const iY=FTR_Y-12;
-    fr(0,iY,PW,12,NAVYM);
-    fr(0,iY,3,12,GOLD);
-    txt("OPERATIONAL INSIGHT",PAD+6,iY+4.5,4.5,GOLD,"bold");
-    txt(insight,PAD+54,iY+4.5,4.5,WHITE,"normal");
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // PAGE 2 — FACILITY INTELLIGENCE
-  // ══════════════════════════════════════════════════════════════════════════
-  doc.addPage();
-  drawShell(2,"Facility Intelligence");
-  const D2Y=BODY_TOP;
-
-  // Full-width heatmap panel
-  const HM_H = Math.min(FTR_Y - D2Y - 55, sorted.length * 5.5 + 14);
-  panel(PAD,D2Y,TW,HM_H,"FACILITY × SERVICE HEALTH MATRIX");
-  {
-    const rowH=Math.min(5.5,(HM_H-11)/sorted.length);
-    const colW=(TW-80)/3;
-    // header row
-    const hY=D2Y+9;
-    txt("FACILITY",PAD+14,hY,3.5,MUTED,"bold");
-    txt("DIV",PAD+64,hY,3.5,MUTED,"bold","center");
-    (["INTERNET","BIOMETRIC","PRINTING"] as const).forEach((lbl,li)=>{
-      const cx2=PAD+78+li*colW+colW/2;
-      txt(lbl,cx2,hY,3.5,MUTED,"bold","center");
-    });
-    txt("OVERALL",PAD+TW-3,hY,3.5,MUTED,"bold","right");
-
-    sorted.forEach((f,fi)=>{
-      const sv=state[f.name]??defaultState();
-      const ov=calcOverall(sv);
-      const ry=D2Y+12+fi*rowH;
-      fr(PAD,ry,TW,rowH,fi%2===0?WHITE:[244,247,252] as RGB);
-      fr(PAD,ry,2,rowH,CAT_C[f.cat]??NAVY);
-      txt(String(fi+1),PAD+6,ry+rowH*0.72,3,MUTED,"normal","center");
-      txt(f.name.length>24?f.name.slice(0,22)+"…":f.name,PAD+12,ry+rowH*0.72,3.8,INK,"bold");
-      frr(PAD+62,ry+0.5,14,rowH-1,1,CAT_BG[f.cat]??BGLT);
-      txt(f.cat.slice(0,7),PAD+69,ry+rowH*0.72,3.2,CAT_C[f.cat]??NAVY,"bold","center");
-      ([sv.internet,sv.bio,sv.printing] as RAGStatus[]).forEach((st,si)=>{
-        const cx2=PAD+78+si*colW;
-        frr(cx2+1,ry+0.5,colW-2,rowH-1,1,ragFill(st));
-        doc.setFillColor(...ragAccent(st)); doc.circle(cx2+colW/2,ry+rowH/2,1.4,"F");
-      });
-      frr(PAD+TW-22,ry+0.5,20,rowH-1,1,ragFill(ov));
-      doc.setFillColor(...ragAccent(ov)); doc.circle(PAD+TW-12,ry+rowH/2,1.8,"F");
-    });
-  }
-
-  // Division comparison + coverage below heatmap
-  const D2B = D2Y + HM_H + 3;
-  const DIV_H = FTR_Y - D2B - 13;
-  const DIV_W = (TW-2)/2;
-
-  // Division Comparison bars
-  panel(PAD,D2B,DIV_W,DIV_H,"DIVISION COMPARISON");
-  {
-    const maxFacs=Math.max(...CATS.map(c=>sorted.filter(f=>f.cat===c).length),1);
     CATS.forEach((cat,ci)=>{
       const facs=sorted.filter(f=>f.cat===cat);
       const grn=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="green").length;
       const amb=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="amber").length;
       const red=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="red").length;
       const cc=CAT_C[cat];
-      const rY=D2B+9+ci*((DIV_H-11)/4);
-      frr(PAD+3,rY,DIV_W-6,(DIV_H-11)/4-2,1.5,CAT_BG[cat]);
-      frr(PAD+3,rY,3,(DIV_H-11)/4-2,0,cc);
-      txt(cat,PAD+9,rY+5,5,cc,"bold");
-      txt(`${facs.length} sites`,PAD+9,rY+9.5,3.5,MUTED);
-      // stacked bar
-      const barX=PAD+DIV_W/2, barW=DIV_W/2-8, barY=rY+3, barH=5;
-      const tot=facs.length||1;
-      let bx=barX;
+      const rY=BT+9+ci*((ROW_H-12)/4);
+      txt(cat,P_X(2)+4,rY+4.5,4.5,cc,"bold");
+      txt(`${facs.length} sites`,P_X(2)+4,rY+8.5,3,MUTED);
+      txt(`${Math.round(grn/Math.max(facs.length,1)*100)}%`,P_X(2)+PW3-4,rY+5,5,cc,"bold","right");
+      const bX=P_X(2)+4, bW=PW3-8, bY=rY+11;
+      frr(bX,bY,bW,5,2,[228,234,246] as RGB);
+      let bx=bX;
       ([{v:grn,c:gC},{v:amb,c:aC},{v:red,c:rC}] as {v:number;c:RGB}[]).forEach(bk=>{
-        const bw=barW*bk.v/tot;
-        if(bk.v>0){frr(bx,barY,bw,barH,0,bk.c); bx+=bw;}
+        const bw=bW*bk.v/Math.max(facs.length,1);
+        if(bk.v>0){frr(bx,bY,bw,5,0,bk.c); bx+=bw;}
       });
-      doc.setDrawColor(...BDR); doc.setLineWidth(0.15); doc.rect(barX,barY,barW,barH,"S");
-      txt(`${Math.round(grn/tot*100)}%`,PAD+DIV_W-4,rY+6,5,cc,"bold","right");
     });
   }
 
-  // Operational Coverage dots
-  panel(PAD+DIV_W+2,D2B,DIV_W,DIV_H,"OPERATIONAL COVERAGE");
+  // ── Panel 4: Services ────────────────────────────────────────────────────
+  panel(P_X(0),ROW2_Y,PW3,ROW_H,"SERVICES");
   {
-    const ox=PAD+DIV_W+2;
-    const DCOLS=6, DROWS=Math.ceil(sorted.length/DCOLS);
-    const dotSz=Math.min(5,(DIV_H-14)/(DROWS*2));
-    const gapX=(DIV_W-8)/DCOLS, gapY=(DIV_H-14)/DROWS;
+    const svcs=[{lbl:"Internet",key:"internet" as keyof FacilityState},{lbl:"Biometric",key:"bio" as keyof FacilityState},{lbl:"Printing",key:"printing" as keyof FacilityState}];
+    svcs.forEach((svc,si)=>{
+      const vals=sorted.map(f=>(state[f.name]??defaultState())[svc.key] as RAGStatus);
+      const sg=vals.filter(v=>v==="green").length, sa=vals.filter(v=>v==="amber").length, sr=vals.filter(v=>v==="red").length;
+      const sh=vals.length>0?sg/vals.length:0;
+      const shC:RGB=sh>=0.8?gC:sh>=0.5?aC:rC;
+      const sY=ROW2_Y+9+si*((ROW_H-11)/3);
+      txt(svc.lbl,P_X(0)+4,sY+4.5,4.5,INK,"bold");
+      txt(`${sg}/${vals.length}`,P_X(0)+PW3-4,sY+4.5,5,shC,"bold","right");
+      const bX=P_X(0)+4, bW=PW3-8, bY=sY+7;
+      frr(bX,bY,bW,6,2,[228,234,246] as RGB);
+      let bx=bX;
+      ([{v:sg,c:gC},{v:sa,c:aC},{v:sr,c:rC}] as {v:number;c:RGB}[]).forEach(bk=>{ const bw=bW*bk.v/Math.max(vals.length,1); if(bk.v>0){frr(bx,bY,bw,6,0,bk.c); bx+=bw;} });
+      txt(`${Math.round(sh*100)}% availability`,P_X(0)+4,sY+17,3,MUTED);
+    });
+  }
+
+  // ── Panel 5: Support Tickets ─────────────────────────────────────────────
+  panel(P_X(1),ROW2_Y,PW3,ROW_H,"SUPPORT TICKETS");
+  {
+    const tkData=[{v:autoStats.received,l:"Received",c:[59,130,246] as RGB},{v:autoStats.resolved,l:"Resolved",c:gC},{v:autoStats.pending,l:"Pending",c:aC}];
+    const maxV=Math.max(...tkData.map(t=>t.v),1);
+    const barH=ROW_H-30, barW=(PW3-24)/3;
+    tkData.forEach((tk,ti)=>{
+      const bX=P_X(1)+6+ti*(barW+3);
+      const filled=barH*(tk.v/maxV);
+      txt(String(tk.v),bX+barW/2,ROW2_Y+14,9,tk.c,"bold","center");
+      frr(bX,ROW2_Y+17,barW,barH,2,[228,234,246] as RGB);
+      if(tk.v>0) frr(bX,ROW2_Y+17+barH-filled,barW,filled,2,tk.c);
+      txt(tk.l,bX+barW/2,ROW2_Y+ROW_H-4,3.5,MUTED,"normal","center");
+    });
+  }
+
+  // ── Panel 6: Facility Overview (dot grid) ────────────────────────────────
+  panel(P_X(2),ROW2_Y,PW3,ROW_H,"FACILITY OVERVIEW");
+  {
+    const COLS=6;
+    const dotD=Math.min(6,(PW3-12)/COLS);
+    const dotGap=(PW3-12)/COLS;
     sorted.forEach((f,fi)=>{
-      const col=fi%DCOLS, row=Math.floor(fi/DCOLS);
-      const dx=ox+5+col*gapX+dotSz, dy=D2B+10+row*gapY+dotSz;
-      const sv=state[f.name]??defaultState(); const ov=calcOverall(sv);
-      doc.setFillColor(...ragFill(ov)); doc.circle(dx,dy,dotSz+1,"F");
-      doc.setFillColor(...ragAccent(ov)); doc.circle(dx,dy,dotSz,"F");
-      doc.setDrawColor(...CAT_C[f.cat]); doc.setLineWidth(0.5); doc.circle(dx,dy,dotSz,"S");
-      txt(String(fi+1),dx,dy+1.2,2.8,WHITE,"bold","center");
+      const col=fi%COLS, row=Math.floor(fi/COLS);
+      const dx=P_X(2)+6+col*dotGap+dotD/2;
+      const dy=ROW2_Y+11+row*(dotD+2)+dotD/2;
+      const ov=calcOverall(state[f.name]??defaultState());
+      doc.setFillColor(...ragFill(ov)); doc.circle(dx,dy,dotD/2+1,"F");
+      doc.setFillColor(...ragAccent(ov)); doc.circle(dx,dy,dotD/2,"F");
+      doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(2.8);
+      doc.text(String(fi+1),dx,dy+0.9,{align:"center"});
     });
   }
 
-  // Insight strip
+  // ── Insight strip ────────────────────────────────────────────────────────
   {
-    const iY=FTR_Y-12;
-    fr(0,iY,PW,12,NAVYM);
-    fr(0,iY,3,12,GOLD);
-    txt("OPERATIONAL INSIGHT",PAD+6,iY+4.5,4.5,GOLD,"bold");
-    txt(insight,PAD+54,iY+4.5,4.5,WHITE,"normal");
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // PAGE 3 — INFRASTRUCTURE & SERVICE INTELLIGENCE
-  // ══════════════════════════════════════════════════════════════════════════
-  doc.addPage();
-  drawShell(3,"Infrastructure & Service Intelligence");
-  const D3Y=BODY_TOP;
-
-  // 3 service panels row
-  const SP_W=(TW-4)/3, SP_H=52;
-  const svcDefs=[
-    {lbl:"INTERNET CONNECTIVITY",key:"internet" as keyof FacilityState},
-    {lbl:"BIOMETRIC SYSTEMS",key:"bio" as keyof FacilityState},
-    {lbl:"PRINTING SERVICES",key:"printing" as keyof FacilityState},
-  ];
-  svcDefs.forEach((svc,si)=>{
-    const sx=PAD+si*(SP_W+2);
-    const vals=sorted.map(f=>(state[f.name]??defaultState())[svc.key] as RAGStatus);
-    const sg=vals.filter(v=>v==="green").length, sa=vals.filter(v=>v==="amber").length;
-    const sr=vals.filter(v=>v==="red").length, sn2=vals.filter(v=>v==="na").length;
-    const sh=vals.length>0?sg/vals.length:0;
-    const shC:RGB=sh>=0.8?gC:sh>=0.5?aC:rC;
-    panel(sx,D3Y,SP_W,SP_H,svc.lbl,shC);
-    // large donut
-    const cx=sx+SP_W/2, cy=D3Y+27, RO=14, RI=9;
-    drawArc(cx,cy,RO,RI,-90,270,[228,234,246] as RGB);
-    if(sh>0) drawArc(cx,cy,RO,RI,-90,-90+360*sh,shC);
-    doc.setFillColor(...WHITE); doc.circle(cx,cy,RI-0.3,"F");
-    txt(`${Math.round(sh*100)}%`,cx,cy+2,7,shC,"bold","center");
-    txt("AVAIL",cx,cy+6.5,3.2,MUTED,"bold","center");
-    pbar(sx+6,D3Y+43,SP_W-12,4,sh,shC);
-    // stat row
-    ([{v:sg,l:"Active",c:gC},{v:sa,l:"Partial",c:aC},{v:sr,l:"Down",c:rC},{v:sn2,l:"N/A",c:nC}] as {v:number;l:string;c:RGB}[]).forEach((ck,cki)=>{
-      const ckx=sx+3+cki*(SP_W-6)/4;
-      txt(String(ck.v),ckx+(SP_W-6)/8,D3Y+SP_H-6,8,ck.c,"bold","center");
-      txt(ck.l,ckx+(SP_W-6)/8,D3Y+SP_H-2,3,MUTED,"normal","center");
-    });
-  });
-
-  // Exception analysis + Division summary
-  const EA_Y=D3Y+SP_H+3, EA_H=Math.min(50,FTR_Y-EA_Y-40);
-  const EA_W=(TW-2)*0.55, DS_W=TW-EA_W-2;
-
-  // Exception Analysis
-  panel(PAD,EA_Y,EA_W,EA_H,"EXCEPTION ANALYSIS");
-  {
-    const issues=sorted.filter(f=>calcOverall(state[f.name]??defaultState())!=="green"&&calcOverall(state[f.name]??defaultState())!=="na");
-    if(issues.length===0){
-      txt("✓ All facilities operating normally — no exceptions detected.",PAD+EA_W/2,EA_Y+EA_H/2,4.5,gC,"bold","center");
-    } else {
-      const rowH=Math.min(7,(EA_H-10)/Math.min(issues.length,6));
-      issues.slice(0,6).forEach((f,ei)=>{
-        const sv=state[f.name]??defaultState(); const ov=calcOverall(sv);
-        const ry=EA_Y+9+ei*rowH;
-        fr(PAD,ry,EA_W,rowH,ei%2===0?WHITE:[248,250,254] as RGB);
-        fr(PAD,ry,2,rowH,ragAccent(ov));
-        txt(f.name,PAD+6,ry+rowH*0.7,4,INK,"bold");
-        frr(PAD+EA_W-28,ry+1,24,rowH-2,1.5,ragFill(ov));
-        txt(ragLabel(ov),PAD+EA_W-16,ry+rowH*0.7,3.5,ragText(ov),"bold","center");
-        // service dots
-        ([sv.internet,sv.bio,sv.printing] as RAGStatus[]).filter(s=>s!=="green").forEach((st,sti)=>{
-          const dx=PAD+EA_W-52+(sti*8);
-          doc.setFillColor(...ragAccent(st)); doc.circle(dx,ry+rowH/2,2,"F");
-        });
-      });
-      if(issues.length>6) txt(`+${issues.length-6} more facilities with exceptions`,PAD+6,EA_Y+EA_H-3,3.5,MUTED);
-    }
-  }
-
-  // Division Summary
-  panel(PAD+EA_W+2,EA_Y,DS_W,EA_H,"DIVISION SUMMARY");
-  {
-    CATS.forEach((cat,ci)=>{
-      const facs=sorted.filter(f=>f.cat===cat);
-      const grn=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="green").length;
-      const hlth=facs.length>0?grn/facs.length:0;
-      const cc=CAT_C[cat];
-      const rY=EA_Y+9+ci*((EA_H-11)/4);
-      txt(cat,PAD+EA_W+6,rY+4.5,4.5,cc,"bold");
-      pbar(PAD+EA_W+30,rY+1,DS_W-36,5,hlth,cc);
-      txt(`${Math.round(hlth*100)}%`,PAD+EA_W+DS_W-3,rY+5,4.5,cc,"bold","right");
-      txt(`${facs.length} sites`,PAD+EA_W+6,rY+8.5,3.2,MUTED);
-    });
-  }
-
-  // Compact appendix table
-  const APP_Y=EA_Y+EA_H+3;
-  const APP_H=FTR_Y-APP_Y-12;
-  panel(PAD,APP_Y,TW,APP_H,"FACILITY APPENDIX — COMPLETE REFERENCE");
-  {
-    const ACOLS=[
-      {h:"#",w:7,x:PAD},
-      {h:"FACILITY",w:60,x:PAD+7},
-      {h:"DIVISION",w:24,x:PAD+67},
-      {h:"NET",w:20,x:PAD+91},
-      {h:"BIO",w:20,x:PAD+111},
-      {h:"PRT",w:20,x:PAD+131},
-      {h:"OVERALL",w:26,x:PAD+151},
-      {h:"BW",w:22,x:PAD+177},
-      {h:"NOTES",w:TW-177-22,x:PAD+199},
-    ];
-    const ATH_Y=APP_Y+7.5;
-    fr(PAD,ATH_Y,TW,5.5,NAVYM);
-    ACOLS.forEach(col=>txt(col.h,col.x+col.w/2,ATH_Y+3.8,3.2,WHITE,"bold","center"));
-    const ARWH=Math.min(5,(APP_H-14)/sorted.length);
-    sorted.forEach((f,fi)=>{
-      const sv=state[f.name]??defaultState(); const ov=calcOverall(sv);
-      const ry=ATH_Y+5.5+fi*ARWH;
-      fr(PAD,ry,TW,ARWH,fi%2===0?WHITE:[244,247,252] as RGB);
-      fr(PAD,ry,2,ARWH,CAT_C[f.cat]??NAVY);
-      const tc=ry+ARWH*0.72;
-      txt(String(fi+1),PAD+4,tc,3,MUTED,"normal","center");
-      txt(f.name.length>20?f.name.slice(0,18)+"…":f.name,PAD+9,tc,3.5,INK,"bold");
-      txt(f.cat,PAD+79,tc,3,CAT_C[f.cat]??NAVY,"bold","center");
-      ([sv.internet,sv.bio,sv.printing] as RAGStatus[]).forEach((st,sti)=>{
-        const lx=[PAD+101,PAD+121,PAD+141][sti];
-        doc.setFillColor(...ragAccent(st)); doc.circle(lx,ry+ARWH/2,1.8,"F");
-      });
-      frr(PAD+153,ry+0.5,22,ARWH-1,1,ragFill(ov));
-      txt(ragLabel(ov).slice(0,4),PAD+164,tc,3,ragText(ov),"bold","center");
-      if(sv.bandwidth) txt(sv.bandwidth,PAD+188,tc,3,MUTED,"normal","center");
-      if(sv.notes) txt(sv.notes.slice(0,28),PAD+201,tc,3,MUTED,"normal");
-    });
-  }
-
-  // Insight strip
-  {
-    const iY=FTR_Y-12;
-    fr(0,iY,PW,12,NAVYM);
-    fr(0,iY,3,12,GOLD);
-    txt("OPERATIONAL INSIGHT",PAD+6,iY+4.5,4.5,GOLD,"bold");
-    txt(insight,PAD+54,iY+4.5,4.5,WHITE,"normal");
+    const iY=FTR_Y-10;
+    fr(0,iY,PW,10,NAVYM);
+    fr(0,iY,3,10,GOLD);
+    txt("INSIGHT",PAD+6,iY+3.5,4,GOLD,"bold");
+    txt(insight,PAD+26,iY+3.5,4,WHITE,"normal");
   }
 
   doc.save(fileName);
