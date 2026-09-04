@@ -73,6 +73,14 @@ const nowTime = () => new Date().toLocaleTimeString("en-US",{hour:"numeric",minu
 const nowFull = () => new Date().toLocaleString("en-GB",{day:"2-digit",month:"short",year:"numeric",hour:"numeric",minute:"2-digit",second:"2-digit",hour12:true});
 const uid = () => Math.random().toString(36).substr(2,9).toUpperCase();
 
+// How far back the client keeps history. Reports can span a month, and the
+// activity log also carries issue/notes/bandwidth edits, so a small row cap
+// would silently truncate the oldest events in a long window.
+const LOG_RETENTION_DAYS = 120;
+const LOG_CAP = 40000;
+const logSince = () =>
+  encodeURIComponent(new Date(Date.now() - LOG_RETENTION_DAYS * 864e5).toISOString());
+
 function defaultState(): FacState {
   return { internet:"green", bio:"green", printing:"green",
            bandwidth:"", requiredBandwidth:"", issue:"", notes:"", ts:nowTime() };
@@ -117,7 +125,7 @@ export default function Dashboard() {
       try {
         const [fsRows, logRows, dtRows] = await Promise.all([
           apiFetch("/api/facilities"),
-          apiFetch("/api/activity-log"),
+          apiFetch(`/api/activity-log?since=${logSince()}`),
           apiFetch("/api/downtime"),
         ]);
         setState(prev=>{
@@ -147,7 +155,7 @@ export default function Dashboard() {
   // ── writes ───────────────────────────────────────────────────────────────
   const addLog = useCallback(async (entry: Omit<ActivityLog,"id"|"ts">) => {
     const log: ActivityLog = { ...entry, id:uid(), ts:nowFull() };
-    setLog(prev=>[{...log, at:new Date().toISOString()} as any, ...prev].slice(0,500));
+    setLog(prev=>[{...log, at:new Date().toISOString()} as any, ...prev].slice(0,LOG_CAP));
     await apiFetch("/api/activity-log",{
       method:"POST", headers:{"Content-Type":"application/json"},
       body:JSON.stringify({ id:log.id, data:log }),

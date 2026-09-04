@@ -71,6 +71,24 @@ export function getOrderedRows(table: string, limit: number): Row[] {
   ).map((r) => ({ id: r.id, data: JSON.parse(r.data), updated_at: r.updated_at }));
 }
 
+/**
+ * Rows written at or after `sinceIso`, newest first.
+ *
+ * Reporting needs history by TIME, not by row count: a fixed "last N rows" cap
+ * silently truncates the oldest events in a long window, which would make a
+ * 30-day report quietly incomplete. Uses idx_<table>_updated.
+ */
+export function getRowsSince(table: string, sinceIso: string, limit = 50000): Row[] {
+  return (
+    getDb()
+      .prepare(
+        `SELECT id, data, updated_at FROM ${table}
+         WHERE updated_at >= ? ORDER BY updated_at DESC LIMIT ?`
+      )
+      .all(sinceIso, limit) as any[]
+  ).map((r) => ({ id: r.id, data: JSON.parse(r.data), updated_at: r.updated_at }));
+}
+
 export function getOneRow(table: string, id: string): Row | null {
   const r = getDb().prepare(`SELECT id, data, updated_at FROM ${table} WHERE id = ?`).get(id) as any;
   return r ? { id: r.id, data: JSON.parse(r.data), updated_at: r.updated_at } : null;
