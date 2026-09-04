@@ -128,13 +128,13 @@ const PRINT_OPTS: { v: RAGStatus; l: string }[] = [
 ];
 
 const RAG: Record<RAGStatus, { bg: string; border: string; text: string; label: string; dot: string }> = {
-  green: { bg:"#E6F0EB", border:"#BFD8CB", text:"#0E3D2F", label:"Operational", dot:"#1E7A5A" },
-  amber: { bg:"#F5EDDA", border:"#E2CFA4", text:"#6E5214", label:"Degraded",    dot:"#C49A3C" },
-  red:   { bg:"#F3E6E5", border:"#E0BCBA", text:"#7A2E2A", label:"Critical",    dot:"#B85450" },
-  na:    { bg:"#EEF1F3", border:"#D4DBD8", text:"#5A6F68", label:"N/A",         dot:"#8A9BA8" },
+  green: { bg:"rgba(16,185,129,0.12)", border:"rgba(16,185,129,0.35)", text:"#10B981", label:"Operational", dot:"#10B981" },
+  amber: { bg:"rgba(245,158,11,0.12)", border:"rgba(245,158,11,0.35)", text:"#F59E0B", label:"Degraded",    dot:"#F59E0B" },
+  red:   { bg:"rgba(244,63,94,0.12)", border:"rgba(244,63,94,0.35)", text:"#F43F5E", label:"Critical",    dot:"#F43F5E" },
+  na:    { bg:"rgba(148,163,184,0.12)", border:"rgba(148,163,184,0.30)", text:"#94A3B8", label:"N/A",         dot:"#94A3B8" },
 };
 const CAT_COLORS: Record<string,string> = {
-  Projects:"#2C5F7C", Imarat:"#0E3D2F", Graana:"#6B4E7D", Agency21:"#A65D3A",
+  Projects:"#38BDF8", Imarat:"#10B981", Graana:"#A78BFA", Agency21:"#FB923C",
 };
 
 function nowTime() {
@@ -159,9 +159,9 @@ function bwCompare(cur: string, req: string): { label: string; bg: string; borde
   const r = parseFloat(req?.replace(/[^0-9.]/g,"") || "");
   if (!c || !r) return null;
   const pct = Math.round((c/r)*100);
-  if (pct >= 100) return { label:`${pct}% OK`,       bg:"#E6F0EB", border:"#BFD8CB", color:"#0E3D2F" };
-  if (pct >= 70)  return { label:`${pct}% LOW`,      bg:"#F5EDDA", border:"#E2CFA4", color:"#6E5214" };
-  return             { label:`${pct}% CRITICAL`, bg:"#F3E6E5", border:"#E0BCBA", color:"#7A2E2A" };
+  if (pct >= 100) return { label:`${pct}% OK`,       bg:"rgba(16,185,129,0.12)", border:"rgba(16,185,129,0.35)", color:"#10B981" };
+  if (pct >= 70)  return { label:`${pct}% LOW`,      bg:"rgba(245,158,11,0.12)", border:"rgba(245,158,11,0.35)", color:"#F59E0B" };
+  return             { label:`${pct}% CRITICAL`, bg:"rgba(244,63,94,0.12)", border:"rgba(244,63,94,0.35)", color:"#F43F5E" };
 }
 function fieldLabel(f: string): string {
   const m: Record<string,string> = { internet:"Internet", bio:"Biometric", printing:"Printing", bandwidth:"Current BW", requiredBandwidth:"Required BW", issue:"Reported Issue", notes:"Notes" };
@@ -740,18 +740,18 @@ export default function Dashboard() {
   // ── loading screen ───────────────────────────────────────────────────────────
 
   if (!mounted) return (
-    <div style={{ minHeight:"100vh", background:"#0E3D2F", display:"flex", alignItems:"center", justifyContent:"center" }}>
+    <div style={{ minHeight:"100vh", background:"#10B981", display:"flex", alignItems:"center", justifyContent:"center" }}>
       <div style={{ textAlign:"center" }}>
         <div style={{ marginBottom:24 }}>
           <div style={{ fontSize:28, fontWeight:800, color:"#fff", letterSpacing:2, marginBottom:4 }}>IMARAT GROUP</div>
-          <div style={{ fontSize:12, color:"#4A6FA5", letterSpacing:3, textTransform:"uppercase" }}>IT Facilities Dashboard</div>
+          <div style={{ fontSize:12, color:"#64748B", letterSpacing:3, textTransform:"uppercase" }}>IT Facilities Dashboard</div>
         </div>
         <div style={{ display:"flex", justifyContent:"center", gap:6, marginBottom:16 }}>
           {[0,1,2,3].map(i=>(
-            <div key={i} style={{ width:8, height:8, borderRadius:"50%", background:"#C8A86A", opacity:0.3+i*0.2, animation:`bounce 1.2s ease-in-out ${i*0.15}s infinite` }} />
+            <div key={i} style={{ width:8, height:8, borderRadius:"50%", background:"#22D3EE", opacity:0.3+i*0.2, animation:`bounce 1.2s ease-in-out ${i*0.15}s infinite` }} />
           ))}
         </div>
-        <div style={{ color:"#4A6FA5", fontSize:13 }}>Loading data...</div>
+        <div style={{ color:"#64748B", fontSize:13 }}>Loading data...</div>
         <style>{`@keyframes bounce{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}`}</style>
       </div>
     </div>
@@ -760,78 +760,117 @@ export default function Dashboard() {
   // ── styles ───────────────────────────────────────────────────────────────────
 
   const S = {
-    bg: "#F4F6F3", card: "#FFFFFF", navy: "#0E3D2F", navyLight: "#0F2420", gold: "#C8A86A",
-    border: "#E3E7E3", text: "#12201C", textMuted: "#5A6F68", textLight: "#8AA099",
-    green: "#0E3D2F", greenBg: "#E6F0EB", greenBorder: "#BFD8CB",
-    amber: "#6E5214", amberBg: "#F5EDDA", amberBorder: "#E2CFA4",
-    red: "#7A2E2A", redBg: "#F3E6E5", redBorder: "#E0BCBA",
-    surfaceAlt: "#EFF2EE", accent: "#1E7A5A",
+    // Aurora Glass
+    bg:"#0B1120", card:"rgba(255,255,255,0.06)", navy:"#0B1120", navyLight:"#111A2E",
+    gold:"#22D3EE", indigo:"#6366F1", cyan:"#22D3EE",
+    border:"rgba(255,255,255,0.12)", text:"#F8FAFC", textMuted:"#94A3B8", textLight:"#64748B",
+    green:"#10B981", greenBg:"rgba(16,185,129,0.12)",  greenBorder:"rgba(16,185,129,0.35)",
+    amber:"#F59E0B", amberBg:"rgba(245,158,11,0.12)",  amberBorder:"rgba(245,158,11,0.35)",
+    red:"#F43F5E",   redBg:"rgba(244,63,94,0.12)",     redBorder:"rgba(244,63,94,0.35)",
+    surfaceAlt:"rgba(255,255,255,0.04)", accent:"#10B981",
+    track:"rgba(255,255,255,0.08)",
+    ui:"'Plus Jakarta Sans','Segoe UI',system-ui,sans-serif",
+    mono:"'IBM Plex Mono',ui-monospace,SFMono-Regular,monospace",
   };
+
   const inputBase: React.CSSProperties = {
     padding:"8px 12px", border:`1px solid ${S.border}`, borderRadius:8,
-    fontSize:13, color:S.text, background:"#fff", outline:"none",
-    transition:"border-color 0.2s", width:"100%", boxSizing:"border-box" as const,
+    fontSize:13, color:S.text, background:"rgba(255,255,255,0.05)", outline:"none",
+    transition:"border-color 0.2s, box-shadow 0.2s", width:"100%", boxSizing:"border-box" as const,
   };
   const btnPrimary: React.CSSProperties = {
-    padding:"8px 18px", background:S.navy, border:"none", borderRadius:8,
-    fontSize:12, color:"#fff", cursor:"pointer", fontWeight:600, letterSpacing:.3,
+    padding:"8px 18px", background:"linear-gradient(135deg,#6366F1 0%,#22D3EE 100%)",
+    border:"none", borderRadius:8, fontSize:12, color:"#fff", cursor:"pointer",
+    fontWeight:700, letterSpacing:.3, boxShadow:"0 4px 16px rgba(99,102,241,0.35)",
   };
   const card: React.CSSProperties = {
-    background:S.card, borderRadius:12, border:`1px solid ${S.border}`,
-    boxShadow:"0 1px 3px rgba(0,0,0,0.04)",
+    background:S.card, borderRadius:16, border:`1px solid ${S.border}`,
+    backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)",
+    boxShadow:"0 8px 32px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.10)",
   };
 
   // ── render ───────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ minHeight:"100vh", background:S.bg, fontFamily:"'Inter','Segoe UI',Arial,sans-serif" }}>
+    <div style={{ minHeight:"100vh", background:S.bg, fontFamily:S.ui, color:S.text, position:"relative" as const }}>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
       <style>{`
         * { box-sizing: border-box; }
-        input:focus, select:focus { outline: none; border-color: #1E7A5A !important; box-shadow: 0 0 0 3px rgba(30,122,90,0.15); }
-        tr:hover td { background: #F7F9F7 !important; }
-        button:hover { opacity: 0.88; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #EFF2EE; }
-        ::-webkit-scrollbar-thumb { background: #C2CCC6; border-radius: 3px; }
+        body { background:#0B1120; }
+        input, select, textarea { color:#F8FAFC; }
+        select option { background:#111A2E; color:#F8FAFC; }
+        input::placeholder, textarea::placeholder { color:#64748B; }
+        input:focus, select:focus, textarea:focus {
+          outline:none; border-color:rgba(34,211,238,0.55) !important;
+          box-shadow:0 0 0 3px rgba(34,211,238,0.14);
+        }
+        tr:hover td { background: rgba(255,255,255,0.04) !important; }
+        button:hover { filter: brightness(1.08); }
+        ::-webkit-scrollbar { width:8px; height:8px; }
+        ::-webkit-scrollbar-track { background: rgba(255,255,255,0.03); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius:4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
         @keyframes pulse2 { 0%,100%{opacity:1} 50%{opacity:.3} }
         @keyframes fadein { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+        @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
       `}</style>
 
+      {/* AURORA FIELD */}
+      <div aria-hidden style={{ position:"fixed" as const, inset:0, pointerEvents:"none" as const, zIndex:0, overflow:"hidden" }}>
+        <div style={{ position:"absolute" as const, top:-280, left:-140, width:900, height:900, borderRadius:"50%",
+                      background:"radial-gradient(circle, rgba(99,102,241,0.26) 0%, transparent 66%)", filter:"blur(40px)" }} />
+        <div style={{ position:"absolute" as const, top:-220, right:-160, width:820, height:820, borderRadius:"50%",
+                      background:"radial-gradient(circle, rgba(34,211,238,0.20) 0%, transparent 66%)", filter:"blur(40px)" }} />
+        <div style={{ position:"absolute" as const, bottom:-340, left:"34%", width:900, height:760, borderRadius:"50%",
+                      background:"radial-gradient(circle, rgba(16,185,129,0.16) 0%, transparent 68%)", filter:"blur(48px)" }} />
+      </div>
+
       {/* ── TOP NAV ── */}
-      <nav style={{ background:S.navy, height:60, display:"flex", alignItems:"center", padding:"0 28px", position:"sticky" as const, top:0, zIndex:100, boxShadow:"0 2px 8px rgba(0,0,0,0.25)" }}>
+      <nav style={{ position:"sticky" as const, top:0, zIndex:100, height:68, display:"flex", alignItems:"center",
+                    padding:"0 28px", background:"rgba(11,17,32,0.72)", backdropFilter:"blur(20px)",
+                    WebkitBackdropFilter:"blur(20px)", borderBottom:`1px solid ${S.border}` }}>
         <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-          <div style={{ display:"flex", flexDirection:"column" as const }}>
-            <span style={{ color:"#fff", fontWeight:800, fontSize:16, letterSpacing:1.5, lineHeight:1 }}>IMARAT GROUP</span>
-            <span style={{ color:S.gold, fontSize:9.5, letterSpacing:2.5, fontWeight:500, marginTop:2 }}>IT FACILITIES DASHBOARD</span>
+          <div style={{ width:38, height:38, borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center",
+                        background:"linear-gradient(135deg,#6366F1 0%,#22D3EE 100%)", boxShadow:"0 4px 18px rgba(99,102,241,0.4)" }}>
+            <span style={{ fontSize:14, fontWeight:800, color:"#fff" }}>IG</span>
           </div>
-          <div style={{ width:1, height:32, background:"rgba(200,168,106,0.3)", margin:"0 8px" }} />
-          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-            <span style={{ width:7, height:7, borderRadius:"50%", background:syncing?"#C49A3C":"#1E7A5A", display:"inline-block", animation:"pulse2 2s infinite" }} />
-            <span style={{ fontSize:11, color:"#5A6F68" }}>{syncing ? "Syncing..." : `Live · ${clock}`}</span>
+          <div style={{ display:"flex", flexDirection:"column" as const }}>
+            <span style={{ color:S.text, fontWeight:800, fontSize:15, letterSpacing:"0.14em", lineHeight:1.1 }}>IMARAT GROUP</span>
+            <span style={{ color:S.textLight, fontSize:9, letterSpacing:"0.16em", fontWeight:600, marginTop:3 }}>IT FACILITIES DASHBOARD</span>
+          </div>
+          <div style={{ width:1, height:32, background:S.border, margin:"0 10px" }} />
+          <div style={{ display:"flex", alignItems:"center", gap:7, padding:"6px 12px", borderRadius:999,
+                        background:syncing?S.amberBg:S.greenBg, border:`1px solid ${syncing?S.amberBorder:S.greenBorder}` }}>
+            <span style={{ width:6, height:6, borderRadius:"50%", background:syncing?S.amber:S.green,
+                           boxShadow:`0 0 8px ${syncing?S.amber:S.green}`, animation:"pulse2 2s infinite" }} />
+            <span style={{ fontSize:11, fontWeight:600, color:syncing?S.amber:S.green }}>{syncing ? "Syncing" : "Live"}</span>
           </div>
         </div>
-        <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{ fontSize:11, color:"#4A6FA5" }}>{clock}</div>
+        <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:16 }}>
+          <span style={{ fontFamily:S.mono, fontSize:12, color:S.textMuted, fontVariantNumeric:"tabular-nums" }}>{clock}</span>
           <button
             onClick={() => setShowReport(true)}
-            style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 18px", background:"linear-gradient(135deg,#C49A1E 0%,#E8C048 100%)", border:"none", borderRadius:7, fontSize:12.5, color:"#0C1A2E", cursor:"pointer", fontWeight:800, letterSpacing:.4, boxShadow:"0 3px 14px rgba(196,154,30,0.38)" }}
+            style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 20px",
+                     background:"linear-gradient(135deg,#6366F1 0%,#22D3EE 100%)", border:"none", borderRadius:10,
+                     fontSize:12.5, color:"#fff", cursor:"pointer", fontWeight:700, letterSpacing:.3,
+                     boxShadow:"0 4px 18px rgba(99,102,241,0.4)" }}
           >
             <span style={{ fontSize:13 }}>⬡</span> Reports
           </button>
         </div>
       </nav>
 
-      <div style={{ padding:"24px 28px", maxWidth:1800, margin:"0 auto" }}>
+      <div style={{ position:"relative" as const, zIndex:1, padding:"24px 28px", maxWidth:1800, margin:"0 auto" }}>
 
         {/* ── LIVE STATUS FEED ── */}
         <div style={{ ...card, marginBottom:20, overflow:"hidden", animation:"fadein 0.3s ease" }}>
           <div style={{ background:S.navyLight, padding:"12px 20px", display:"flex", alignItems:"center", gap:10 }}>
-            <div style={{ width:8, height:8, borderRadius:"50%", background:"#1E7A5A", animation:"pulse2 2s infinite" }} />
+            <div style={{ width:8, height:8, borderRadius:"50%", background:"#10B981", animation:"pulse2 2s infinite" }} />
             <span style={{ color:"#fff", fontWeight:700, fontSize:13, letterSpacing:.3 }}>Live RAG Status Feed</span>
-            <span style={{ background:"rgba(255,255,255,0.08)", color:"#8AA099", fontSize:11, padding:"2px 8px", borderRadius:20, marginLeft:4 }}>
+            <span style={{ background:"rgba(255,255,255,0.08)", color:"#64748B", fontSize:11, padding:"2px 8px", borderRadius:20, marginLeft:4 }}>
               {activityLog.filter(l=>l.type==="status").length} changes
             </span>
-            <span style={{ marginLeft:"auto", color:"#4A6FA5", fontSize:10 }}>auto-refreshes every 5s · last: {lastSync}</span>
+            <span style={{ marginLeft:"auto", color:"#64748B", fontSize:10 }}>auto-refreshes every 5s · last: {lastSync}</span>
           </div>
           {(() => {
             const statusOnly = activityLog.filter(l => l.type === "status");
@@ -846,17 +885,17 @@ export default function Dashboard() {
                   const isRed = l.newVal.includes("Down")||l.newVal.includes("Critical");
                   const isAmber = l.newVal.includes("Slow")||l.newVal.includes("Degraded");
                   const isGreen = l.newVal.includes("Working")||l.newVal.includes("OK")||l.newVal.includes("Sync");
-                  const dot = isRed?"#B85450":isAmber?"#C49A3C":isGreen?"#1E7A5A":"#8A9BA8";
-                  const nvC = isRed?"#7A2E2A":isAmber?"#6E5214":isGreen?"#0E3D2F":"#6b7280";
-                  const nvB = isRed?"#F3E6E5":isAmber?"#F5EDDA":isGreen?"#E6F0EB":"#EEF1F3";
-                  const nvBr = isRed?"#f5b8b8":isAmber?"#f5d48a":isGreen?"#a8d5b5":"#c8d0dc";
+                  const dot = isRed?"#F43F5E":isAmber?"#F59E0B":isGreen?"#10B981":"#94A3B8";
+                  const nvC = isRed?"#F43F5E":isAmber?"#F59E0B":isGreen?"#10B981":"#94A3B8";
+                  const nvB = isRed?"rgba(244,63,94,0.12)":isAmber?"rgba(245,158,11,0.12)":isGreen?"rgba(16,185,129,0.12)":"rgba(148,163,184,0.12)";
+                  const nvBr = isRed?"rgba(244,63,94,0.35)":isAmber?"rgba(245,158,11,0.35)":isGreen?"rgba(16,185,129,0.35)":"rgba(148,163,184,0.30)";
                   return (
-                    <div key={l.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"7px 20px", borderBottom:`1px solid ${S.border}`, background:i%2===0?"#fff":"#FAFBFC", animation:"fadein 0.2s ease" }}>
+                    <div key={l.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"7px 20px", borderBottom:`1px solid ${S.border}`, background:i%2===0?"transparent":"rgba(255,255,255,0.03)", animation:"fadein 0.2s ease" }}>
                       <span style={{ fontFamily:"monospace", fontSize:10.5, color:S.textLight, whiteSpace:"nowrap" as const, minWidth:152, flexShrink:0 }}>{l.ts}</span>
-                      <span style={{ fontWeight:700, color:S.navy, fontSize:12, minWidth:140, whiteSpace:"nowrap" as const, flexShrink:0, overflow:"hidden", textOverflow:"ellipsis" }}>{l.facility}</span>
+                      <span style={{ fontWeight:700, color:S.text, fontSize:12, minWidth:140, whiteSpace:"nowrap" as const, flexShrink:0, overflow:"hidden", textOverflow:"ellipsis" }}>{l.facility}</span>
                       <span style={{ fontSize:11, color:S.textMuted, minWidth:80, flexShrink:0, fontWeight:500 }}>{l.field}</span>
                       <span style={{ fontSize:11, color:S.textLight, minWidth:90, textDecoration:"line-through" }}>{l.oldVal}</span>
-                      <span style={{ fontSize:14, color:"#C2CCC6", fontWeight:700, flexShrink:0 }}>→</span>
+                      <span style={{ fontSize:14, color:"rgba(255,255,255,0.16)", fontWeight:700, flexShrink:0 }}>→</span>
                       <span style={{ display:"inline-flex", alignItems:"center", gap:5, background:nvB, border:`1px solid ${nvBr}`, color:nvC, padding:"3px 12px", borderRadius:20, fontSize:11, fontWeight:700, whiteSpace:"nowrap" as const }}>
                         <span style={{ width:6, height:6, borderRadius:"50%", background:dot, display:"inline-block" }} />
                         {l.newVal}
@@ -870,20 +909,21 @@ export default function Dashboard() {
         </div>
 
         {/* ── KPI ROW ── */}
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(8,1fr)", gap:14, marginBottom:20 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(8,1fr)", gap:16, marginBottom:24 }}>
           {[
-            { label:"Total Sites",   value:FACILITIES.length,     color:S.navy,    bg:"#FFFFFF", accent:S.navy },
-            { label:"Operational",   value:counts.green,           color:S.green,   bg:S.greenBg, accent:S.accent },
-            { label:"Degraded",      value:counts.amber,           color:S.amber,   bg:S.amberBg, accent:"#C49A3C" },
-            { label:"Critical",      value:counts.red,             color:S.red,     bg:S.redBg,   accent:"#B85450" },
-            { label:"Queries Today", value:autoStats.received,     color:S.navy,    bg:"#FFFFFF", accent:"#2C5F7C" },
-            { label:"Resolved",      value:autoStats.resolved,     color:S.green,   bg:S.greenBg, accent:S.accent },
-            { label:"Pending",       value:autoStats.pending,      color:S.amber,   bg:S.amberBg, accent:"#C49A3C" },
-            { label:"In Progress",   value:autoStats.inprogress,   color:"#6B4E7D", bg:"#FFFFFF", accent:"#6B4E7D" },
+            { label:"Total Sites",   value:FACILITIES.length,   color:S.text,   bg:"rgba(255,255,255,0.05)", accent:"#818CF8" },
+            { label:"Operational",   value:counts.green,        color:S.green,  bg:S.greenBg,                accent:S.green  },
+            { label:"Degraded",      value:counts.amber,        color:S.amber,  bg:S.amberBg,                accent:S.amber  },
+            { label:"Critical",      value:counts.red,          color:S.red,    bg:S.redBg,                  accent:S.red    },
+            { label:"Queries Today", value:autoStats.received,  color:"#38BDF8",bg:"rgba(56,189,248,0.10)",  accent:"#38BDF8"},
+            { label:"Resolved",      value:autoStats.resolved,  color:S.green,  bg:S.greenBg,                accent:S.green  },
+            { label:"Pending",       value:autoStats.pending,   color:S.amber,  bg:S.amberBg,                accent:S.amber  },
+            { label:"In Progress",   value:autoStats.inprogress,color:"#A78BFA",bg:"rgba(167,139,250,0.10)", accent:"#A78BFA"},
           ].map(c => (
-            <div key={c.label} style={{ ...card, padding:"16px 18px", background:c.bg, borderLeft:`3px solid ${c.accent}` }}>
-              <div style={{ fontSize:10, color:S.textMuted, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase" as const, marginBottom:7 }}>{c.label}</div>
-              <div style={{ fontSize:28, fontWeight:700, color:c.color, lineHeight:1, letterSpacing:"-0.02em", fontVariantNumeric:"tabular-nums" }}>{c.value}</div>
+            <div key={c.label} style={{ ...card, padding:"16px 18px", background:c.bg, position:"relative" as const, overflow:"hidden" }}>
+              <span aria-hidden style={{ position:"absolute" as const, left:0, top:0, bottom:0, width:3, background:c.accent }} />
+              <div style={{ fontSize:9.5, color:S.textMuted, fontWeight:700, letterSpacing:"0.14em", textTransform:"uppercase" as const, marginBottom:9 }}>{c.label}</div>
+              <div style={{ fontFamily:S.mono, fontSize:28, fontWeight:600, color:c.color, lineHeight:1, letterSpacing:"-0.03em", fontVariantNumeric:"tabular-nums" }}>{c.value}</div>
             </div>
           ))}
         </div>
@@ -903,7 +943,7 @@ export default function Dashboard() {
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
                     <span style={{ fontSize:12, fontWeight:700, color:S.text }}>{p.title}</span>
                     <div style={{ display:"flex", gap:10 }}>
-                      {([["green","#1E7A5A",p.green],["amber","#C49A3C",p.amber],["red","#B85450",p.red]] as [string,string,number][]).map(([,dot,cnt])=>(
+                      {([["green","#10B981",p.green],["amber","#F59E0B",p.amber],["red","#F43F5E",p.red]] as [string,string,number][]).map(([,dot,cnt])=>(
                         <span key={dot} style={{ display:"flex", alignItems:"center", gap:4, fontSize:11, fontWeight:700, color:S.text }}>
                           <span style={{ width:7, height:7, borderRadius:"50%", background:dot }} />
                           {cnt}
@@ -912,9 +952,9 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div style={{ display:"flex", height:8, borderRadius:4, overflow:"hidden", gap:1 }}>
-                    {p.green>0 && <div style={{ flex:p.green/tot, background:"#1E7A5A" }} />}
-                    {p.amber>0 && <div style={{ flex:p.amber/tot, background:"#C49A3C" }} />}
-                    {p.red>0   && <div style={{ flex:p.red/tot,   background:"#B85450" }} />}
+                    {p.green>0 && <div style={{ flex:p.green/tot, background:"#10B981" }} />}
+                    {p.amber>0 && <div style={{ flex:p.amber/tot, background:"#F59E0B" }} />}
+                    {p.red>0   && <div style={{ flex:p.red/tot,   background:"#F43F5E" }} />}
                   </div>
                 </div>
               );
@@ -941,12 +981,12 @@ export default function Dashboard() {
           {/* live feed */}
           <div style={{ ...card, overflow:"hidden" }}>
             <div style={{ background:S.navyLight, padding:"10px 16px", display:"flex", alignItems:"center", gap:10 }}>
-              <div style={{ width:7, height:7, borderRadius:"50%", background:"#1E7A5A", animation:"pulse2 2s infinite" }} />
+              <div style={{ width:7, height:7, borderRadius:"50%", background:"#10B981", animation:"pulse2 2s infinite" }} />
               <span style={{ color:"#fff", fontWeight:700, fontSize:12 }}>Live RAG Status Feed</span>
-              <span style={{ background:"rgba(255,255,255,0.08)", color:"#8AA099", fontSize:10, padding:"1px 8px", borderRadius:20 }}>
+              <span style={{ background:"rgba(255,255,255,0.08)", color:"#64748B", fontSize:10, padding:"1px 8px", borderRadius:20 }}>
                 {activityLog.filter(l=>l.type==="status").length} changes
               </span>
-              <span style={{ marginLeft:"auto", color:"#4A6FA5", fontSize:10 }}>every 5s · last: {lastSync}</span>
+              <span style={{ marginLeft:"auto", color:"#64748B", fontSize:10 }}>every 5s · last: {lastSync}</span>
             </div>
             {(() => {
               const statusOnly = activityLog.filter(l => l.type === "status");
@@ -961,17 +1001,17 @@ export default function Dashboard() {
                     const isRed = l.newVal.includes("Down")||l.newVal.includes("Critical");
                     const isAmber = l.newVal.includes("Slow")||l.newVal.includes("Degraded");
                     const isGreen = l.newVal.includes("Working")||l.newVal.includes("OK")||l.newVal.includes("Sync");
-                    const dot = isRed?"#B85450":isAmber?"#C49A3C":isGreen?"#1E7A5A":"#8A9BA8";
-                    const nvC = isRed?"#7A2E2A":isAmber?"#6E5214":isGreen?"#0E3D2F":"#6b7280";
-                    const nvB = isRed?"#F3E6E5":isAmber?"#F5EDDA":isGreen?"#E6F0EB":"#EEF1F3";
-                    const nvBr = isRed?"#f5b8b8":isAmber?"#f5d48a":isGreen?"#a8d5b5":"#c8d0dc";
+                    const dot = isRed?"#F43F5E":isAmber?"#F59E0B":isGreen?"#10B981":"#94A3B8";
+                    const nvC = isRed?"#F43F5E":isAmber?"#F59E0B":isGreen?"#10B981":"#94A3B8";
+                    const nvB = isRed?"rgba(244,63,94,0.12)":isAmber?"rgba(245,158,11,0.12)":isGreen?"rgba(16,185,129,0.12)":"rgba(148,163,184,0.12)";
+                    const nvBr = isRed?"rgba(244,63,94,0.35)":isAmber?"rgba(245,158,11,0.35)":isGreen?"rgba(16,185,129,0.35)":"rgba(148,163,184,0.30)";
                     return (
-                      <div key={l.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"6px 16px", borderBottom:`1px solid ${S.border}`, background:i%2===0?"#fff":"#FAFBFC" }}>
+                      <div key={l.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"6px 16px", borderBottom:`1px solid ${S.border}`, background:i%2===0?"transparent":"rgba(255,255,255,0.03)" }}>
                         <span style={{ fontFamily:"monospace", fontSize:10, color:S.textLight, whiteSpace:"nowrap" as const, minWidth:140, flexShrink:0 }}>{l.ts}</span>
-                        <span style={{ fontWeight:700, color:S.navy, fontSize:11, minWidth:130, flexShrink:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{l.facility}</span>
+                        <span style={{ fontWeight:700, color:S.text, fontSize:11, minWidth:130, flexShrink:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{l.facility}</span>
                         <span style={{ fontSize:10, color:S.textMuted, minWidth:70, flexShrink:0 }}>{l.field}</span>
                         <span style={{ fontSize:10, color:S.textLight, textDecoration:"line-through", minWidth:80 }}>{l.oldVal}</span>
-                        <span style={{ color:"#C2CCC6", fontWeight:700, flexShrink:0 }}>→</span>
+                        <span style={{ color:"rgba(255,255,255,0.16)", fontWeight:700, flexShrink:0 }}>→</span>
                         <span style={{ display:"inline-flex", alignItems:"center", gap:4, background:nvB, border:`1px solid ${nvBr}`, color:nvC, padding:"2px 10px", borderRadius:20, fontSize:10, fontWeight:700, whiteSpace:"nowrap" as const }}>
                           <span style={{ width:5, height:5, borderRadius:"50%", background:dot }} />
                           {l.newVal}
@@ -996,10 +1036,10 @@ export default function Dashboard() {
               {(["all","green","amber","red"] as FilterMode[]).map(f => {
                 const active = filter === f;
                 const colors: Record<FilterMode,{bg:string;text:string;border:string}> = {
-                  all:   {bg:active?S.navy:"#F7F9F7", text:active?"#fff":S.textMuted, border:active?S.navy:S.border},
-                  green: {bg:active?S.greenBg:"#F7F9F7", text:active?S.green:S.textMuted, border:active?S.greenBorder:S.border},
-                  amber: {bg:active?S.amberBg:"#F7F9F7", text:active?S.amber:S.textMuted, border:active?S.amberBorder:S.border},
-                  red:   {bg:active?S.redBg:"#F7F9F7", text:active?S.red:S.textMuted, border:active?S.redBorder:S.border},
+                  all:   {bg:active?S.navy:"rgba(255,255,255,0.04)", text:active?"#fff":S.textMuted, border:active?S.navy:S.border},
+                  green: {bg:active?S.greenBg:"rgba(255,255,255,0.04)", text:active?S.green:S.textMuted, border:active?S.greenBorder:S.border},
+                  amber: {bg:active?S.amberBg:"rgba(255,255,255,0.04)", text:active?S.amber:S.textMuted, border:active?S.amberBorder:S.border},
+                  red:   {bg:active?S.redBg:"rgba(255,255,255,0.04)", text:active?S.red:S.textMuted, border:active?S.redBorder:S.border},
                 };
                 const labels: Record<FilterMode,string> = { all:"All", green:"Operational", amber:"Warning", red:"Critical" };
                 const c2 = colors[f];
@@ -1015,7 +1055,7 @@ export default function Dashboard() {
           <div style={{ overflowX:"auto" }}>
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
               <thead>
-                <tr style={{ background:"#F7F9F7", borderBottom:`2px solid ${S.border}` }}>
+                <tr style={{ background:"rgba(255,255,255,0.04)", borderBottom:`2px solid ${S.border}` }}>
                   {["#","FACILITY","CAT","INTERNET","BIOMETRIC","PRINTING","OVERALL","CUR BW","REQ BW","BW STATUS","REPORTED ISSUE","NOTES","UPDATED"].map(h=>(
                     <th key={h} style={{ textAlign:"left", padding:"10px 12px", color:S.textLight, fontWeight:600, fontSize:10, letterSpacing:.5, whiteSpace:"nowrap" }}>{h}</th>
                   ))}
@@ -1030,7 +1070,7 @@ export default function Dashboard() {
                   return (
                     <tr key={f.name} style={{ borderBottom:`1px solid ${S.border}` }}>
                       <td style={{ padding:"9px 12px", color:S.textLight, fontSize:11, fontWeight:600 }}>{i+1}</td>
-                      <td style={{ padding:"9px 12px", fontWeight:700, color:S.navy, whiteSpace:"nowrap" }}>{f.name}</td>
+                      <td style={{ padding:"9px 12px", fontWeight:700, color:S.text, whiteSpace:"nowrap" }}>{f.name}</td>
                       <td style={{ padding:"9px 12px" }}>
                         <span style={{ color:CAT_COLORS[f.cat]||S.textMuted, fontSize:10, fontWeight:700, background:`${CAT_COLORS[f.cat]}18`, padding:"2px 8px", borderRadius:20 }}>{f.cat}</span>
                       </td>
@@ -1061,14 +1101,14 @@ export default function Dashboard() {
                       <td style={{ padding:"9px 12px" }}>
                         <div style={{ display:"flex", alignItems:"center", gap:4 }}>
                           <input defaultValue={s.bandwidth} onBlur={e=>updateField(f.name,"bandwidth",e.target.value)} placeholder="0"
-                            style={{ background:"#E1EBF1", border:"1px solid #B3C9D6", borderRadius:6, padding:"4px 7px", color:"#2C5F7C", fontSize:11, width:52, fontWeight:600, textAlign:"center" as const }} />
+                            style={{ background:"rgba(56,189,248,0.12)", border:"1px solid rgba(56,189,248,0.35)", borderRadius:6, padding:"4px 7px", color:"#38BDF8", fontSize:11, width:52, fontWeight:600, textAlign:"center" as const }} />
                           <span style={{ fontSize:9, color:S.textLight }}>Mbps</span>
                         </div>
                       </td>
                       <td style={{ padding:"9px 12px" }}>
                         <div style={{ display:"flex", alignItems:"center", gap:4 }}>
                           <input defaultValue={s.requiredBandwidth} onBlur={e=>updateField(f.name,"requiredBandwidth",e.target.value)} placeholder="0"
-                            style={{ background:"#EDE7F1", border:"1px solid #CBBBD6", borderRadius:6, padding:"4px 7px", color:"#6B4E7D", fontSize:11, width:52, fontWeight:600, textAlign:"center" as const }} />
+                            style={{ background:"rgba(167,139,250,0.12)", border:"1px solid rgba(167,139,250,0.35)", borderRadius:6, padding:"4px 7px", color:"#A78BFA", fontSize:11, width:52, fontWeight:600, textAlign:"center" as const }} />
                           <span style={{ fontSize:9, color:S.textLight }}>Mbps</span>
                         </div>
                       </td>
@@ -1079,11 +1119,11 @@ export default function Dashboard() {
                       </td>
                       <td style={{ padding:"9px 12px" }}>
                         <input defaultValue={s.issue} onBlur={e=>updateField(f.name,"issue",e.target.value)} placeholder="Issue..."
-                          style={{ background:"#FFF8F8", border:"1px solid #FCA5A5", borderRadius:6, padding:"4px 8px", color:"#7f1d1d", fontSize:11, width:145 }} />
+                          style={{ background:"rgba(244,63,94,0.10)", border:"1px solid rgba(244,63,94,0.32)", borderRadius:6, padding:"4px 8px", color:"#FDA4AF", fontSize:11, width:145 }} />
                       </td>
                       <td style={{ padding:"9px 12px" }}>
                         <input defaultValue={s.notes} onBlur={e=>updateField(f.name,"notes",e.target.value)} placeholder="Notes..."
-                          style={{ background:"#FAFAFA", border:`1px solid ${S.border}`, borderRadius:6, padding:"4px 8px", color:S.text, fontSize:11, width:100 }} />
+                          style={{ background:"rgba(255,255,255,0.05)", border:`1px solid ${S.border}`, borderRadius:6, padding:"4px 8px", color:S.text, fontSize:11, width:100 }} />
                       </td>
                       <td style={{ padding:"9px 12px", fontFamily:"monospace", fontSize:10, color:S.textLight, whiteSpace:"nowrap" }}>{s.ts}</td>
                     </tr>
@@ -1107,7 +1147,7 @@ export default function Dashboard() {
                   {Object.keys(activeDowntime.current).length} Active
                 </span>
               )}
-              <span style={{ background:"#EFF2EE", border:"1px solid #D6DDD8", color:"#0E3D2F", padding:"4px 12px", borderRadius:20, fontSize:11, fontWeight:600 }}>
+              <span style={{ background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.14)", color:"#10B981", padding:"4px 12px", borderRadius:20, fontSize:11, fontWeight:600 }}>
                 {downtimeRecords.length} Records
               </span>
               <button onClick={()=>setShowDowntime(v=>!v)} style={{ ...btnPrimary, padding:"6px 14px", fontSize:11 }}>
@@ -1116,14 +1156,14 @@ export default function Dashboard() {
             </div>
           </div>
           {Object.entries(activeDowntime.current).length > 0 && (
-            <div style={{ padding:"12px 20px", background:"#FEF2F2", borderBottom:`1px solid #FECACA` }}>
+            <div style={{ padding:"12px 20px", background:"rgba(244,63,94,0.10)", borderBottom:`1px solid rgba(244,63,94,0.28)` }}>
               <div style={{ fontSize:11, fontWeight:700, color:S.red, marginBottom:8, textTransform:"uppercase" as const, letterSpacing:.5 }}>Currently Active Downtimes</div>
               <div style={{ display:"flex", flexWrap:"wrap" as const, gap:8 }}>
                 {Object.entries(activeDowntime.current).map(([key, val]) => {
                   const mins = Math.round((Date.now()-val.startMs)/60000);
                   const [fac] = key.split("__");
                   return (
-                    <div key={key} style={{ background:"#fff", border:"1px solid #FECACA", borderRadius:8, padding:"8px 14px", fontSize:11, display:"flex", alignItems:"center", gap:8 }}>
+                    <div key={key} style={{ background:"rgba(255,255,255,0.06)", border:"1px solid rgba(244,63,94,0.28)", borderRadius:8, padding:"8px 14px", fontSize:11, display:"flex", alignItems:"center", gap:8 }}>
                       <span style={{ width:8, height:8, borderRadius:"50%", background:S.red, animation:"pulse2 1s infinite" }} />
                       <span style={{ fontWeight:700, color:S.red }}>{fac}</span>
                       <span style={{ color:S.textMuted }}>·</span>
@@ -1143,7 +1183,7 @@ export default function Dashboard() {
               : (
                 <div style={{ overflowX:"auto", maxHeight:300, overflowY:"auto" }}>
                   <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
-                    <thead style={{ position:"sticky" as const, top:0, background:"#F7F9F7" }}>
+                    <thead style={{ position:"sticky" as const, top:0, background:"rgba(255,255,255,0.04)" }}>
                       <tr style={{ borderBottom:`2px solid ${S.border}` }}>
                         {["FACILITY","FIELD","WENT DOWN","RECOVERED","DURATION","SEVERITY"].map(h=>(
                           <th key={h} style={{ textAlign:"left", padding:"10px 14px", color:S.textLight, fontWeight:600, fontSize:10, letterSpacing:.5, whiteSpace:"nowrap" }}>{h}</th>
@@ -1157,12 +1197,12 @@ export default function Dashboard() {
                         const sev=r.durationMin>=60?{bg:S.redBg,text:S.red,label:"LONG"}:r.durationMin>=15?{bg:S.amberBg,text:S.amber,label:"MED"}:{bg:S.greenBg,text:S.green,label:"SHORT"};
                         return (
                           <tr key={r.id} style={{ borderBottom:`1px solid ${S.border}` }}>
-                            <td style={{ padding:"9px 14px", fontWeight:700, color:S.navy }}>{r.facility}</td>
+                            <td style={{ padding:"9px 14px", fontWeight:700, color:S.text }}>{r.facility}</td>
                             <td style={{ padding:"9px 14px", color:S.textMuted }}>{r.field}</td>
                             <td style={{ padding:"9px 14px", fontFamily:"monospace", fontSize:11, color:S.red }}>{r.startTs}</td>
                             <td style={{ padding:"9px 14px", fontFamily:"monospace", fontSize:11, color:S.green }}>{r.endTs}</td>
                             <td style={{ padding:"9px 14px" }}>
-                              <span style={{ background:"#EFF2EE", border:"1px solid #D6DDD8", color:"#0E3D2F", padding:"3px 10px", borderRadius:6, fontSize:11, fontWeight:600 }}>{dur}</span>
+                              <span style={{ background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.14)", color:"#10B981", padding:"3px 10px", borderRadius:6, fontSize:11, fontWeight:600 }}>{dur}</span>
                             </td>
                             <td style={{ padding:"9px 14px" }}>
                               <span style={{ background:sev.bg, color:sev.text, border:`1px solid ${sev.text}33`, padding:"3px 10px", borderRadius:6, fontSize:10, fontWeight:700 }}>{sev.label}</span>

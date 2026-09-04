@@ -1,7 +1,6 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type RAGStatus = "green" | "amber" | "red" | "na";
@@ -70,31 +69,6 @@ const D = {
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
 type RGB = [number, number, number];
-const gC: RGB=[30,122,90],   gL: RGB=[230,240,235], gD: RGB=[10,70,50];
-const aC: RGB=[196,154,60],  aL: RGB=[245,237,218], aD: RGB=[110,82,20];
-const rC: RGB=[184,84,80],   rL: RGB=[243,230,229], rD: RGB=[120,36,32];
-const nC: RGB=[138,155,168], nL: RGB=[238,241,243], nD: RGB=[80,96,110];
-const ragFill  = (s: RAGStatus): RGB => ({green:gL,amber:aL,red:rL,na:nL})[s];
-const ragText  = (s: RAGStatus): RGB => ({green:gD,amber:aD,red:rD,na:nD})[s];
-const ragAccent= (s: RAGStatus): RGB => ({green:gC,amber:aC,red:rC,na:nC})[s];
-const ragLabel = (s: RAGStatus) => ({green:"Operational",amber:"Degraded",red:"Critical",na:"Not Set"})[s];
-const iLabel   = (s: RAGStatus) => ({green:"Active",amber:"Unstable",red:"Down",na:"—"})[s];
-const bLabel   = (s: RAGStatus) => ({green:"Syncing",amber:"Delayed",red:"Offline",na:"—"})[s];
-const pLabel   = (s: RAGStatus) => ({green:"Online",amber:"Partial",red:"Down",na:"—"})[s];
-
-const CAT_C:  Record<string, RGB> = {
-  Imarat:[0,148,136], Projects:[40,76,220], Graana:[110,40,210], Agency21:[200,76,14],
-};
-const CAT_BG: Record<string, RGB> = {
-  Imarat:[205,248,242], Projects:[218,228,255], Graana:[236,222,255], Agency21:[255,226,208],
-};
-const CAT_HEX: Record<string, string> = {
-  Imarat:"#00948A", Projects:"#2850DC", Graana:"#6E28D2", Agency21:"#C84C0E",
-};
-const CAT_BGHEX: Record<string, string> = {
-  Imarat:"#CDFAF2", Projects:"#DAE4FF", Graana:"#ECDEff", Agency21:"#FFE2D0",
-};
-
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function PanelSection({ title, children }: { title: string; children: React.ReactNode }) {
@@ -183,7 +157,7 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
     const update = () => {
       if (containerRef.current) {
         const w = containerRef.current.clientWidth - 32;
-        setScale(Math.min(w / 930, 1));
+        setScale(Math.min(w / 960, 1));
       }
     };
     update();
@@ -191,7 +165,6 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
     if (containerRef.current) ro.observe(containerRef.current);
     return () => ro.disconnect();
   }, []);
-
 
   const total = facilities.length || 1;
   const healthPct = counts.green / total;
@@ -202,40 +175,62 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
   const timeStr = new Date().toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", hour12:true });
   const cats = ["Imarat","Projects","Graana","Agency21"] as const;
 
-  // ── Forest-green editorial palette ────────────────────────────────────────
-  const GRN="#1E7A5A", AMB="#C49A3C", CRT="#B85450", SLT="#8A9BA8";
-  const PAGE_C="#F4F6F3", SURF="#FFFFFF", SURF_ALT="#EFF2EE";
-  const BDR_S="rgba(18,28,30,0.08)", BRAND="#0E3D2F", GOLD_C="#C8A86A";
-  const INK_C="#12201C", TXT2="#5A6F68", MUT_C="#8AA099", GRN_BG="#E6F0EB";
-  const ff="'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif";
-  const healthColor = healthPct>=0.8?GRN:healthPct>=0.5?AMB:CRT;
+  // ── Aurora Glass tokens ───────────────────────────────────────────────────
+  const OK="#10B981", WARN="#F59E0B", CRIT="#F43F5E", OFF="#64748B";
+  const CYAN="#22D3EE", INDIGO="#6366F1";
+  const INK="#F8FAFC", DIM="#94A3B8", FAINT="#64748B";
+  const GLASS="rgba(255,255,255,0.06)", EDGE="rgba(255,255,255,0.12)";
+  const TRACK="rgba(255,255,255,0.08)";
+  const UI="'Plus Jakarta Sans','Segoe UI',system-ui,sans-serif";
+  const MONO="'IBM Plex Mono','SFMono-Regular',ui-monospace,monospace";
+  const hue = healthPct>=0.8?OK:healthPct>=0.5?WARN:CRIT;
 
-  // Panel — white surface, hairline border, uppercase eyebrow label
-  const Card = ({ title, children, dark=false, style }: { title:string; children:React.ReactNode; dark?:boolean; style?:React.CSSProperties }) => (
-    <div style={{ background: dark?"radial-gradient(120% 120% at 20% 20%, #183E34 0%, #0F2420 55%, #0B1E1A 100%)":SURF, borderRadius:12, border: dark?"none":`1px solid ${BDR_S}`, display:"flex", flexDirection:"column" as const, overflow:"hidden", ...style }}>
-      <div style={{ padding:"16px 18px 0 18px", flexShrink:0 }}>
-        <div style={{ fontSize:11, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase" as const, color: dark?"rgba(255,255,255,0.5)":TXT2, marginBottom:12 }}>{title}</div>
+  // 8pt spacing scale — every gap/pad below is a multiple
+  const PAD=20, GAP=16, RAD=16;
+
+  // Frosted panel. Header baseline is identical across every instance.
+  const Glass = ({ title, meta, children, style }:{ title:string; meta?:React.ReactNode; children:React.ReactNode; style?:React.CSSProperties }) => (
+    <div style={{ background:GLASS, backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)",
+                  border:`1px solid ${EDGE}`, borderRadius:RAD, position:"relative" as const,
+                  overflow:"hidden", display:"flex", flexDirection:"column" as const,
+                  boxShadow:"0 8px 32px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.10)", ...style }}>
+      <div style={{ padding:`${PAD}px ${PAD}px 0 ${PAD}px`, flexShrink:0, display:"flex", alignItems:"center", gap:8, height:38 }}>
+        <span style={{ fontFamily:UI, fontSize:10, fontWeight:800, letterSpacing:"0.14em", textTransform:"uppercase" as const, color:DIM }}>{title}</span>
+        {meta && <span style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:8 }}>{meta}</span>}
       </div>
-      <div style={{ flex:1, padding:"0 18px 16px 18px", overflow:"hidden" }}>{children}</div>
+      <div style={{ flex:1, padding:`8px ${PAD}px ${PAD}px ${PAD}px`, minHeight:0 }}>{children}</div>
     </div>
   );
 
-  // Multi-segment donut for the dark hero panel
-  const RD=38, CD=2*Math.PI*RD;
-  const HeroDonut = () => {
-    const segs=[{v:counts.green,c:GRN},{v:counts.amber,c:AMB},{v:counts.red,c:CRT},{v:counts.na||0,c:SLT}];
+  const Fig = ({ v, size=13, color=INK }:{ v:React.ReactNode; size?:number; color?:string }) => (
+    <span style={{ fontFamily:MONO, fontSize:size, fontWeight:600, color, fontVariantNumeric:"tabular-nums", letterSpacing:"-0.01em" }}>{v}</span>
+  );
+
+  // Segmented meter — one shared bar spec everywhere
+  const Meter = ({ segs, h=6 }:{ segs:{v:number;c:string}[]; h?:number }) => {
+    const tot=segs.reduce((s,x)=>s+x.v,0)||1;
+    return (
+      <div style={{ height:h, background:TRACK, borderRadius:h/2, display:"flex", overflow:"hidden" }}>
+        {segs.map((s,i)=> s.v>0 ? <div key={i} style={{ width:`${s.v/tot*100}%`, background:s.c }}/> : null)}
+      </div>
+    );
+  };
+
+  const RD=44, CIRC=2*Math.PI*RD;
+  const Ring = () => {
+    const segs=[{v:counts.green,c:OK},{v:counts.amber,c:WARN},{v:counts.red,c:CRIT},{v:counts.na||0,c:OFF}];
     const tot=segs.reduce((s,r)=>s+r.v,0)||1;
     let cum=0;
     return (
-      <svg width="112" height="112" viewBox="0 0 112 112">
-        <circle cx="56" cy="56" r={RD} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="14"/>
-        {segs.map((seg,si)=>{
+      <svg width="124" height="124" viewBox="0 0 124 124" style={{ display:"block" }}>
+        <circle cx="62" cy="62" r={RD} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="12"/>
+        {segs.map((seg,i)=>{
           if(!seg.v) return null;
-          const len=CD*(seg.v/tot), off=-CD*cum;
+          const len=CIRC*(seg.v/tot), off=-CIRC*cum;
           cum+=seg.v/tot;
-          return <circle key={si} cx="56" cy="56" r={RD} fill="none" stroke={seg.c} strokeWidth="14"
-            strokeDasharray={`${len} ${CD-len}`} strokeDashoffset={off}
-            style={{ transform:"rotate(-90deg)", transformOrigin:"56px 56px" }} strokeLinecap="butt"/>;
+          return <circle key={i} cx="62" cy="62" r={RD} fill="none" stroke={seg.c} strokeWidth="12"
+            strokeDasharray={`${len} ${CIRC-len}`} strokeDashoffset={off} strokeLinecap="butt"
+            style={{ transform:"rotate(-90deg)", transformOrigin:"62px 62px" }}/>;
         })}
       </svg>
     );
@@ -247,255 +242,231 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
     :counts.amber>0?`${counts.amber} site${counts.amber>1?"s":""} in degraded state. No critical failures at this time.`
     :`All ${counts.green} facilities fully operational across all monitored services.`;
 
+  const statRows=[
+    {l:"Operational",v:counts.green,c:OK},
+    {l:"Degraded",v:counts.amber,c:WARN},
+    {l:"Critical",v:counts.red,c:CRIT},
+    {l:"Not Set",v:counts.na||0,c:OFF},
+  ];
+
   return (
     <div ref={containerRef} style={{ width:"100%", display:"flex", flexDirection:"column" as const, alignItems:"center" }}>
-      <div style={{ transform:`scale(${scale})`, transformOrigin:"top center", width:930, transition:"transform 0.15s" }}>
-        <div style={{ width:930, background:PAGE_C, fontFamily:ff, borderRadius:10, overflow:"hidden", boxShadow:"0 8px 40px rgba(18,28,30,0.16)" }}>
+      <div style={{ transform:`scale(${scale})`, transformOrigin:"top center", width:960, transition:"transform 0.15s" }}>
+        <div style={{ width:960, position:"relative" as const, background:"#0B1120", fontFamily:UI,
+                      borderRadius:14, overflow:"hidden", boxShadow:"0 24px 80px rgba(0,0,0,0.5)" }}>
+
+          {/* AURORA FIELD */}
+          <div aria-hidden style={{ position:"absolute" as const, inset:0, pointerEvents:"none" as const }}>
+            <div style={{ position:"absolute" as const, top:-160, left:-80, width:520, height:520, borderRadius:"50%",
+                          background:`radial-gradient(circle, ${INDIGO}44 0%, transparent 68%)`, filter:"blur(28px)" }}/>
+            <div style={{ position:"absolute" as const, top:-120, right:-60, width:460, height:460, borderRadius:"50%",
+                          background:`radial-gradient(circle, ${CYAN}38 0%, transparent 68%)`, filter:"blur(28px)" }}/>
+            <div style={{ position:"absolute" as const, bottom:-200, left:"32%", width:560, height:460, borderRadius:"50%",
+                          background:`radial-gradient(circle, ${OK}2E 0%, transparent 70%)`, filter:"blur(32px)" }}/>
+          </div>
 
           {/* HEADER */}
-          <div style={{ background:SURF, borderBottom:`1px solid ${BDR_S}`, display:"flex", alignItems:"center", padding:"0 24px", height:58 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:13 }}>
-              <div style={{ width:32, height:32, borderRadius:8, background:BRAND, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                <span style={{ fontSize:12, fontWeight:700, color:GOLD_C, letterSpacing:"0.06em" }}>IG</span>
+          <div style={{ position:"relative" as const, height:72, display:"flex", alignItems:"center",
+                        padding:`0 ${PAD+4}px`, borderBottom:`1px solid ${EDGE}`,
+                        background:"rgba(255,255,255,0.04)", backdropFilter:"blur(20px)" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+              <div style={{ width:36, height:36, borderRadius:11, display:"flex", alignItems:"center", justifyContent:"center",
+                            background:`linear-gradient(135deg, ${INDIGO} 0%, ${CYAN} 100%)`,
+                            boxShadow:`0 4px 16px ${INDIGO}55` }}>
+                <span style={{ fontSize:13, fontWeight:800, color:"#fff", letterSpacing:"0.02em" }}>IG</span>
               </div>
               <div>
-                <div style={{ fontSize:13.5, fontWeight:700, color:INK_C, letterSpacing:"0.14em" }}>IMARAT</div>
-                <div style={{ fontSize:9, color:MUT_C, letterSpacing:"0.04em", marginTop:1 }}>Group of Companies · IT Department</div>
+                <div style={{ fontSize:14, fontWeight:800, color:INK, letterSpacing:"0.16em", lineHeight:1.1 }}>IMARAT</div>
+                <div style={{ fontSize:9, color:FAINT, letterSpacing:"0.08em", marginTop:3 }}>GROUP OF COMPANIES · IT</div>
               </div>
             </div>
-            <div style={{ width:1, height:28, background:BDR_S, margin:"0 20px" }}/>
-            <div style={{ flex:1 }}>
-              <div style={{ fontSize:13, fontWeight:600, color:INK_C, letterSpacing:"-0.01em" }}>{cfg.title}</div>
-              <div style={{ fontSize:9.5, color:MUT_C, marginTop:2 }}>{cfg.org} · {cfg.period||dateStr}</div>
+
+            <div style={{ width:1, height:32, background:EDGE, margin:`0 ${PAD}px` }}/>
+
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:14, fontWeight:700, color:INK, letterSpacing:"-0.01em",
+                            whiteSpace:"nowrap" as const, overflow:"hidden", textOverflow:"ellipsis" }}>{cfg.title}</div>
+              <div style={{ fontSize:10, color:FAINT, marginTop:3 }}>{cfg.org} · {cfg.period||dateStr}</div>
             </div>
-            <div style={{ display:"flex", alignItems:"center", gap:7, background:GRN_BG, borderRadius:20, padding:"6px 14px", marginRight:20 }}>
-              <div style={{ width:7, height:7, borderRadius:"50%", background:healthColor }}/>
-              <span style={{ fontSize:11, fontWeight:600, color:BRAND }}>{Math.round(healthPct*100)}% Operational</span>
+
+            {/* live health capsule */}
+            <div style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 14px", borderRadius:999,
+                          background:`${hue}1A`, border:`1px solid ${hue}59` }}>
+              <span style={{ width:7, height:7, borderRadius:"50%", background:hue, boxShadow:`0 0 10px ${hue}` }}/>
+              <Fig v={`${Math.round(healthPct*100)}%`} size={12} color={hue}/>
+              <span style={{ fontSize:11, fontWeight:600, color:hue }}>operational</span>
             </div>
-            <div style={{ textAlign:"right" as const }}>
-              <div style={{ fontSize:12, fontWeight:600, color:INK_C }}>{dateStr}</div>
-              <div style={{ fontSize:9.5, color:MUT_C, marginTop:2 }}>{timeStr}</div>
+
+            <div style={{ textAlign:"right" as const, marginLeft:PAD }}>
+              <div style={{ fontFamily:MONO, fontSize:12, fontWeight:600, color:INK, fontVariantNumeric:"tabular-nums" }}>{dateStr}</div>
+              <div style={{ fontFamily:MONO, fontSize:10, color:FAINT, marginTop:3 }}>{timeStr}</div>
             </div>
           </div>
 
-          {/* BODY */}
-          <div style={{ padding:"14px", display:"flex", flexDirection:"column" as const, gap:10 }}>
+          {/* BODY — 12-col grid, uniform GAP */}
+          <div style={{ position:"relative" as const, padding:GAP, display:"flex", flexDirection:"column" as const, gap:GAP }}>
 
             {/* ROW 1 */}
-            <div style={{ display:"flex", gap:10, height:200 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(12,1fr)", gap:GAP, height:216 }}>
 
-              {/* 1 · Facility Health */}
-              <Card title="Facility Health" style={{ width:258 }}>
-                <div style={{ display:"flex", flexDirection:"column" as const }}>
-                  {[
-                    {l:"Overall Health",v:`${Math.round(healthPct*100)}%`,c:healthColor,hero:true},
-                    {l:"Total Sites",v:String(total),c:INK_C,hero:false},
-                    {l:"Operational",v:String(counts.green),c:GRN,hero:false},
-                    {l:"Degraded",v:String(counts.amber),c:AMB,hero:false},
-                    {l:"Critical",v:String(counts.red),c:CRT,hero:false},
-                    {l:"Not Configured",v:String(counts.na||0),c:SLT,hero:false},
-                  ].map((r,ri)=>(
-                    <div key={r.l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6.5px 0", borderBottom: ri<5?`1px solid ${BDR_S}`:"none" }}>
-                      <span style={{ fontSize:11.5, color:TXT2 }}>{r.l}</span>
-                      <span style={{ fontSize:r.hero?19:12.5, fontWeight:r.hero?700:600, color:r.c, fontVariantNumeric:"tabular-nums", letterSpacing:r.hero?"-0.02em":"0" }}>{r.v}</span>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-
-              {/* 2 · Status Overview — dark hero panel */}
-              <Card title="Status Overview" dark style={{ width:242 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:14, height:"100%" }}>
-                  <div style={{ position:"relative" as const, flexShrink:0 }}>
-                    <HeroDonut/>
-                    <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column" as const, alignItems:"center", justifyContent:"center" }}>
-                      <div style={{ fontSize:25, fontWeight:700, color:"#fff", lineHeight:1, letterSpacing:"-0.02em" }}>{total}</div>
-                      <div style={{ fontSize:9, color:"rgba(255,255,255,0.45)", marginTop:3 }}>sites</div>
-                    </div>
+              {/* Health — 4 col */}
+              <Glass title="Facility Health" style={{ gridColumn:"span 4" }}>
+                <div style={{ display:"flex", flexDirection:"column" as const, height:"100%" }}>
+                  <div style={{ display:"flex", alignItems:"baseline", gap:8, marginBottom:14 }}>
+                    <span style={{ fontFamily:MONO, fontSize:42, fontWeight:600, color:hue, lineHeight:1,
+                                   letterSpacing:"-0.03em", fontVariantNumeric:"tabular-nums" }}>{Math.round(healthPct*100)}</span>
+                    <span style={{ fontFamily:MONO, fontSize:18, fontWeight:500, color:`${hue}99` }}>%</span>
+                    <span style={{ marginLeft:"auto", fontSize:10, color:FAINT, letterSpacing:"0.06em" }}>
+                      <Fig v={counts.green} size={11} color={DIM}/> / <Fig v={total} size={11} color={FAINT}/> sites
+                    </span>
                   </div>
-                  <div style={{ flex:1, display:"flex", flexDirection:"column" as const, gap:9 }}>
-                    {([{v:counts.green,l:"Operational",c:GRN},{v:counts.amber,l:"Degraded",c:AMB},{v:counts.red,l:"Critical",c:CRT},{v:counts.na||0,l:"Not Set",c:SLT}]).map(s=>(
-                      <div key={s.l} style={{ display:"flex", alignItems:"center", gap:8 }}>
-                        <div style={{ width:6, height:6, borderRadius:"50%", background:s.c, flexShrink:0 }}/>
-                        <span style={{ flex:1, fontSize:11, color:"rgba(255,255,255,0.55)" }}>{s.l}</span>
-                        <span style={{ fontSize:13, fontWeight:700, color:s.c, fontVariantNumeric:"tabular-nums" }}>{s.v}</span>
+                  <Meter segs={[{v:counts.green,c:OK},{v:counts.amber,c:WARN},{v:counts.red,c:CRIT},{v:counts.na||0,c:OFF}]} h={6}/>
+                  <div style={{ marginTop:16, display:"flex", flexDirection:"column" as const, gap:0 }}>
+                    {statRows.map((r,i)=>(
+                      <div key={r.l} style={{ display:"flex", alignItems:"center", gap:10, height:28,
+                                              borderTop: i===0?"none":`1px solid rgba(255,255,255,0.06)` }}>
+                        <span style={{ width:6, height:6, borderRadius:"50%", background:r.c, flexShrink:0 }}/>
+                        <span style={{ flex:1, fontSize:11.5, color:DIM }}>{r.l}</span>
+                        <Fig v={r.v} size={13} color={r.c}/>
                       </div>
                     ))}
                   </div>
                 </div>
-              </Card>
+              </Glass>
 
-              {/* 3 · Division Progress */}
-              <Card title="Division Progress" style={{ flex:1 }}>
-                <div style={{ display:"flex", flexDirection:"column" as const, gap:12 }}>
+              {/* Status ring — 4 col */}
+              <Glass title="Status Distribution" style={{ gridColumn:"span 4" }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:18, height:"100%" }}>
+                  <div style={{ position:"relative" as const, flexShrink:0 }}>
+                    <Ring/>
+                    <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column" as const,
+                                  alignItems:"center", justifyContent:"center" }}>
+                      <span style={{ fontFamily:MONO, fontSize:30, fontWeight:600, color:INK, lineHeight:1,
+                                     letterSpacing:"-0.03em", fontVariantNumeric:"tabular-nums" }}>{total}</span>
+                      <span style={{ fontSize:9, color:FAINT, letterSpacing:"0.12em", marginTop:5 }}>SITES</span>
+                    </div>
+                  </div>
+                  <div style={{ display:"flex", flexDirection:"column" as const, gap:12, minWidth:104 }}>
+                    {statRows.map(r=>(
+                      <div key={r.l} style={{ display:"flex", alignItems:"center", gap:9 }}>
+                        <span style={{ width:8, height:8, borderRadius:3, background:r.c, flexShrink:0 }}/>
+                        <span style={{ flex:1, fontSize:11, color:DIM }}>{r.l}</span>
+                        <Fig v={r.v} size={13} color={r.c}/>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </Glass>
+
+              {/* Divisions — 4 col */}
+              <Glass title="Division Progress" style={{ gridColumn:"span 4" }}>
+                <div style={{ display:"flex", flexDirection:"column" as const, gap:13 }}>
                   {cats.map(cat=>{
                     const facs=facilities.filter(f=>f.cat===cat);
-                    const grn=facs.filter(f=>calcOverall(state[f.name]??defState())==="green").length;
-                    const amb=facs.filter(f=>calcOverall(state[f.name]??defState())==="amber").length;
-                    const red=facs.filter(f=>calcOverall(state[f.name]??defState())==="red").length;
-                    const hlth=facs.length>0?Math.round(grn/facs.length*100):0;
+                    const g=facs.filter(f=>calcOverall(state[f.name]??defState())==="green").length;
+                    const a=facs.filter(f=>calcOverall(state[f.name]??defState())==="amber").length;
+                    const r=facs.filter(f=>calcOverall(state[f.name]??defState())==="red").length;
+                    const pct=facs.length>0?Math.round(g/facs.length*100):0;
+                    const pc=pct>=80?OK:pct>=50?WARN:CRIT;
                     return (
                       <div key={cat}>
-                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:5 }}>
-                          <span style={{ fontSize:12, color:INK_C, fontWeight:500 }}>{cat}</span>
-                          <div style={{ display:"flex", alignItems:"baseline", gap:9 }}>
-                            <span style={{ fontSize:10.5, color:MUT_C }}>{facs.length} sites</span>
-                            <span style={{ fontSize:13, fontWeight:700, color: hlth>=80?GRN:hlth>=50?AMB:CRT, fontVariantNumeric:"tabular-nums" }}>{hlth}%</span>
-                          </div>
+                        <div style={{ display:"flex", alignItems:"baseline", marginBottom:6 }}>
+                          <span style={{ fontSize:12, color:INK, fontWeight:600 }}>{cat}</span>
+                          <span style={{ marginLeft:"auto", display:"flex", alignItems:"baseline", gap:8 }}>
+                            <Fig v={facs.length} size={10} color={FAINT}/>
+                            <Fig v={`${pct}%`} size={13} color={pc}/>
+                          </span>
                         </div>
-                        <div style={{ height:6, background:SURF_ALT, borderRadius:3, display:"flex", overflow:"hidden" }}>
-                          {grn>0&&<div style={{ width:`${grn/Math.max(facs.length,1)*100}%`, background:GRN }}/>}
-                          {amb>0&&<div style={{ width:`${amb/Math.max(facs.length,1)*100}%`, background:AMB }}/>}
-                          {red>0&&<div style={{ width:`${red/Math.max(facs.length,1)*100}%`, background:CRT }}/>}
-                        </div>
+                        <Meter segs={[{v:g,c:OK},{v:a,c:WARN},{v:r,c:CRIT}]} h={6}/>
                       </div>
                     );
                   })}
                 </div>
-              </Card>
+              </Glass>
             </div>
 
             {/* ROW 2 */}
-            <div style={{ display:"flex", gap:10, height:208 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(12,1fr)", gap:GAP, height:212 }}>
 
-              {/* 4 · Service Availability */}
-              <Card title="Service Availability" style={{ width:360 }}>
-                <div style={{ display:"flex", flexDirection:"column" as const, gap:15 }}>
+              {/* Services — 5 col */}
+              <Glass title="Service Availability" style={{ gridColumn:"span 5" }}>
+                <div style={{ display:"flex", flexDirection:"column" as const, gap:16 }}>
                   {(["internet","bio","printing"] as const).map((key,ki)=>{
                     const lbls=["Internet","Biometric","Printing"];
                     const vals=sorted.map(f=>(state[f.name]??defState())[key]);
-                    const sg=vals.filter(v=>v==="green").length;
-                    const sa=vals.filter(v=>v==="amber").length;
-                    const sr=vals.filter(v=>v==="red").length;
-                    const sh=vals.length>0?sg/vals.length:0;
-                    const shC=sh>=0.8?GRN:sh>=0.5?AMB:CRT;
+                    const g=vals.filter(v=>v==="green").length;
+                    const a=vals.filter(v=>v==="amber").length;
+                    const r=vals.filter(v=>v==="red").length;
+                    const sh=vals.length>0?g/vals.length:0;
+                    const sc=sh>=0.8?OK:sh>=0.5?WARN:CRIT;
                     return (
                       <div key={key}>
-                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:5 }}>
-                          <span style={{ fontSize:12, color:INK_C, fontWeight:500 }}>{lbls[ki]}</span>
-                          <div style={{ display:"flex", alignItems:"baseline", gap:8 }}>
-                            <span style={{ fontSize:10.5, color:MUT_C, fontVariantNumeric:"tabular-nums" }}>{sg}/{vals.length}</span>
-                            <span style={{ fontSize:12, fontWeight:700, color:shC, fontVariantNumeric:"tabular-nums" }}>{Math.round(sh*100)}%</span>
-                          </div>
+                        <div style={{ display:"flex", alignItems:"baseline", marginBottom:6 }}>
+                          <span style={{ fontSize:12, color:INK, fontWeight:600 }}>{lbls[ki]}</span>
+                          <span style={{ marginLeft:"auto", display:"flex", alignItems:"baseline", gap:10 }}>
+                            <span style={{ fontFamily:MONO, fontSize:10, color:FAINT, fontVariantNumeric:"tabular-nums" }}>{g}/{vals.length}</span>
+                            <Fig v={`${Math.round(sh*100)}%`} size={13} color={sc}/>
+                          </span>
                         </div>
-                        <div style={{ height:5, background:SURF_ALT, borderRadius:3, display:"flex", overflow:"hidden" }}>
-                          {sg>0&&<div style={{ width:`${sg/Math.max(vals.length,1)*100}%`, background:GRN }}/>}
-                          {sa>0&&<div style={{ width:`${sa/Math.max(vals.length,1)*100}%`, background:AMB }}/>}
-                          {sr>0&&<div style={{ width:`${sr/Math.max(vals.length,1)*100}%`, background:CRT }}/>}
-                        </div>
+                        <Meter segs={[{v:g,c:OK},{v:a,c:WARN},{v:r,c:CRIT}]} h={6}/>
                       </div>
                     );
                   })}
                 </div>
-              </Card>
+              </Glass>
 
-              {/* 6 · Facility Overview */}
-              <Card title="Facility Overview" style={{ flex:1 }}>
-                <div style={{ display:"flex", flexWrap:"wrap" as const, gap:4 }}>
+              {/* Facility grid — 7 col */}
+              <Glass title="Facility Overview"
+                     meta={<>
+                       {statRows.slice(0,3).map(r=>(
+                         <span key={r.l} style={{ display:"flex", alignItems:"center", gap:5 }}>
+                           <span style={{ width:6, height:6, borderRadius:"50%", background:r.c }}/>
+                           <span style={{ fontFamily:MONO, fontSize:10, color:DIM, fontVariantNumeric:"tabular-nums" }}>{r.v}</span>
+                         </span>
+                       ))}
+                     </>}
+                     style={{ gridColumn:"span 7" }}>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(11,1fr)", gap:6 }}>
                   {sorted.map((f,fi)=>{
                     const ov=calcOverall(state[f.name]??defState());
-                    const c=ov==="green"?GRN:ov==="amber"?AMB:ov==="red"?CRT:SLT;
-                    const bg=ov==="green"?GRN_BG:ov==="amber"?"#F5EDDA":ov==="red"?"#F3E6E5":"#EEF1F3";
+                    const c=ov==="green"?OK:ov==="amber"?WARN:ov==="red"?CRIT:OFF;
                     return (
-                      <div key={f.name} title={f.name} style={{ width:22, height:22, borderRadius:4, background:bg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:8, fontWeight:600, color:c, flexShrink:0, fontVariantNumeric:"tabular-nums" }}>
+                      <div key={f.name} title={f.name}
+                           style={{ aspectRatio:"1", borderRadius:7, background:`${c}1F`, border:`1px solid ${c}59`,
+                                    display:"flex", alignItems:"center", justifyContent:"center",
+                                    fontFamily:MONO, fontSize:9, fontWeight:600, color:c,
+                                    fontVariantNumeric:"tabular-nums" }}>
                         {fi+1}
                       </div>
                     );
                   })}
                 </div>
-                <div style={{ display:"flex", gap:16, marginTop:12 }}>
-                  {([{c:GRN,l:`${counts.green} Operational`},{c:AMB,l:`${counts.amber} Degraded`},{c:CRT,l:`${counts.red} Critical`}]).map(d=>(
-                    <div key={d.l} style={{ display:"flex", alignItems:"center", gap:6 }}>
-                      <div style={{ width:6, height:6, borderRadius:"50%", background:d.c, flexShrink:0 }}/>
-                      <span style={{ fontSize:10, color:TXT2 }}>{d.l}</span>
-                    </div>
-                  ))}
-                </div>
-              </Card>
+              </Glass>
             </div>
 
-            {/* INSIGHT STRIP */}
-            <div style={{ background:BRAND, borderRadius:8, padding:"11px 20px", display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ width:3, height:20, background:GOLD_C, borderRadius:2, flexShrink:0 }}/>
-              <span style={{ fontSize:10, fontWeight:600, color:GOLD_C, letterSpacing:"0.1em", textTransform:"uppercase" as const, flexShrink:0 }}>Insight</span>
-              <div style={{ width:1, height:14, background:"rgba(200,168,106,0.28)", flexShrink:0 }}/>
-              <span style={{ fontSize:12, color:"rgba(255,255,255,0.78)", lineHeight:1.5 }}>{insightText}</span>
+            {/* INSIGHT */}
+            <div style={{ display:"flex", alignItems:"center", gap:14, padding:`14px ${PAD}px`, borderRadius:RAD,
+                          background:GLASS, backdropFilter:"blur(20px)", border:`1px solid ${EDGE}`,
+                          boxShadow:"inset 0 1px 0 rgba(255,255,255,0.10)" }}>
+              <span style={{ width:3, height:22, borderRadius:2, flexShrink:0,
+                             background:`linear-gradient(180deg, ${CYAN}, ${INDIGO})` }}/>
+              <span style={{ fontSize:9.5, fontWeight:800, letterSpacing:"0.14em", color:CYAN, flexShrink:0 }}>INSIGHT</span>
+              <span style={{ fontSize:12.5, color:DIM, lineHeight:1.5 }}>{insightText}</span>
             </div>
-
           </div>
 
           {/* FOOTER */}
-          <div style={{ background:SURF, borderTop:`1px solid ${BDR_S}`, padding:"9px 24px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-            <div style={{ fontSize:10.5, color:MUT_C }}>{cfg.org} · IT Department · it.support@imarat.com.pk</div>
-            {cfg.includeTs&&<div style={{ fontSize:10.5, color:MUT_C }}>Confidential · System Generated</div>}
-            <div style={{ fontSize:10.5, color:MUT_C }}>imarat.com.pk · {dateStr}</div>
+          <div style={{ position:"relative" as const, display:"flex", alignItems:"center", height:44,
+                        padding:`0 ${PAD+4}px`, borderTop:`1px solid ${EDGE}`, background:"rgba(255,255,255,0.03)" }}>
+            <span style={{ fontSize:10, color:FAINT }}>{cfg.org} · IT Department · it.support@imarat.com.pk</span>
+            {cfg.includeTs && <span style={{ margin:"0 auto", fontSize:10, color:FAINT, letterSpacing:"0.08em" }}>CONFIDENTIAL · SYSTEM GENERATED</span>}
+            <span style={{ marginLeft:cfg.includeTs?0:"auto", fontSize:10, color:FAINT }}>imarat.com.pk</span>
           </div>
-
         </div>
       </div>
-      <div style={{ fontSize:11, color:MUT_C, marginTop:12, fontFamily:ff }}>
-        Single Page · A4 {cfg.orientation==="landscape"?"Landscape":"Portrait"} · RAG Report
-      </div>
-    </div>
-  );
 
-}
-
-// ─── Export Progress ──────────────────────────────────────────────────────────
-const STAGES = [
-  { icon: "⬡", label: "Preparing report data",          sub: "Collecting facility status from database" },
-  { icon: "◈", label: "Generating visualisations",       sub: "Building KPI cards and division overview" },
-  { icon: "◉", label: "Composing report sections",       sub: "Laying out header, tables and content" },
-  { icon: "◎", label: "Applying branding & formatting",  sub: "Embedding logo and corporate identity" },
-  { icon: "⊕", label: "Finalising & exporting PDF",      sub: "Compressing and packaging document" },
-];
-
-function ExportProgress({ stage }: { stage: number }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column" as const, alignItems: "center", justifyContent: "center", height: "100%", padding: 48 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: D.goldL, letterSpacing: 1, marginBottom: 32, textTransform: "uppercase" as const }}>Generating Report</div>
-      <div style={{ width: "100%", maxWidth: 440 }}>
-        {STAGES.map((s, i) => {
-          const done = i < stage;
-          const active = i === stage - 1;
-          const pending = i >= stage;
-          return (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 18, opacity: pending ? 0.35 : 1, transition: "opacity 0.4s" }}>
-              {/* Icon */}
-              <div style={{ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: done ? D.success : active ? D.gold : D.inputBg, border: `2px solid ${done ? D.success : active ? D.gold : D.inputBdr}`, flexShrink: 0, fontSize: 15, transition: "all 0.3s" }}>
-                {done ? "✓" : s.icon}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 600, color: done ? D.txtPri : active ? D.goldL : D.txtDim }}>{s.label}</div>
-                {active && <div style={{ fontSize: 10.5, color: D.txtDim, marginTop: 2 }}>{s.sub}</div>}
-              </div>
-              {done && <div style={{ fontSize: 10.5, color: D.success, fontWeight: 700 }}>Done</div>}
-              {active && <div style={{ fontSize: 10.5, color: D.gold }}>...</div>}
-            </div>
-          );
-        })}
-        {/* Progress bar */}
-        <div style={{ marginTop: 24, height: 3, background: D.inputBdr, borderRadius: 2 }}>
-          <div style={{ height: 3, background: D.gold, borderRadius: 2, width: `${(stage / STAGES.length) * 100}%`, transition: "width 0.5s ease" }} />
-        </div>
-        <div style={{ marginTop: 8, fontSize: 10.5, color: D.txtDim, textAlign: "center" as const }}>
-          Step {Math.min(stage, STAGES.length)} of {STAGES.length}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ExportSuccess({ fileName, onClose, onAgain }: { fileName: string; onClose: () => void; onAgain: () => void }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column" as const, alignItems: "center", justifyContent: "center", height: "100%", padding: 48 }}>
-      <div style={{ width: 72, height: 72, borderRadius: "50%", background: "rgba(5,150,105,0.15)", border: "2px solid #059669", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, marginBottom: 24 }}>✓</div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: D.txtHero, marginBottom: 8 }}>Report Exported Successfully</div>
-      <div style={{ fontSize: 12, color: D.txtSec, marginBottom: 4 }}>Your report has been downloaded</div>
-      <div style={{ fontSize: 11, color: D.txtDim, background: D.inputBg, border: `1px solid ${D.inputBdr}`, borderRadius: 6, padding: "6px 16px", marginTop: 8, marginBottom: 32, fontFamily: "monospace" }}>{fileName}</div>
-      <div style={{ display: "flex", gap: 12 }}>
-        <button onClick={onAgain} style={{ padding: "10px 24px", background: D.goldBg, border: `1px solid ${D.gold}`, borderRadius: 7, color: D.goldL, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>Export Again</button>
-        <button onClick={onClose} style={{ padding: "10px 24px", background: D.blue, border: "none", borderRadius: 7, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Close</button>
+      <div style={{ fontSize:11, color:"#64748B", marginTop:14, fontFamily:UI, letterSpacing:"0.04em" }}>
+        Single Page · A4 {cfg.orientation==="landscape"?"Landscape":"Portrait"} · Aurora Glass
       </div>
     </div>
   );
@@ -511,282 +482,295 @@ async function generatePDF(
   calcOverall: (s: FacilityState) => RAGStatus,
   defaultState: () => FacilityState,
 ): Promise<string> {
-  let logoData = "";
-  try {
-    const img = await new Promise<HTMLImageElement>((res, rej) => {
-      const el = new Image(); el.onload = () => res(el); el.onerror = rej; el.src = "/imarat-logo.png";
-    });
-    const cv = document.createElement("canvas");
-    cv.width = img.naturalWidth; cv.height = img.naturalHeight;
-    const ctx = cv.getContext("2d")!;
-    ctx.drawImage(img, 0, 0);
-    const id = ctx.getImageData(0, 0, cv.width, cv.height);
-    for (let i = 0; i < id.data.length; i += 4) {
-      const b = (id.data[i]+id.data[i+1]+id.data[i+2])/3;
-      id.data[i]=id.data[i+1]=id.data[i+2]=255; id.data[i+3]=b<140?255:0;
-    }
-    ctx.putImageData(id, 0, 0);
-    logoData = cv.toDataURL("image/png");
-  } catch { /* skip */ }
-
-  const d       = new Date();
-  const dateStr = d.toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
-  const timeStr = d.toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", hour12:true });
-  const refNo   = `IGC-IT-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}-${String(d.getHours()).padStart(2,"0")}${String(d.getMinutes()).padStart(2,"0")}`;
+  const d        = new Date();
+  const dateStr  = d.toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
+  const timeStr  = d.toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", hour12:true });
   const fileName = `Imarat_IT_RAG_${d.toISOString().slice(0,10)}.pdf`;
 
-  const doc  = new jsPDF({ orientation: cfg.orientation, unit: "mm", format: "a4" });
-  const PW   = doc.internal.pageSize.getWidth();
-  const PH   = doc.internal.pageSize.getHeight();
-  const PAD  = 10;
-  const TW   = PW - PAD*2;
-  const HDR  = 24;
-  const FTR_Y= PH - 10;
-  const BODY_TOP = HDR + 3;
+  const doc = new jsPDF({ orientation: cfg.orientation, unit: "mm", format: "a4" });
+  const PW  = doc.internal.pageSize.getWidth();
+  const PH  = doc.internal.pageSize.getHeight();
 
-  const filtered  = facilities.filter(f => cfg.divFilter==="all" || f.cat===cfg.divFilter);
+  // ── Aurora Glass tokens (RGB) ─────────────────────────────────────────────
+  const BASE:RGB=[11,17,32];
+  const OK:RGB=[16,185,129], WARN:RGB=[245,158,11], CRIT:RGB=[244,63,94], OFF:RGB=[100,116,139];
+  const CYAN:RGB=[34,211,238], INDIGO:RGB=[99,102,241];
+  const INK:RGB=[248,250,252], DIM:RGB=[148,163,184], FAINT:RGB=[100,116,139];
+  const W:RGB=[255,255,255];
+
+  // ── 8pt-derived metric grid (mm) — every offset below is on this scale ────
+  const M    = 10;              // page margin
+  const GAP  = 4;               // gutter
+  const RAD  = 3;               // panel radius
+  const PADX = 5;               // panel inner x-padding
+  const HEAD = 20;              // header band height
+  const FOOT = 10;              // footer band height
+  const HDR_BASE = 8.5;         // panel title baseline offset (identical everywhere)
+  const TW   = PW - M*2;
+  const COL  = (TW - GAP*11) / 12;                 // 12-col grid
+  const span = (n:number) => COL*n + GAP*(n-1);    // width of n columns
+  const colX = (i:number) => M + i*(COL+GAP);      // x of column i
+
+  // ── alpha compositing ─────────────────────────────────────────────────────
+  const A = (a:number) => { try { (doc as any).setGState(new (doc as any).GState({ opacity:a })); } catch {} };
+  const fill = (c:RGB,a=1) => { A(a); doc.setFillColor(...c); };
+  const rect = (x:number,y:number,w:number,h:number,c:RGB,a=1) => { fill(c,a); doc.rect(x,y,w,h,"F"); A(1); };
+  const rrect = (x:number,y:number,w:number,h:number,r:number,c:RGB,a=1) => { fill(c,a); doc.roundedRect(x,y,w,h,r,r,"F"); A(1); };
+  const txt = (s:string,x:number,y:number,sz:number,c:RGB,b:"bold"|"normal"="normal",al:"left"|"center"|"right"="left",a=1) => {
+    A(a); doc.setFont("helvetica",b); doc.setFontSize(sz); doc.setTextColor(...c); doc.text(s,x,y,{align:al}); A(1);
+  };
+  // soft radial glow, built from concentric discs with quadratic falloff
+  const glow = (cx:number,cy:number,r:number,c:RGB,peak=0.20,steps=18) => {
+    for(let i=steps;i>0;i--){
+      fill(c, peak*Math.pow(i/steps,2.4));
+      doc.circle(cx,cy,r*(i/steps),"F");
+    }
+    A(1);
+  };
+  // frosted panel: translucent fill + hairline edge + specular top highlight
+  const glass = (x:number,y:number,w:number,h:number,r=RAD) => {
+    rrect(x,y,w,h,r,W,0.055);
+    A(0.13); doc.setDrawColor(...W); doc.setLineWidth(0.22); doc.roundedRect(x,y,w,h,r,r,"S");
+    A(0.20); doc.setLineWidth(0.35); doc.line(x+r,y+0.18,x+w-r,y+0.18);
+    A(1);
+  };
+  const panel = (x:number,y:number,w:number,h:number,title:string) => {
+    glass(x,y,w,h);
+    txt(title.toUpperCase(),x+PADX,y+HDR_BASE,5.4,DIM,"bold");
+  };
+  // segmented meter — one shared spec, matches the preview's <Meter/>
+  const meter = (x:number,y:number,w:number,h:number,segs:{v:number;c:RGB}[]) => {
+    rrect(x,y,w,h,h/2,W,0.09);
+    const tot=segs.reduce((s,r)=>s+r.v,0)||1;
+    let bx=x;
+    segs.forEach(sg=>{
+      if(sg.v<=0) return;
+      const bw=w*sg.v/tot;
+      fill(sg.c,1); doc.rect(bx,y,bw,h,"F"); bx+=bw;
+    });
+    A(1);
+  };
+
+  // ── data ──────────────────────────────────────────────────────────────────
+  const filtered = facilities.filter(f => cfg.divFilter==="all" || f.cat===cfg.divFilter);
   const ORDER: Record<string,number> = { Imarat:0, Projects:1, Graana:2, Agency21:3 };
-  const sorted    = [...filtered].sort((a,b)=>(ORDER[a.cat]??9)-(ORDER[b.cat]??9));
-  const total     = sorted.length || 1;
-  const grnN      = counts.green;
-  const ambN      = counts.amber;
-  const redN      = counts.red;
+  const sorted  = [...filtered].sort((a,b)=>(ORDER[a.cat]??9)-(ORDER[b.cat]??9));
+  const total   = sorted.length || 1;
+  const grnN=counts.green, ambN=counts.amber, redN=counts.red, naN=counts.na||0;
   const healthPct = total>0 ? grnN/total : 0;
+  const hue:RGB = healthPct>=0.8?OK:healthPct>=0.5?WARN:CRIT;
+  const CATS = ["Imarat","Projects","Graana","Agency21"] as const;
+  const statRows:{l:string;v:number;c:RGB}[] = [
+    {l:"Operational",v:grnN,c:OK},{l:"Degraded",v:ambN,c:WARN},
+    {l:"Critical",v:redN,c:CRIT},{l:"Not Set",v:naN,c:OFF},
+  ];
+  const insight =
+    redN>0&&ambN>0 ? `${redN} critical and ${ambN} degraded sites require immediate IT attention.`
+    : redN>0       ? `${redN} site${redN>1?"s":""} in critical state — service restoration is the priority.`
+    : ambN>0       ? `${ambN} site${ambN>1?"s":""} in degraded state. No critical failures at this time.`
+    :                `All ${grnN} facilities fully operational across all monitored services.`;
 
-  const NAVY:RGB=[14,61,47], NAVYM:RGB=[15,36,32], GOLD:RGB=[200,168,106];
-  const WHITE:RGB=[255,255,255], INK:RGB=[18,32,28], MUTED:RGB=[138,160,153];
-  const BDR:RGB=[224,229,225], BGLT:RGB=[244,246,243];
-  const BLUE:RGB=[14,61,47], TXT2C:RGB=[90,111,104], SURFALT:RGB=[239,242,238];
+  // ══ GROUND ════════════════════════════════════════════════════════════════
+  rect(0,0,PW,PH,BASE);
+  glow(PW*0.10, -6,        86, INDIGO, 0.30);
+  glow(PW*0.93, -2,        74, CYAN,   0.24);
+  glow(PW*0.44, PH+14,     92, OK,     0.17);
+  glow(PW*0.72, PH*0.62,   58, INDIGO, 0.11);
 
-  const fr  = (x:number,y:number,w:number,h:number,c:RGB) => { doc.setFillColor(...c); doc.rect(x,y,w,h,"F"); };
-  const frr = (x:number,y:number,w:number,h:number,r:number,c:RGB) => { doc.setFillColor(...c); doc.roundedRect(x,y,w,h,r,r,"F"); };
-  const txt = (s:string,x:number,y:number,sz:number,c:RGB,b:"bold"|"normal"="normal",a:"left"|"center"|"right"="left") => {
-    doc.setFont("helvetica",b); doc.setFontSize(sz); doc.setTextColor(...c); doc.text(s,x,y,{align:a});
-  };
-  const pbar = (x:number,y:number,w:number,h:number,pct:number,c:RGB) => {
-    frr(x,y,w,h,h/2,[218,224,238] as RGB);
-    if(pct>0) frr(x,y,Math.max(w*pct,h),h,h/2,c);
-  };
-  const drawArc = (cx:number,cy:number,ro:number,ri:number,a1d:number,a2d:number,c:RGB) => {
-    const steps = Math.max(4, Math.ceil(Math.abs(a2d-a1d)/3));
-    const pts:[number,number][] = [];
-    for(let i=0;i<=steps;i++){const a=(a1d+i*(a2d-a1d)/steps)*Math.PI/180; pts.push([cx+ro*Math.cos(a),cy+ro*Math.sin(a)]);}
-    for(let i=steps;i>=0;i--){const a=(a1d+i*(a2d-a1d)/steps)*Math.PI/180; pts.push([cx+ri*Math.cos(a),cy+ri*Math.sin(a)]);}
+  // ══ HEADER ════════════════════════════════════════════════════════════════
+  rect(0,0,PW,HEAD,W,0.035);
+  A(0.13); doc.setDrawColor(...W); doc.setLineWidth(0.22); doc.line(0,HEAD,PW,HEAD); A(1);
+  {
+    const cy = HEAD/2;                                  // single vertical centre for the whole band
+    // IG mark — indigo→cyan chip
+    rrect(M,cy-4.6,9.2,9.2,2.4,INDIGO,1);
+    rrect(M+4.4,cy-4.6,4.8,9.2,2.4,CYAN,0.75);
+    txt("IG",M+4.6,cy+1.5,6.4,W,"bold","center");
+    // wordmark
+    txt("IMARAT",M+13,cy-0.6,9.4,INK,"bold");
+    txt("GROUP OF COMPANIES · IT",M+13,cy+3.9,3.5,FAINT,"normal");
+    // divider
+    A(0.13); doc.setDrawColor(...W); doc.setLineWidth(0.22); doc.line(M+56,cy-6,M+56,cy+6); A(1);
+    // title
+    txt(cfg.title,M+61,cy-0.6,8.4,INK,"bold");
+    txt(`${cfg.org}  ·  ${cfg.period||dateStr}`,M+61,cy+3.9,3.5,FAINT,"normal");
+    // health capsule — right-aligned block, mirrors the preview capsule
+    const capW=42, capH=8, capX=PW-M-52-capW;
+    rrect(capX,cy-capH/2,capW,capH,capH/2,hue,0.16);
+    A(0.5); doc.setDrawColor(...hue); doc.setLineWidth(0.25); doc.roundedRect(capX,cy-capH/2,capW,capH,capH/2,capH/2,"S"); A(1);
+    fill(hue,1); doc.circle(capX+5,cy,1.3,"F"); A(1);
+    txt(`${Math.round(healthPct*100)}% OPERATIONAL`,capX+8.5,cy+1.4,4.4,hue,"bold");
+    // timestamp
+    txt(dateStr,PW-M,cy-0.6,7.4,INK,"bold","right");
+    txt(timeStr,PW-M,cy+3.9,3.6,FAINT,"normal","right");
+  }
+
+  // ══ BODY GRID ═════════════════════════════════════════════════════════════
+  const BT     = HEAD + GAP;
+  const INS_H  = 11;
+  const FOOT_Y = PH - FOOT;
+  const bodyH  = FOOT_Y - BT - INS_H - GAP*2;
+  const R1H    = bodyH * 0.505, R2H = bodyH - R1H - GAP;
+  const R2Y    = BT + R1H + GAP;
+
+  // ── Panel 1 · Facility Health (cols 0-3) ─────────────────────────────────
+  {
+    const x=colX(0), w=span(4);
+    panel(x,BT,w,R1H,"Facility Health");
+    const cy=BT+HDR_BASE+9;
+    // hero figure, baseline-aligned with the "n / n sites" caption
+    txt(String(Math.round(healthPct*100)),x+PADX,cy+3,22,hue,"bold");
+    const numW=doc.getTextWidth(String(Math.round(healthPct*100)));
+    txt("%",x+PADX+numW+1.4,cy+3,10,hue,"bold");
+    txt(`${grnN} / ${total} sites`,x+w-PADX,cy+3,4.4,FAINT,"normal","right");
+    // full-width meter
+    meter(x+PADX,cy+6.5,w-PADX*2,2,[{v:grnN,c:OK},{v:ambN,c:WARN},{v:redN,c:CRIT},{v:naN,c:OFF}]);
+    // stat rows on a fixed rhythm
+    const top=cy+12.5, rh=(R1H-(top-BT)-5)/4;
+    statRows.forEach((r,i)=>{
+      const ry=top+i*rh, mid=ry+rh/2+1.3;
+      if(i>0){ A(0.07); doc.setDrawColor(...W); doc.setLineWidth(0.2); doc.line(x+PADX,ry,x+w-PADX,ry); A(1); }
+      fill(r.c,1); doc.circle(x+PADX+1.4,mid-1.2,1.2,"F"); A(1);
+      txt(r.l,x+PADX+5,mid,5,DIM,"normal");
+      txt(String(r.v),x+w-PADX,mid,6.4,r.c,"bold","right");
+    });
+  }
+
+  // ── Panel 2 · Status Distribution (cols 4-7) ─────────────────────────────
+  {
+    const x=colX(4), w=span(4);
+    panel(x,BT,w,R1H,"Status Distribution");
+    const inner=BT+HDR_BASE+2, ih=R1H-(inner-BT)-4;
+    const cx=x+w*0.32, cy=inner+ih/2, RO=17, RI=11.6;
+    // track
+    A(0.09); drawRing(cx,cy,RO,RI,-90,270,W); A(1);
+    let ca=-90;
+    const segs=[{v:grnN,c:OK},{v:ambN,c:WARN},{v:redN,c:CRIT},{v:naN,c:OFF}];
+    const tot=segs.reduce((s,r)=>s+r.v,0)||1;
+    segs.forEach(sg=>{ if(!sg.v) return; const sp=360*sg.v/tot; drawRing(cx,cy,RO,RI,ca,ca+sp,sg.c); ca+=sp; });
+    // centre figure
+    txt(String(total),cx,cy+1.2,15,INK,"bold","center");
+    txt("SITES",cx,cy+5.6,3.6,FAINT,"bold","center");
+    // legend, vertically centred against the ring
+    const lx=x+w*0.60, lgH=ih*0.74, ly0=cy-lgH/2, lrh=lgH/4;
+    statRows.forEach((r,i)=>{
+      const ly=ly0+i*lrh+lrh/2+1.2;
+      rrect(lx,ly-2.6,2.2,2.2,0.6,r.c,1);
+      txt(r.l,lx+4.4,ly,5,DIM,"normal");
+      txt(String(r.v),x+w-PADX,ly,6.4,r.c,"bold","right");
+    });
+  }
+
+  // ── Panel 3 · Division Progress (cols 8-11) ──────────────────────────────
+  {
+    const x=colX(8), w=span(4);
+    panel(x,BT,w,R1H,"Division Progress");
+    const top=BT+HDR_BASE+4, rh=(R1H-(top-BT)-4)/4;
+    CATS.forEach((cat,i)=>{
+      const facs=sorted.filter(f=>f.cat===cat);
+      const g=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="green").length;
+      const a=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="amber").length;
+      const r=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="red").length;
+      const pct=Math.round(g/Math.max(facs.length,1)*100);
+      const pc:RGB=pct>=80?OK:pct>=50?WARN:CRIT;
+      const ry=top+i*rh;
+      txt(cat,x+PADX,ry+3.4,5.6,INK,"bold");
+      txt(String(facs.length),x+w-PADX-13,ry+3.4,4.2,FAINT,"normal","right");
+      txt(`${pct}%`,x+w-PADX,ry+3.4,6.4,pc,"bold","right");
+      meter(x+PADX,ry+5.4,w-PADX*2,2,[{v:g,c:OK},{v:a,c:WARN},{v:r,c:CRIT}]);
+    });
+  }
+
+  // ── Panel 4 · Service Availability (cols 0-4) ────────────────────────────
+  {
+    const x=colX(0), w=span(5);
+    panel(x,R2Y,w,R2H,"Service Availability");
+    const svcs=[
+      {l:"Internet", k:"internet" as keyof FacilityState},
+      {l:"Biometric",k:"bio" as keyof FacilityState},
+      {l:"Printing", k:"printing" as keyof FacilityState},
+    ];
+    const top=R2Y+HDR_BASE+4, rh=(R2H-(top-R2Y)-4)/3;
+    svcs.forEach((sv,i)=>{
+      const vals=sorted.map(f=>(state[f.name]??defaultState())[sv.k] as RAGStatus);
+      const g=vals.filter(v=>v==="green").length, a=vals.filter(v=>v==="amber").length, r=vals.filter(v=>v==="red").length;
+      const sh=vals.length>0?g/vals.length:0;
+      const sc:RGB=sh>=0.8?OK:sh>=0.5?WARN:CRIT;
+      const ry=top+i*rh;
+      txt(sv.l,x+PADX,ry+3.4,5.6,INK,"bold");
+      txt(`${g}/${vals.length}`,x+w-PADX-14,ry+3.4,4.2,FAINT,"normal","right");
+      txt(`${Math.round(sh*100)}%`,x+w-PADX,ry+3.4,6.4,sc,"bold","right");
+      meter(x+PADX,ry+5.4,w-PADX*2,2,[{v:g,c:OK},{v:a,c:WARN},{v:r,c:CRIT}]);
+    });
+  }
+
+  // ── Panel 5 · Facility Overview (cols 5-11) ──────────────────────────────
+  {
+    const x=colX(5), w=span(7);
+    panel(x,R2Y,w,R2H,"Facility Overview");
+    // legend sits on the title baseline, right-aligned
+    let lgx=x+w-PADX;
+    [...statRows].slice(0,3).reverse().forEach(r=>{
+      const s=String(r.v);
+      txt(s,lgx,R2Y+HDR_BASE,5,DIM,"bold","right");
+      lgx-=doc.getTextWidth(s)+2.6;
+      fill(r.c,1); doc.circle(lgx,R2Y+HDR_BASE-1.2,1.1,"F"); A(1);
+      lgx-=6;
+    });
+    // tile grid — 11 across, square cells, centred in the remaining box
+    const COLS=11;
+    const gx=x+PADX, gy=R2Y+HDR_BASE+4;
+    const gw=w-PADX*2, gh=R2H-(gy-R2Y)-PADX+1;
+    const gap=1.2;
+    const rows=Math.ceil(sorted.length/COLS);
+    const cell=Math.min((gw-gap*(COLS-1))/COLS, (gh-gap*(rows-1))/rows);
+    const usedW=cell*COLS+gap*(COLS-1);
+    const ox=gx+(gw-usedW)/2;                       // optical centring
+    sorted.forEach((f,i)=>{
+      const c=i%COLS, r=Math.floor(i/COLS);
+      const tx=ox+c*(cell+gap), ty=gy+r*(cell+gap);
+      const ov=calcOverall(state[f.name]??defaultState());
+      const col:RGB = ov==="green"?OK:ov==="amber"?WARN:ov==="red"?CRIT:OFF;
+      rrect(tx,ty,cell,cell,1,col,0.16);
+      A(0.42); doc.setDrawColor(...col); doc.setLineWidth(0.2); doc.roundedRect(tx,ty,cell,cell,1,1,"S"); A(1);
+      txt(String(i+1),tx+cell/2,ty+cell/2+1.15,3.6,col,"bold","center");
+    });
+  }
+
+  // ══ INSIGHT ═══════════════════════════════════════════════════════════════
+  {
+    const iY=FOOT_Y-GAP-INS_H;
+    glass(M,iY,TW,INS_H);
+    rrect(M+PADX,iY+3,0.9,INS_H-6,0.45,CYAN,1);
+    txt("INSIGHT",M+PADX+3.4,iY+INS_H/2+1.4,4.4,CYAN,"bold");
+    txt(insight,M+PADX+24,iY+INS_H/2+1.4,4.8,DIM,"normal");
+  }
+
+  // ══ FOOTER ════════════════════════════════════════════════════════════════
+  {
+    A(0.13); doc.setDrawColor(...W); doc.setLineWidth(0.22); doc.line(0,FOOT_Y,PW,FOOT_Y); A(1);
+    const fy=FOOT_Y+FOOT/2+1.2;
+    txt(`${cfg.org}  ·  IT Department  ·  it.support@imarat.com.pk`,M,fy,3.8,FAINT,"normal");
+    if(cfg.includeTs) txt("CONFIDENTIAL  ·  SYSTEM GENERATED",PW/2,fy,3.8,FAINT,"normal","center");
+    txt("imarat.com.pk",PW-M,fy,3.8,FAINT,"normal","right");
+  }
+
+  doc.save(fileName);
+  return fileName;
+
+  // polygon-approximated ring segment
+  function drawRing(cx:number,cy:number,ro:number,ri:number,a1:number,a2:number,c:RGB){
+    const steps=Math.max(4,Math.ceil(Math.abs(a2-a1)/4));
+    const pts:[number,number][]=[];
+    for(let i=0;i<=steps;i++){const a=(a1+i*(a2-a1)/steps)*Math.PI/180; pts.push([cx+ro*Math.cos(a),cy+ro*Math.sin(a)]);}
+    for(let i=steps;i>=0;i--){const a=(a1+i*(a2-a1)/steps)*Math.PI/180; pts.push([cx+ri*Math.cos(a),cy+ri*Math.sin(a)]);}
     const lines:[number,number][]=[];
     for(let i=1;i<pts.length;i++) lines.push([pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]]);
     doc.setFillColor(...c);
     (doc as any).lines(lines,pts[0][0],pts[0][1],[1,1],"F",true);
-  };
-
-  // Panel: white surface, hairline border, muted uppercase eyebrow label
-  const panel = (x:number,y:number,w:number,h:number,title:string,_accent:RGB=BLUE) => {
-    frr(x,y,w,h,3,WHITE);
-    doc.setDrawColor(...BDR); doc.setLineWidth(0.25); doc.roundedRect(x,y,w,h,3,3,"S");
-    doc.setFont("helvetica","bold"); doc.setFontSize(5); doc.setTextColor(...TXT2C);
-    doc.text(title.toUpperCase(),x+6,y+7.5);
-  };
-
-  // Dark panel variant for the hero (radial-gradient look approximated with flat deep green)
-  const panelDark = (x:number,y:number,w:number,h:number,title:string) => {
-    frr(x,y,w,h,3,[15,36,32] as RGB);
-    doc.setFont("helvetica","bold"); doc.setFontSize(5); doc.setTextColor(140,160,152);
-    doc.text(title.toUpperCase(),x+6,y+7.5);
-  };
-
-  const TOTPG = 1;
-  const drawShell = (pg:number, _subtitle="") => {
-    // Warm sage page ground
-    fr(0,0,PW,PH,BGLT);
-    // White header with hairline rule
-    fr(0,0,PW,HDR,WHITE);
-    doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.line(0,HDR,PW,HDR);
-    // IG monogram — deep green tile, gold letters
-    frr(PAD,6,11,11,2,NAVY);
-    txt("IG",PAD+5.5,13.2,6,GOLD,"bold","center");
-    // IMARAT wordmark
-    txt("IMARAT",PAD+15,12,10,INK,"bold");
-    txt("Group of Companies  ·  IT Department",PAD+15,17.5,3.6,MUTED);
-    // Vertical hairline divider
-    doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.line(PAD+62,5,PAD+62,HDR-4);
-    // Report title
-    txt(cfg.title,PAD+66,12,8.5,INK,"bold");
-    txt(`${cfg.org}  ·  ${cfg.period||dateStr}`,PAD+66,17.5,3.6,MUTED);
-    // Health pill — pale green capsule, deep green text
-    const hp=Math.round(healthPct*100);
-    const pillW=44, pillX=PW-PAD-pillW-42;
-    frr(pillX,7.5,pillW,8.5,4.25,[230,240,235] as RGB);
-    doc.setFillColor(...(healthPct>=0.8?gC:healthPct>=0.5?aC:rC)); doc.circle(pillX+5,11.7,1.5,"F");
-    txt(`${hp}% Operational`,pillX+9,13,4.2,NAVY,"bold");
-    // Date right
-    txt(dateStr,PW-PAD,12,7.5,INK,"bold","right");
-    txt(timeStr,PW-PAD,17.5,3.6,MUTED,"normal","right");
-    // White footer with hairline rule
-    fr(0,FTR_Y,PW,PH-FTR_Y,WHITE);
-    doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.line(0,FTR_Y,PW,FTR_Y);
-    const fy=FTR_Y+4;
-    txt(`${cfg.org}  ·  IT Department  ·  it.support@imarat.com.pk`,PAD,fy+2,3.8,MUTED);
-    if(cfg.includeTs) txt("Confidential  ·  System Generated",PW/2,fy+2,3.8,MUTED,"normal","center");
-    txt(`Page ${pg} / ${TOTPG}  ·  imarat.com.pk`,PW-PAD,fy+2,3.8,MUTED,"normal","right");
-  };
-
-  const insight = (() => {
-    if(redN>0&&ambN>0) return `${redN} critical + ${ambN} degraded sites — immediate IT response required across the estate.`;
-    if(redN>0) return `${redN} site${redN>1?"s":""} critical — service restoration is the top operational priority.`;
-    if(ambN>0) return `${ambN} site${ambN>1?"s":""} in degraded state. No critical failures detected at this time.`;
-    return `All ${grnN} facilities fully operational. Internet, biometric, and print services healthy across all divisions.`;
-  })();
-
-  const CATS = ["Imarat","Projects","Graana","Agency21"] as const;
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // PAGE 1 — EXECUTIVE BI DASHBOARD
-  // ══════════════════════════════════════════════════════════════════════════
-  drawShell(1,"Executive BI Dashboard");
-  const BT = BODY_TOP + 1;
-
-  // (old Row 1 variables no longer used)
-
-  // ══ 2×3 panel grid (single page) ════════════════════════════════════════
-  const PW3=(TW-4)/3, GAP3=2;
-  const ROW_H=(FTR_Y-BT-12)/2, ROW2_Y=BT+ROW_H+GAP3;
-  const P_X=(i:number)=>PAD+i*(PW3+GAP3);
-  const hC:RGB=healthPct>=0.8?gC:healthPct>=0.5?aC:rC;
-
-  // ── Panel 1: Facility Health ─────────────────────────────────────────────
-  panel(P_X(0),BT,PW3,ROW_H,"Facility Health");
-  {
-    const rows=[
-      {l:"Overall Health",v:`${Math.round(healthPct*100)}%`,c:hC,hero:true},
-      {l:"Total Sites",v:`${sorted.length}`,c:INK,hero:false},
-      {l:"Operational",v:String(grnN),c:gC,hero:false},
-      {l:"Degraded",v:String(ambN),c:aC,hero:false},
-      {l:"Critical",v:String(redN),c:rC,hero:false},
-      {l:"Not Configured",v:String(counts.na||0),c:nC,hero:false},
-    ] as {l:string;v:string;c:RGB;hero:boolean}[];
-    const top=BT+11, rowH=(ROW_H-13)/6;
-    rows.forEach((r,ri)=>{
-      const ry=top+ri*rowH, mid=ry+rowH/2+1.4;
-      txt(r.l,P_X(0)+6,mid,5,TXT2C,"normal");
-      txt(r.v,P_X(0)+PW3-6,mid,r.hero?10:6.5,r.c,"bold","right");
-      if(ri<5){ doc.setDrawColor(...BDR); doc.setLineWidth(0.15); doc.line(P_X(0)+6,ry+rowH,P_X(0)+PW3-6,ry+rowH); }
-    });
   }
-
-  // ── Panel 2: Status Overview — dark hero panel ───────────────────────────
-  panelDark(P_X(1),BT,PW3,ROW_H,"Status Overview");
-  {
-    const cx=P_X(1)+PW3*0.32, cy=BT+11+(ROW_H-13)/2, RO=19, RI=12.5;
-    const segs=[{v:grnN,c:gC},{v:ambN,c:aC},{v:redN,c:rC},{v:counts.na||0,c:nC}] as {v:number;c:RGB}[];
-    const tot=segs.reduce((s,r)=>s+r.v,0)||1;
-    drawArc(cx,cy,RO,RI,-90,270,[32,58,50] as RGB);
-    let ca=-90;
-    segs.forEach(seg=>{ if(!seg.v) return; const sp=360*seg.v/tot; drawArc(cx,cy,RO,RI,ca,ca+sp,seg.c); ca+=sp; });
-    doc.setFillColor(15,36,32); doc.circle(cx,cy,RI-0.4,"F");
-    txt(String(sorted.length),cx,cy+1,11,WHITE,"bold","center");
-    txt("sites",cx,cy+5.5,4,[120,145,136] as RGB,"normal","center");
-    const legX=P_X(1)+PW3*0.6, top=BT+13, legRowH=(ROW_H-17)/4;
-    ([{l:"Operational",v:grnN,c:gC},{l:"Degraded",v:ambN,c:aC},{l:"Critical",v:redN,c:rC},{l:"Not Set",v:counts.na||0,c:nC}] as {l:string;v:number;c:RGB}[]).forEach((lk,li)=>{
-      const ly=top+li*legRowH+legRowH/2;
-      doc.setFillColor(...lk.c); doc.circle(legX+2,ly-0.8,1.5,"F");
-      txt(lk.l,legX+6,ly,5,[140,165,155] as RGB,"normal");
-      txt(String(lk.v),P_X(1)+PW3-6,ly,7,lk.c,"bold","right");
-    });
-  }
-
-  // ── Panel 3: Division Progress ───────────────────────────────────────────
-  panel(P_X(2),BT,PW3,ROW_H,"Division Progress");
-  {
-    const top=BT+12, catRowH=(ROW_H-14)/4;
-    CATS.forEach((cat,ci)=>{
-      const facs=sorted.filter(f=>f.cat===cat);
-      const grn=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="green").length;
-      const amb=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="amber").length;
-      const red=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="red").length;
-      const pct=Math.round(grn/Math.max(facs.length,1)*100);
-      const pc:RGB=pct>=80?gC:pct>=50?aC:rC;
-      const rY=top+ci*catRowH;
-      txt(cat,P_X(2)+6,rY+5,5.5,INK,"bold");
-      txt(`${facs.length} sites`,P_X(2)+PW3-24,rY+5,4.2,MUTED,"normal","right");
-      txt(`${pct}%`,P_X(2)+PW3-6,rY+5,7,pc,"bold","right");
-      const bX=P_X(2)+6, bW=PW3-12, bY=rY+7.5;
-      frr(bX,bY,bW,4,2,SURFALT);
-      let bx=bX;
-      ([{v:grn,c:gC},{v:amb,c:aC},{v:red,c:rC}] as {v:number;c:RGB}[]).forEach(bk=>{
-        const bw=bW*bk.v/Math.max(facs.length,1);
-        if(bk.v>0){frr(bx,bY,bw,4,0,bk.c); bx+=bw;}
-      });
-    });
-  }
-
-  // ══ Row 2 — two panels (tickets removed) ═════════════════════════════════
-  const R2W1=(TW-GAP3)*0.42, R2W2=TW-GAP3-R2W1, R2X2=PAD+R2W1+GAP3;
-
-  // ── Panel 4: Service Availability ────────────────────────────────────────
-  panel(PAD,ROW2_Y,R2W1,ROW_H,"Service Availability");
-  {
-    const svcs=[
-      {lbl:"Internet",key:"internet" as keyof FacilityState},
-      {lbl:"Biometric",key:"bio" as keyof FacilityState},
-      {lbl:"Printing",key:"printing" as keyof FacilityState},
-    ];
-    const top=ROW2_Y+12, svcRowH=(ROW_H-14)/3;
-    svcs.forEach((svc,si)=>{
-      const vals=sorted.map(f=>(state[f.name]??defaultState())[svc.key] as RAGStatus);
-      const sg=vals.filter(v=>v==="green").length, sa=vals.filter(v=>v==="amber").length, sr=vals.filter(v=>v==="red").length;
-      const sh=vals.length>0?sg/vals.length:0;
-      const shC:RGB=sh>=0.8?gC:sh>=0.5?aC:rC;
-      const sY=top+si*svcRowH;
-      txt(svc.lbl,PAD+6,sY+5,5.5,INK,"bold");
-      txt(`${sg}/${vals.length}`,PAD+R2W1-24,sY+5,4.2,MUTED,"normal","right");
-      txt(`${Math.round(sh*100)}%`,PAD+R2W1-6,sY+5,7,shC,"bold","right");
-      const bX=PAD+6, bW=R2W1-12, bY=sY+7.5;
-      frr(bX,bY,bW,4,2,SURFALT);
-      let bx=bX;
-      ([{v:sg,c:gC},{v:sa,c:aC},{v:sr,c:rC}] as {v:number;c:RGB}[]).forEach(bk=>{ const bw=bW*bk.v/Math.max(vals.length,1); if(bk.v>0){frr(bx,bY,bw,4,0,bk.c); bx+=bw;} });
-      txt(`${sa} degraded  ·  ${sr} critical`,PAD+6,sY+15,4.2,MUTED);
-    });
-  }
-
-  // ── Panel 5: Facility Overview ───────────────────────────────────────────
-  panel(R2X2,ROW2_Y,R2W2,ROW_H,"Facility Overview");
-  {
-    const COLS=10;
-    const top=ROW2_Y+12;
-    const availW=R2W2-14, availH=ROW_H-24;
-    const dotD=Math.min(9,availW/COLS-2);
-    const dotGapX=availW/COLS;
-    const rows2=Math.ceil(sorted.length/COLS);
-    const dotGapY=Math.min(dotD+3,availH/Math.max(rows2,1));
-    sorted.forEach((f,fi)=>{
-      const col=fi%COLS, row=Math.floor(fi/COLS);
-      const dx=R2X2+7+col*dotGapX;
-      const dy=top+row*dotGapY;
-      const ov=calcOverall(state[f.name]??defaultState());
-      frr(dx,dy,dotD,dotD,1.5,ragFill(ov));
-      doc.setTextColor(...ragAccent(ov)); doc.setFont("helvetica","bold"); doc.setFontSize(3.8);
-      doc.text(String(fi+1),dx+dotD/2,dy+dotD/2+1.3,{align:"center"});
-    });
-    // legend row at panel foot
-    const lgY=ROW2_Y+ROW_H-5;
-    ([{c:gC,l:`${grnN} Operational`},{c:aC,l:`${ambN} Degraded`},{c:rC,l:`${redN} Critical`}] as {c:RGB;l:string}[]).forEach((d,di)=>{
-      const lx=R2X2+7+di*((R2W2-14)/3);
-      doc.setFillColor(...d.c); doc.circle(lx+1.2,lgY-1,1.2,"F");
-      txt(d.l,lx+4,lgY,4.2,TXT2C,"normal");
-    });
-  }
-
-  // ── Insight strip ────────────────────────────────────────────────────────
-  {
-    const iY=FTR_Y-12, iH=11;
-    frr(PAD,iY,TW,iH,2.5,NAVY);
-    doc.setFillColor(...GOLD); doc.roundedRect(PAD+5,iY+3,1.2,5,0.6,0.6,"F");
-    txt("INSIGHT",PAD+9,iY+6.8,4.2,GOLD,"bold");
-    doc.setDrawColor(90,78,50); doc.setLineWidth(0.3); doc.line(PAD+26,iY+3.5,PAD+26,iY+7.5);
-    txt(insight,PAD+30,iY+6.8,4.5,[210,222,215] as RGB,"normal");
-  }
-  doc.save(fileName);
-  return fileName;
 }
+
 
 // ─── Main Modal ───────────────────────────────────────────────────────────────
 export default function ReportModal({ isOpen, onClose, facilities, state, counts, autoStats, calcOverall, defaultState }: ReportModalProps) {
