@@ -38,33 +38,34 @@ export interface ReportModalProps {
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const D = {
-  panelBg:   "#0C1A2E",
-  panelAlt:  "#0F2040",
-  panelBdr:  "#1A3050",
-  inputBg:   "#0A1626",
-  inputBdr:  "#1E3A58",
-  centerBg:  "#EBF0F8",
-  pageBg:    "#FFFFFF",
-  headerBg:  "#FAFBFD",
-  gold:      "#C49A1E",
-  goldL:     "#E8C048",
-  goldBg:    "rgba(196,154,30,0.12)",
-  blue:      "#2C5EE8",
-  blueHov:   "#2451CC",
-  success:   "#059669",
-  warn:      "#D97706",
-  danger:    "#DC2626",
+  // Aurora Glass — report builder chrome
+  panelBg:   "#0B1120",
+  panelAlt:  "rgba(255,255,255,0.04)",
+  panelBdr:  "rgba(255,255,255,0.12)",
+  inputBg:   "rgba(255,255,255,0.05)",
+  inputBdr:  "rgba(255,255,255,0.14)",
+  centerBg:  "#070C18",
+  pageBg:    "#0B1120",
+  headerBg:  "rgba(11,17,32,0.72)",
+  gold:      "#22D3EE",
+  goldL:     "#67E8F9",
+  goldBg:    "rgba(34,211,238,0.12)",
+  blue:      "#6366F1",
+  blueHov:   "#818CF8",
+  success:   "#10B981",
+  warn:      "#F59E0B",
+  danger:    "#F43F5E",
   white:     "#FFFFFF",
-  txtHero:   "#F1F5FD",
-  txtPri:    "#CBD5E8",
-  txtSec:    "#8A9AB8",
-  txtDim:    "#4A5A78",
-  cTxt:      "#1A2540",
-  cMuted:    "#5A6B85",
-  cBdr:      "#DDE4EF",
-  cAlt:      "#F4F7FC",
-  shadow:    "0 2px 8px rgba(0,0,0,0.12)",
-  shadowHvy: "0 8px 40px rgba(0,0,0,0.36)",
+  txtHero:   "#F8FAFC",
+  txtPri:    "#CBD5E1",
+  txtSec:    "#94A3B8",
+  txtDim:    "#64748B",
+  cTxt:      "#F8FAFC",
+  cMuted:    "#94A3B8",
+  cBdr:      "rgba(255,255,255,0.12)",
+  cAlt:      "rgba(255,255,255,0.04)",
+  shadow:    "0 8px 32px rgba(0,0,0,0.28)",
+  shadowHvy: "0 24px 80px rgba(0,0,0,0.5)",
 };
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
@@ -471,6 +472,66 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
     </div>
   );
 }
+// ─── Export Progress ──────────────────────────────────────────────────────────
+const STAGES = [
+  { icon: "⬡", label: "Preparing report data",          sub: "Collecting facility status from database" },
+  { icon: "◈", label: "Generating visualisations",       sub: "Building KPI cards and division overview" },
+  { icon: "◉", label: "Composing report sections",       sub: "Laying out header, tables and content" },
+  { icon: "◎", label: "Applying branding & formatting",  sub: "Embedding logo and corporate identity" },
+  { icon: "⊕", label: "Finalising & exporting PDF",      sub: "Compressing and packaging document" },
+];
+
+function ExportProgress({ stage }: { stage: number }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column" as const, alignItems: "center", justifyContent: "center", height: "100%", padding: 48 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: D.goldL, letterSpacing: 1, marginBottom: 32, textTransform: "uppercase" as const }}>Generating Report</div>
+      <div style={{ width: "100%", maxWidth: 440 }}>
+        {STAGES.map((s, i) => {
+          const done = i < stage;
+          const active = i === stage - 1;
+          const pending = i >= stage;
+          return (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 18, opacity: pending ? 0.35 : 1, transition: "opacity 0.4s" }}>
+              {/* Icon */}
+              <div style={{ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: done ? D.success : active ? D.gold : D.inputBg, border: `2px solid ${done ? D.success : active ? D.gold : D.inputBdr}`, flexShrink: 0, fontSize: 15, transition: "all 0.3s" }}>
+                {done ? "✓" : s.icon}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: done ? D.txtPri : active ? D.goldL : D.txtDim }}>{s.label}</div>
+                {active && <div style={{ fontSize: 10.5, color: D.txtDim, marginTop: 2 }}>{s.sub}</div>}
+              </div>
+              {done && <div style={{ fontSize: 10.5, color: D.success, fontWeight: 700 }}>Done</div>}
+              {active && <div style={{ fontSize: 10.5, color: D.gold }}>...</div>}
+            </div>
+          );
+        })}
+        {/* Progress bar */}
+        <div style={{ marginTop: 24, height: 3, background: D.inputBdr, borderRadius: 2 }}>
+          <div style={{ height: 3, background: D.gold, borderRadius: 2, width: `${(stage / STAGES.length) * 100}%`, transition: "width 0.5s ease" }} />
+        </div>
+        <div style={{ marginTop: 8, fontSize: 10.5, color: D.txtDim, textAlign: "center" as const }}>
+          Step {Math.min(stage, STAGES.length)} of {STAGES.length}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExportSuccess({ fileName, onClose, onAgain }: { fileName: string; onClose: () => void; onAgain: () => void }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column" as const, alignItems: "center", justifyContent: "center", height: "100%", padding: 48 }}>
+      <div style={{ width: 72, height: 72, borderRadius: "50%", background: "rgba(5,150,105,0.15)", border: "2px solid #059669", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, marginBottom: 24 }}>✓</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: D.txtHero, marginBottom: 8 }}>Report Exported Successfully</div>
+      <div style={{ fontSize: 12, color: D.txtSec, marginBottom: 4 }}>Your report has been downloaded</div>
+      <div style={{ fontSize: 11, color: D.txtDim, background: D.inputBg, border: `1px solid ${D.inputBdr}`, borderRadius: 6, padding: "6px 16px", marginTop: 8, marginBottom: 32, fontFamily: "monospace" }}>{fileName}</div>
+      <div style={{ display: "flex", gap: 12 }}>
+        <button onClick={onAgain} style={{ padding: "10px 24px", background: D.goldBg, border: `1px solid ${D.gold}`, borderRadius: 7, color: D.goldL, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>Export Again</button>
+        <button onClick={onClose} style={{ padding: "10px 24px", background: D.blue, border: "none", borderRadius: 7, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Close</button>
+      </div>
+    </div>
+  );
+}
+
 
 // ─── PDF Generator — 3-page BI dashboard ──────────────────────────────────────
 async function generatePDF(
