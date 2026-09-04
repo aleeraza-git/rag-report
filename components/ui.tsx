@@ -264,3 +264,165 @@ export const Btn = ({ children, onClick, kind="ghost", size="md", disabled, titl
     </button>
   );
 };
+
+// ── Charts, part two ─────────────────────────────────────────────────────────
+
+/**
+ * Status composition over time. Shows not just that health fell but what it
+ * fell INTO — a drop into amber reads very differently from a drop into red.
+ */
+export function StackedArea({ points, w=520, h=120, coverage=1, showAxis=true }:
+  { points:{ green:number; amber:number; red:number; na:number }[]; w?:number; h?:number;
+    coverage?:number; showAxis?:boolean }) {
+  if (points.length < 2) return null;
+  const padL = showAxis ? 26 : 0, padB = showAxis ? 16 : 0, padT = 4;
+  const iw = w - padL, ih = h - padB - padT;
+  const total = Math.max(...points.map(p=>p.green+p.amber+p.red+p.na), 1);
+  const x = (i:number) => padL + (i/(points.length-1))*iw;
+
+  // stack order puts the good news at the bottom so the eye reads the bad
+  // news as growth from the top of the plot
+  const bands: { key:"green"|"amber"|"red"|"na"; c:string }[] = [
+    { key:"green", c:T.ok }, { key:"na", c:T.none }, { key:"amber", c:T.warn }, { key:"red", c:T.crit },
+  ];
+  let base = points.map(()=>0);
+  const paths: { d:string; c:string }[] = [];
+  for (const b of bands) {
+    const top = points.map((p,i)=> base[i] + p[b.key]);
+    const up   = points.map((p,i)=>`${i?"L":"M"}${x(i).toFixed(1)},${(padT+ih-(top[i]/total)*ih).toFixed(1)}`).join(" ");
+    const down = points.map((p,i)=>i).reverse()
+      .map(i=>`L${x(i).toFixed(1)},${(padT+ih-(base[i]/total)*ih).toFixed(1)}`).join(" ");
+    paths.push({ d:`${up} ${down} Z`, c:b.c });
+    base = top;
+  }
+
+  const assumed = Math.max(0, 1-Math.min(coverage,1)) * iw;
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label="status composition over time">
+      {showAxis && [0,0.5,1].map(f=>{
+        const gy = padT + ih - f*ih;
+        return (
+          <g key={f}>
+            <line x1={padL} y1={gy} x2={w} y2={gy} stroke={f===0?T.line:T.lineSoft} strokeWidth="1" />
+            <text x={padL-5} y={gy+3} textAnchor="end"
+                  style={{ fontFamily:T.mono, fontSize:8, fill:T.ink4 }}>{Math.round(f*total)}</text>
+          </g>
+        );
+      })}
+      {paths.map((p,i)=><path key={i} d={p.d} fill={p.c} fillOpacity={i===0?0.82:0.9} />)}
+      {assumed>1 && <rect x={padL} y={padT} width={assumed} height={ih} fill={T.paper} fillOpacity="0.72" />}
+      <rect x={padL} y={padT} width={iw} height={ih} fill="none" stroke={T.line} strokeWidth="1" />
+    </svg>
+  );
+}
+
+/**
+ * Recoveries above the axis, regressions below. A single glance answers
+ * "are we fixing faster than we are breaking?"
+ */
+export function DivergingBars({ data, w=520, h=104, showAxis=true }:
+  { data:{ recovered:number; regressed:number; label:string }[]; w?:number; h?:number; showAxis?:boolean }) {
+  if (!data.length) return null;
+  const padL = showAxis ? 22 : 0, padB = 14, padT = 6;
+  const iw = w - padL, ih = h - padB - padT;
+  const mid = padT + ih/2;
+  const max = Math.max(...data.flatMap(d=>[d.recovered,d.regressed]), 1);
+  const gap = data.length > 20 ? 1 : 2.5;
+  const bw = Math.max((iw - gap*(data.length-1)) / data.length, 1.5);
+  const scale = (v:number) => (v/max) * (ih/2 - 2);
+  const every = Math.ceil(data.length / 7);
+
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label="daily recoveries and regressions">
+      {showAxis && (
+        <>
+          <text x={padL-5} y={padT+7} textAnchor="end" style={{ fontFamily:T.mono, fontSize:8, fill:T.ok }}>{max}</text>
+          <text x={padL-5} y={padT+ih+1} textAnchor="end" style={{ fontFamily:T.mono, fontSize:8, fill:T.crit }}>{max}</text>
+        </>
+      )}
+      <line x1={padL} y1={mid} x2={w} y2={mid} stroke={T.ink4} strokeWidth="1" />
+      {data.map((d,i)=>{
+        const x = padL + i*(bw+gap);
+        return (
+          <g key={i}>
+            {d.recovered>0 && <rect x={x} y={mid-scale(d.recovered)-1} width={bw} height={scale(d.recovered)} rx="1" fill={T.ok}><title>{`${d.label}: ${d.recovered} recovered`}</title></rect>}
+            {d.regressed>0 && <rect x={x} y={mid+1} width={bw} height={scale(d.regressed)} rx="1" fill={T.crit}><title>{`${d.label}: ${d.regressed} regressed`}</title></rect>}
+            {i%every===0 && (
+              <text x={x+bw/2} y={h-3} textAnchor="middle"
+                    style={{ fontFamily:T.mono, fontSize:7.5, fill:T.ink4 }}>
+                {d.label.split(" ")[0]}
+              </text>
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/**
+ * Facility × day availability grid. The densest honest view of the window —
+ * patterns (a site broken all week vs one flapping daily) are visible at a
+ * glance in a way no aggregate can show.
+ */
+export function Heatmap({ rows, days, cell=13, gap=2, labelW=132, maxRows=16 }:
+  { rows:{ name:string; states:RAG[] }[]; days:{ label:string }[];
+    cell?:number; gap?:number; labelW?:number; maxRows?:number }) {
+  const shown = rows.slice(0, maxRows);
+  const every = Math.ceil(days.length / 8);
+  return (
+    <div style={{ overflowX:"auto" }}>
+      <div style={{ display:"flex", marginLeft:labelW, gap, marginBottom:4 }}>
+        {days.map((d,i)=>(
+          <span key={i} style={{ width:cell, fontFamily:T.mono, fontSize:7.5, color:T.ink4,
+                                 textAlign:"center", whiteSpace:"nowrap" }}>
+            {i%every===0 ? d.label.split(" ")[0] : ""}
+          </span>
+        ))}
+      </div>
+      {shown.map(r=>(
+        <div key={r.name} style={{ display:"flex", alignItems:"center", gap, marginBottom:gap }}>
+          <span style={{ width:labelW, paddingRight:8, fontFamily:T.sans, fontSize:10.5, color:T.ink2,
+                         overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.name}</span>
+          {r.states.map((s,i)=>(
+            <span key={i} title={`${r.name} · ${days[i]?.label ?? ""} · ${statusLabel[s]}`}
+              style={{ width:cell, height:cell, borderRadius:2, flexShrink:0,
+                       background: s==="green" ? T.okBg : statusColor[s],
+                       border: s==="green" ? `1px solid ${T.line}` : "none" }} />
+          ))}
+        </div>
+      ))}
+      {rows.length > maxRows && (
+        <div style={{ marginTop:6, marginLeft:labelW, fontFamily:T.sans, fontSize:10, color:T.ink4 }}>
+          + {rows.length-maxRows} further facilities, all fully operational across the window
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Legend row shared by the composition and heatmap charts. */
+export const ChartLegend = ({ items }: { items:{ c:string; l:string; n?:number }[] }) => (
+  <div style={{ display:"flex", flexWrap:"wrap", gap:"6px 16px", marginTop:10 }}>
+    {items.map(i=>(
+      <span key={i.l} style={{ display:"inline-flex", alignItems:"center", gap:6 }}>
+        <span style={{ width:9, height:9, borderRadius:2, background:i.c, flexShrink:0 }} />
+        <span style={{ fontFamily:T.sans, fontSize:10.5, color:T.ink3 }}>{i.l}</span>
+        {i.n!==undefined && <Num size={10.5} color={T.ink2}>{i.n}</Num>}
+      </span>
+    ))}
+  </div>
+);
+
+/** Compact duration display for MTTR figures. */
+export const Dur = ({ ms, size=14, color=T.ink }: { ms:number|null; size?:number; color?:string }) => {
+  if (ms === null) return <Num size={size} color={T.ink4}>—</Num>;
+  const h = ms/36e5;
+  const [v,u] = h < 1 ? [Math.round(ms/6e4), "m"] : h < 48 ? [Math.round(h*10)/10, "h"] : [Math.round(h/24*10)/10, "d"];
+  return (
+    <span style={{ display:"inline-flex", alignItems:"baseline", gap:2 }}>
+      <Num size={size} color={color}>{v}</Num>
+      <span style={{ fontFamily:T.mono, fontSize:size*0.62, color:T.ink4 }}>{u}</span>
+    </span>
+  );
+};
