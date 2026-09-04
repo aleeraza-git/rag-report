@@ -50,6 +50,35 @@ interface Props {
   org: string;
 }
 
+function analyse(
+  fac: { name:string; cat:string }[],
+  state: Record<string, FacState>,
+  log: LogEntry[],
+  range: DateRange,
+) {
+    const hist    = reconstructRange(fac, state, log, range);
+    const attn    = attentionInRange(fac, state, log, range);
+    const change  = changesBetween(log, range);
+    const divs    = divisionPerformanceRange(fac, state, log, range);
+    const divSer  = divisionSeries(fac, state, log, range);
+    const svcs    = serviceStats(fac, state, hist);
+    const mttr    = mttrByService(log, range);
+    const churn   = dailyChurn(log, range);
+    const worst   = worstPerformers(fac, state, log, range, 8);
+    const matrix  = facilityDayMatrix(fac, state, log, range, 14);
+    const cmp     = comparePeriods(fac, state, log, range);
+    const flappy  = repeatOffenders(log, rangeDays(range), 5);
+    const bw      = bandwidthDeficits(fac, state);
+    const series  = hist.points.map(p=>p.health);
+    const health  = series[series.length-1] ?? 0;
+    const trend   = hist.coverage>0 && series.length>1 ? (health-series[0])*100 : null;
+    const v       = verdict(health, attn, change, trend);
+    const counts  = {green:0,amber:0,red:0,na:0} as Record<RAG,number>;
+    const last    = hist.points[hist.points.length-1];
+    if (last) { counts.green=last.green; counts.amber=last.amber; counts.red=last.red; counts.na=last.na; }
+    return { hist,attn,change,divs,divSer,svcs,mttr,churn,worst,matrix,cmp,flappy,bw,series,health,trend,v,counts };
+}
+
 export default function ReportStudio({ facilities, state, log, org }: Props) {
   const [preset, setPreset]     = useState<Preset>("executive");
   const [rangeKey, setRangeKey] = useState<string>("last7");
@@ -74,29 +103,7 @@ export default function ReportStudio({ facilities, state, log, org }: Props) {
   const divisions = useMemo(()=>Array.from(new Set(facilities.map(f=>f.cat))),[facilities]);
   const fac = useMemo(()=>facilities.filter(f=>divFilter==="all"||f.cat===divFilter),[facilities,divFilter]);
 
-  const a = useMemo(()=>{
-    const hist    = reconstructRange(fac, state, log, range);
-    const attn    = attentionInRange(fac, state, log, range);
-    const change  = changesBetween(log, range);
-    const divs    = divisionPerformanceRange(fac, state, log, range);
-    const divSer  = divisionSeries(fac, state, log, range);
-    const svcs    = serviceStats(fac, state, hist);
-    const mttr    = mttrByService(log, range);
-    const churn   = dailyChurn(log, range);
-    const worst   = worstPerformers(fac, state, log, range, 8);
-    const matrix  = facilityDayMatrix(fac, state, log, range, 14);
-    const cmp     = comparePeriods(fac, state, log, range);
-    const flappy  = repeatOffenders(log, rangeDays(range), 5);
-    const bw      = bandwidthDeficits(fac, state);
-    const series  = hist.points.map(p=>p.health);
-    const health  = series[series.length-1] ?? 0;
-    const trend   = hist.coverage>0 && series.length>1 ? (health-series[0])*100 : null;
-    const v       = verdict(health, attn, change, trend);
-    const counts  = {green:0,amber:0,red:0,na:0} as Record<RAG,number>;
-    const last    = hist.points[hist.points.length-1];
-    if (last) { counts.green=last.green; counts.amber=last.amber; counts.red=last.red; counts.na=last.na; }
-    return { hist,attn,change,divs,divSer,svcs,mttr,churn,worst,matrix,cmp,flappy,bw,series,health,trend,v,counts };
-  },[fac,state,log,range]);
+  const a = useMemo(()=>analyse(fac, state, log, range),[fac,state,log,range]);
 
   const hasHist = a.hist.coverage > 0.02;
   const total = fac.length || 1;
@@ -324,7 +331,7 @@ function Sheet({ n, label, children }:{ n:number; label:string; children:React.R
   );
 }
 
-type A = any;
+type A = ReturnType<typeof analyse>;
 
 const H2 = ({ children }:{ children:React.ReactNode }) => (
   <h2 style={{ margin:"0 0 3px", fontFamily:T.serif, fontSize:16, fontWeight:400, color:T.ink }}>{children}</h2>
@@ -430,9 +437,9 @@ function PagePerformance({ a, hasHist, total, days }:{ a:A; hasHist:boolean; tot
         <H2>Division comparison</H2>
         <Note>Ranked weakest first. Delta compares the end of the window against its start.</Note>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"11px 18px" }}>
-          {a.divs.map((d:any)=>{
+          {a.divs.map(d=>{
             const c = d.health>=0.8?T.ok:d.health>=0.5?T.warn:T.crit;
-            const ser = a.divSer.find((s:any)=>s.cat===d.cat);
+            const ser = a.divSer.find(s=>s.cat===d.cat);
             return (
               <div key={d.cat}>
                 <div style={{ display:"flex", alignItems:"baseline", marginBottom:4 }}>
@@ -459,14 +466,14 @@ function PagePerformance({ a, hasHist, total, days }:{ a:A; hasHist:boolean; tot
         <H2>Service reliability and recovery</H2>
         <Note>Availability across {total} sites. Recovery time is measured from each fault to its fix, for outages resolved inside the window.</Note>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10 }}>
-          {a.svcs.map((s:any)=>{
+          {a.svcs.map(s=>{
             const c = s.availability>=0.8?T.ok:s.availability>=0.5?T.warn:T.crit;
-            const m = a.mttr.find((x:any)=>x.service===s.service);
+            const m = a.mttr.find(x=>x.service===s.service);
             return (
               <div key={s.service} style={{ border:`1px solid ${T.line}`, padding:"10px 11px" }}>
                 <div style={{ display:"flex", alignItems:"baseline" }}>
                   <span style={{ fontFamily:T.sans, fontSize:10.5, fontWeight:600, color:T.ink }}>
-                    {SERVICE_LABEL[s.service as keyof typeof SERVICE_LABEL]}
+                    {SERVICE_LABEL[s.service]}
                   </span>
                   {hasHist && <span style={{ marginLeft:"auto" }}><Delta v={s.delta} unit="" /></span>}
                 </div>
@@ -493,7 +500,7 @@ function PagePerformance({ a, hasHist, total, days }:{ a:A; hasHist:boolean; tot
       <div style={{ marginTop:18 }}>
         <H2>Fault and recovery volume</H2>
         <Note>Recoveries above the line, regressions below. A period fixing faster than it breaks sits mostly above.</Note>
-        {a.churn.some((c:any)=>c.recovered||c.regressed) ? (
+        {a.churn.some(c=>c.recovered||c.regressed) ? (
           <>
             <DivergingBars data={a.churn} w={540} h={100} />
             <ChartLegend items={[{c:T.ok,l:"Recovered",n:a.change.recovered},{c:T.crit,l:"Regressed",n:a.change.degraded}]} />
@@ -525,7 +532,7 @@ function PageExceptions({ a, days }:{ a:A; days:number }) {
                           paddingBottom:5, borderBottom:`1px solid ${T.ink3}` }}>
               {["Facility","Fault","Since","Flips","Capacity"].map(h=><Eyebrow key={h} style={{ fontSize:8 }}>{h}</Eyebrow>)}
             </div>
-            {a.attn.slice(0,11).map((it:any)=>(
+            {a.attn.slice(0,11).map(it=>(
               <div key={it.facility} style={{ display:"grid", gridTemplateColumns:"1.9fr 1.1fr 58px 42px 52px",
                     gap:8, alignItems:"center", padding:"6px 0", borderBottom:`1px solid ${T.lineSoft}` }}>
                 <span style={{ minWidth:0 }}>
@@ -553,7 +560,7 @@ function PageExceptions({ a, days }:{ a:A; days:number }) {
         <div style={{ marginTop:16 }}>
           <H2>Least reliable sites across the window</H2>
           <Note>Share of the {days}-day window each site spent below fully operational.</Note>
-          {a.worst.slice(0,6).map((w:any)=>(
+          {a.worst.slice(0,6).map(w=>(
             <div key={w.facility} style={{ display:"grid", gridTemplateColumns:"1.6fr 1fr 44px",
                   gap:10, alignItems:"center", padding:"5px 0", borderBottom:`1px solid ${T.lineSoft}` }}>
               <span style={{ fontFamily:T.sans, fontSize:9.5, color:T.ink, overflow:"hidden",
@@ -572,7 +579,7 @@ function PageExceptions({ a, days }:{ a:A; days:number }) {
         <div style={{ marginTop:16 }}>
           <H2>Capacity risk</H2>
           <Note>Sites currently operating below their stated bandwidth requirement.</Note>
-          {a.bw.slice(0,5).map((b:any)=>(
+          {a.bw.slice(0,5).map(b=>(
             <div key={b.facility} style={{ display:"grid", gridTemplateColumns:"1.7fr 82px 1fr 42px",
                   gap:10, alignItems:"center", padding:"5px 0", borderBottom:`1px solid ${T.lineSoft}` }}>
               <span style={{ fontFamily:T.sans, fontSize:9.5, color:T.ink, overflow:"hidden",
@@ -592,7 +599,7 @@ function PageExceptions({ a, days }:{ a:A; days:number }) {
 
 function PageAvailability({ a, heatRows, fac, state }:
   { a:A; heatRows:{name:string;states:RAG[]}[]; fac:{name:string;cat:string}[]; state:Record<string,FacState> }) {
-  const dayLabels = a.matrix.days.map((d:any)=>({
+  const dayLabels = a.matrix.days.map(d=>({
     label: new Date(d.t).toLocaleDateString("en-GB",{day:"2-digit",month:"short"}),
   }));
   return (
