@@ -591,40 +591,49 @@ async function generatePDF(
     (doc as any).lines(lines,pts[0][0],pts[0][1],[1,1],"F",true);
   };
 
-  // Panel: white card with bold black title (matches preview)
-  const panel = (x:number,y:number,w:number,h:number,title:string,_accent:RGB=GOLD) => {
-    frr(x,y,w,h,2,WHITE);
-    doc.setDrawColor(...BDR); doc.setLineWidth(0.2); doc.roundedRect(x,y,w,h,2,2,"S");
-    txt(title,x+4,y+5.5,5,INK,"bold");
+  // Panel: white card, accent left bar, bold title, separator rule
+  const panel = (x:number,y:number,w:number,h:number,title:string,accent:RGB=GOLD) => {
+    frr(x,y,w,h,2.5,WHITE);
+    doc.setDrawColor(...BDR); doc.setLineWidth(0.25); doc.roundedRect(x,y,w,h,2.5,2.5,"S");
+    // left accent bar
+    doc.setFillColor(...accent); doc.roundedRect(x,y+4,2.5,8,1,1,"F");
+    txt(title,x+6,y+9,7,INK,"bold");
+    // title separator
+    doc.setDrawColor(...BDR); doc.setLineWidth(0.2); doc.line(x+4,y+11.5,x+w-4,y+11.5);
   };
 
   const TOTPG = 1;
   const drawShell = (pg:number, _subtitle="") => {
     // Light-gray page background
-    fr(0,0,PW,PH,[243,244,246] as RGB);
+    fr(0,0,PW,PH,[240,242,245] as RGB);
+    // 2.5mm gold top stripe
+    fr(0,0,PW,2.5,GOLD);
     // White header
-    fr(0,0,PW,HDR,WHITE);
-    doc.setDrawColor(...BDR); doc.setLineWidth(0.25); doc.line(0,HDR,PW,HDR);
-    // Gold left accent bar
-    fr(PAD,4,2.5,15,GOLD);
-    // IMARAT wordmark
-    txt("IMARAT",PAD+6,12,11,INK,"bold");
-    txt("Group of Companies · IT Dept",PAD+6,18,3.2,MUTED);
+    fr(0,2.5,PW,HDR-2.5,WHITE);
+    doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.line(0,HDR,PW,HDR);
+    // IMARAT block
+    fr(PAD,6,3,14,GOLD);
+    txt("IMARAT",PAD+6.5,14,13,[6,14,28] as RGB,"bold");
+    txt("Group of Companies · IT Dept",PAD+6.5,19.5,4,MUTED);
     // Vertical divider
-    doc.setDrawColor(...BDR); doc.setLineWidth(0.25); doc.line(PAD+52,4,PAD+52,HDR-3);
+    doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.line(PAD+58,5,PAD+58,HDR-2);
     // Report title + org
-    txt(cfg.title,PAD+56,11,8,INK,"bold");
-    txt(`${cfg.org}  ·  ${cfg.period||dateStr}`,PAD+56,17,3.5,MUTED);
+    txt(cfg.title,PAD+62,13,9,INK,"bold");
+    txt(`${cfg.org}  ·  ${cfg.period||dateStr}`,PAD+62,19.5,4.5,MUTED);
+    // Badge: RAG Dashboard
+    frr(PW/2-18,7,36,8,2,[240,242,245] as RGB);
+    doc.setDrawColor(...BDR); doc.setLineWidth(0.25); doc.roundedRect(PW/2-18,7,36,8,2,2,"S");
+    txt("EXECUTIVE RAG DASHBOARD",PW/2,13,4.5,MUTED,"bold","center");
     // Date/time right
-    txt(dateStr,PW-PAD,11,7,INK,"bold","right");
-    txt(timeStr,PW-PAD,17,3.5,MUTED,"normal","right");
+    txt(dateStr,PW-PAD,13,8,INK,"bold","right");
+    txt(timeStr,PW-PAD,19.5,4.5,MUTED,"normal","right");
     // White footer
     fr(0,FTR_Y,PW,PH-FTR_Y,WHITE);
-    doc.setDrawColor(...BDR); doc.setLineWidth(0.25); doc.line(0,FTR_Y,PW,FTR_Y);
-    const fy=FTR_Y+3.5;
-    txt(`${cfg.org}  ·  IT Department  ·  it.support@imarat.com.pk`,PAD,fy+2,3.2,MUTED);
-    if(cfg.includeTs) txt("System Generated · Confidential",PW/2,fy+2,3.2,MUTED,"normal","center");
-    txt(`imarat.com.pk  ·  ${dateStr}`,PW-PAD,fy+2,3.2,MUTED,"normal","right");
+    doc.setDrawColor(...BDR); doc.setLineWidth(0.3); doc.line(0,FTR_Y,PW,FTR_Y);
+    const fy=FTR_Y+4;
+    txt(`${cfg.org}  ·  IT Department  ·  it.support@imarat.com.pk`,PAD,fy+3,4.5,MUTED);
+    if(cfg.includeTs) txt("CONFIDENTIAL  ·  SYSTEM GENERATED",PW/2,fy+3,4,MUTED,"bold","center");
+    txt(`Page ${pg} of ${TOTPG}  ·  imarat.com.pk`,PW-PAD,fy+3,4.5,MUTED,"normal","right");
   };
 
   const insight = (() => {
@@ -653,63 +662,74 @@ async function generatePDF(
   // ── Panel 1: Health ──────────────────────────────────────────────────────
   panel(P_X(0),BT,PW3,ROW_H,"HEALTH");
   {
-    ([
-      {l:"Overall",v:`${Math.round(healthPct*100)}% operational`,c:hC},
-      {l:"Total Sites",v:`${sorted.length} monitored`,c:MUTED},
-      {l:"Operational",v:`${grnN} sites`,c:gC},
-      {l:"Degraded",v:`${ambN} sites`,c:aC},
-      {l:"Critical",v:`${redN} sites`,c:rC},
-      {l:"Not Set",v:`${counts.na||0} sites`,c:nC},
-    ] as {l:string;v:string;c:RGB}[]).forEach((r,ri)=>{
-      const ry=BT+9+ri*((ROW_H-11)/6);
-      if(ri>0){ doc.setDrawColor(...BDR); doc.setLineWidth(0.1); doc.line(P_X(0)+3,ry-0.5,P_X(0)+PW3-3,ry-0.5); }
-      txt(r.l,P_X(0)+4,ry+4,4,MUTED,"normal");
-      txt(r.v,P_X(0)+PW3-4,ry+4,4.5,r.c,"bold","right");
+    const rows=[
+      {l:"Overall Health",v:`${Math.round(healthPct*100)}%`,c:hC,highlight:true},
+      {l:"Total Sites",v:`${sorted.length}`,c:INK,highlight:false},
+      {l:"Operational",v:String(grnN),c:gC,highlight:false},
+      {l:"Degraded",v:String(ambN),c:aC,highlight:false},
+      {l:"Critical",v:String(redN),c:rC,highlight:false},
+      {l:"Not Configured",v:String(counts.na||0),c:nC,highlight:false},
+    ] as {l:string;v:string;c:RGB;highlight:boolean}[];
+    const rowH=(ROW_H-15)/6;
+    rows.forEach((r,ri)=>{
+      const ry=BT+14+ri*rowH;
+      if(r.highlight){
+        frr(P_X(0)+4,ry-1,PW3-8,rowH-1,1.5,hC);
+        txt(r.l,P_X(0)+8,ry+rowH/2+1.5,5.5,WHITE,"normal");
+        txt(r.v,P_X(0)+PW3-8,ry+rowH/2+1.5,7,WHITE,"bold","right");
+      } else {
+        if(ri>0){ doc.setDrawColor(...BDR); doc.setLineWidth(0.15); doc.line(P_X(0)+4,ry-0.5,P_X(0)+PW3-4,ry-0.5); }
+        txt(r.l,P_X(0)+6,ry+rowH/2+1.5,5.5,MUTED,"normal");
+        txt(r.v,P_X(0)+PW3-6,ry+rowH/2+1.5,6.5,r.c,"bold","right");
+      }
     });
   }
 
   // ── Panel 2: Status ───────────────────────────────────────────────────────
   panel(P_X(1),BT,PW3,ROW_H,"STATUS");
   {
-    const cx=P_X(1)+PW3*0.35, cy=BT+ROW_H/2, RO=16, RI=10;
+    const cx=P_X(1)+PW3*0.33, cy=BT+14+(ROW_H-15)/2, RO=19, RI=12;
     const segs=[{v:grnN,c:gC},{v:ambN,c:aC},{v:redN,c:rC},{v:counts.na||0,c:nC}] as {v:number;c:RGB}[];
     const tot=segs.reduce((s,r)=>s+r.v,0)||1;
     drawArc(cx,cy,RO,RI,-90,270,[228,234,246] as RGB);
     let ca=-90;
     segs.forEach(seg=>{ if(!seg.v) return; const sp=360*seg.v/tot; drawArc(cx,cy,RO,RI,ca,ca+sp,seg.c); ca+=sp; });
-    doc.setFillColor(...WHITE); doc.circle(cx,cy,RI-0.3,"F");
-    txt(String(sorted.length),cx,cy+2,8,INK,"bold","center");
-    const legX=P_X(1)+PW3*0.65, legY=BT+9;
+    doc.setFillColor(...WHITE); doc.circle(cx,cy,RI-0.5,"F");
+    txt(String(sorted.length),cx,cy+1.5,10,INK,"bold","center");
+    txt("sites",cx,cy+6,4.5,MUTED,"normal","center");
+    const legX=P_X(1)+PW3*0.6, legY=BT+14;
     ([{l:"Operational",v:grnN,c:gC},{l:"Degraded",v:ambN,c:aC},{l:"Critical",v:redN,c:rC},{l:"Not Set",v:counts.na||0,c:nC}] as {l:string;v:number;c:RGB}[]).forEach((lk,li)=>{
-      const ly=legY+li*((ROW_H-12)/4);
-      doc.setFillColor(...lk.c); doc.circle(legX+2,ly+2,1.8,"F");
-      txt(lk.l,legX+6,ly+3,3.8,INK);
-      txt(String(lk.v),P_X(1)+PW3-4,ly+3,4.5,lk.c,"bold","right");
-      const bW=(PW3-legX+P_X(1)-12)*lk.v/tot;
-      frr(legX+6,ly+5.5,PW3-legX+P_X(1)-14,3,1.5,[228,234,246] as RGB);
-      if(lk.v>0) frr(legX+6,ly+5.5,Math.max(bW,2),3,1.5,lk.c);
+      const ly=legY+li*((ROW_H-16)/4);
+      doc.setFillColor(...lk.c); doc.circle(legX+2.5,ly+3,2,"F");
+      txt(lk.l,legX+7,ly+4,5.5,INK);
+      txt(String(lk.v),P_X(1)+PW3-5,ly+4,7,lk.c,"bold","right");
+      const avail=PW3-legX+P_X(1)-14;
+      const bW=avail*lk.v/tot;
+      frr(legX+7,ly+6.5,avail,3.5,1.5,[228,234,246] as RGB);
+      if(lk.v>0) frr(legX+7,ly+6.5,Math.max(bW,2.5),3.5,1.5,lk.c);
     });
   }
 
   // ── Panel 3: Division Progress ────────────────────────────────────────────
   panel(P_X(2),BT,PW3,ROW_H,"PROGRESS");
   {
+    const catRowH=(ROW_H-16)/4;
     CATS.forEach((cat,ci)=>{
       const facs=sorted.filter(f=>f.cat===cat);
       const grn=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="green").length;
       const amb=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="amber").length;
       const red=facs.filter(f=>calcOverall(state[f.name]??defaultState())==="red").length;
       const cc=CAT_C[cat];
-      const rY=BT+9+ci*((ROW_H-12)/4);
-      txt(cat,P_X(2)+4,rY+4.5,4.5,cc,"bold");
-      txt(`${facs.length} sites`,P_X(2)+4,rY+8.5,3,MUTED);
-      txt(`${Math.round(grn/Math.max(facs.length,1)*100)}%`,P_X(2)+PW3-4,rY+5,5,cc,"bold","right");
-      const bX=P_X(2)+4, bW=PW3-8, bY=rY+11;
-      frr(bX,bY,bW,5,2,[228,234,246] as RGB);
+      const rY=BT+14+ci*catRowH;
+      txt(cat,P_X(2)+6,rY+5.5,6,cc,"bold");
+      txt(`${facs.length} sites`,P_X(2)+6,rY+10,4.5,MUTED);
+      txt(`${Math.round(grn/Math.max(facs.length,1)*100)}%`,P_X(2)+PW3-6,rY+6,7,cc,"bold","right");
+      const bX=P_X(2)+6, bW=PW3-12, bY=rY+12;
+      frr(bX,bY,bW,6,2,[228,234,246] as RGB);
       let bx=bX;
       ([{v:grn,c:gC},{v:amb,c:aC},{v:red,c:rC}] as {v:number;c:RGB}[]).forEach(bk=>{
         const bw=bW*bk.v/Math.max(facs.length,1);
-        if(bk.v>0){frr(bx,bY,bw,5,0,bk.c); bx+=bw;}
+        if(bk.v>0){frr(bx,bY,bw,6,0,bk.c); bx+=bw;}
       });
     });
   }
@@ -717,36 +737,45 @@ async function generatePDF(
   // ── Panel 4: Services ────────────────────────────────────────────────────
   panel(P_X(0),ROW2_Y,PW3,ROW_H,"SERVICES");
   {
-    const svcs=[{lbl:"Internet",key:"internet" as keyof FacilityState},{lbl:"Biometric",key:"bio" as keyof FacilityState},{lbl:"Printing",key:"printing" as keyof FacilityState}];
+    const svcs=[
+      {lbl:"Internet Connectivity",key:"internet" as keyof FacilityState},
+      {lbl:"Biometric Systems",key:"bio" as keyof FacilityState},
+      {lbl:"Printing Services",key:"printing" as keyof FacilityState},
+    ];
+    const svcRowH=(ROW_H-16)/3;
     svcs.forEach((svc,si)=>{
       const vals=sorted.map(f=>(state[f.name]??defaultState())[svc.key] as RAGStatus);
       const sg=vals.filter(v=>v==="green").length, sa=vals.filter(v=>v==="amber").length, sr=vals.filter(v=>v==="red").length;
       const sh=vals.length>0?sg/vals.length:0;
       const shC:RGB=sh>=0.8?gC:sh>=0.5?aC:rC;
-      const sY=ROW2_Y+9+si*((ROW_H-11)/3);
-      txt(svc.lbl,P_X(0)+4,sY+4.5,4.5,INK,"bold");
-      txt(`${sg}/${vals.length}`,P_X(0)+PW3-4,sY+4.5,5,shC,"bold","right");
-      const bX=P_X(0)+4, bW=PW3-8, bY=sY+7;
-      frr(bX,bY,bW,6,2,[228,234,246] as RGB);
+      const sY=ROW2_Y+14+si*svcRowH;
+      txt(svc.lbl,P_X(0)+6,sY+5.5,5.5,INK,"bold");
+      txt(`${sg} / ${vals.length}`,P_X(0)+PW3-6,sY+5.5,6.5,shC,"bold","right");
+      const bX=P_X(0)+6, bW=PW3-12, bY=sY+8;
+      frr(bX,bY,bW,7,2,[228,234,246] as RGB);
       let bx=bX;
-      ([{v:sg,c:gC},{v:sa,c:aC},{v:sr,c:rC}] as {v:number;c:RGB}[]).forEach(bk=>{ const bw=bW*bk.v/Math.max(vals.length,1); if(bk.v>0){frr(bx,bY,bw,6,0,bk.c); bx+=bw;} });
-      txt(`${Math.round(sh*100)}% availability`,P_X(0)+4,sY+17,3,MUTED);
+      ([{v:sg,c:gC},{v:sa,c:aC},{v:sr,c:rC}] as {v:number;c:RGB}[]).forEach(bk=>{ const bw=bW*bk.v/Math.max(vals.length,1); if(bk.v>0){frr(bx,bY,bw,7,0,bk.c); bx+=bw;} });
+      txt(`${Math.round(sh*100)}% availability  ·  ${sa} degraded  ·  ${sr} critical`,P_X(0)+6,sY+19,4.5,MUTED);
     });
   }
 
   // ── Panel 5: Support Tickets ─────────────────────────────────────────────
   panel(P_X(1),ROW2_Y,PW3,ROW_H,"SUPPORT TICKETS");
   {
-    const tkData=[{v:autoStats.received,l:"Received",c:[59,130,246] as RGB},{v:autoStats.resolved,l:"Resolved",c:gC},{v:autoStats.pending,l:"Pending",c:aC}];
+    const tkData=[
+      {v:autoStats.received,l:"Received",c:[59,130,246] as RGB},
+      {v:autoStats.resolved,l:"Resolved",c:gC},
+      {v:autoStats.pending,l:"Pending",c:aC},
+    ];
     const maxV=Math.max(...tkData.map(t=>t.v),1);
-    const barH=ROW_H-30, barW=(PW3-24)/3;
+    const barH=ROW_H-34, barW=(PW3-28)/3;
     tkData.forEach((tk,ti)=>{
-      const bX=P_X(1)+6+ti*(barW+3);
-      const filled=barH*(tk.v/maxV);
-      txt(String(tk.v),bX+barW/2,ROW2_Y+14,9,tk.c,"bold","center");
-      frr(bX,ROW2_Y+17,barW,barH,2,[228,234,246] as RGB);
-      if(tk.v>0) frr(bX,ROW2_Y+17+barH-filled,barW,filled,2,tk.c);
-      txt(tk.l,bX+barW/2,ROW2_Y+ROW_H-4,3.5,MUTED,"normal","center");
+      const bX=P_X(1)+8+ti*(barW+4);
+      const filled=Math.max(barH*(tk.v/maxV),3);
+      txt(String(tk.v),bX+barW/2,ROW2_Y+17,11,tk.c,"bold","center");
+      frr(bX,ROW2_Y+20,barW,barH,3,[228,234,246] as RGB);
+      if(tk.v>0) frr(bX,ROW2_Y+20+barH-filled,barW,filled,3,tk.c);
+      txt(tk.l,bX+barW/2,ROW2_Y+ROW_H-5,5,MUTED,"normal","center");
     });
   }
 
@@ -754,27 +783,32 @@ async function generatePDF(
   panel(P_X(2),ROW2_Y,PW3,ROW_H,"FACILITY OVERVIEW");
   {
     const COLS=6;
-    const dotD=Math.min(6,(PW3-12)/COLS);
-    const dotGap=(PW3-12)/COLS;
+    const availW=PW3-14, availH=ROW_H-18;
+    const dotD=Math.min(8,Math.floor(availW/COLS)-2);
+    const dotGapX=availW/COLS;
+    const rows2=Math.ceil(sorted.length/COLS);
+    const dotGapY=Math.min(dotD+3,availH/Math.max(rows2,1));
     sorted.forEach((f,fi)=>{
       const col=fi%COLS, row=Math.floor(fi/COLS);
-      const dx=P_X(2)+6+col*dotGap+dotD/2;
-      const dy=ROW2_Y+11+row*(dotD+2)+dotD/2;
+      const dx=P_X(2)+7+col*dotGapX+dotD/2;
+      const dy=ROW2_Y+14+row*dotGapY+dotD/2;
       const ov=calcOverall(state[f.name]??defaultState());
-      doc.setFillColor(...ragFill(ov)); doc.circle(dx,dy,dotD/2+1,"F");
-      doc.setFillColor(...ragAccent(ov)); doc.circle(dx,dy,dotD/2,"F");
-      doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(2.8);
-      doc.text(String(fi+1),dx,dy+0.9,{align:"center"});
+      frr(dx-dotD/2,dy-dotD/2,dotD,dotD,1.5,ragFill(ov));
+      doc.setDrawColor(...ragAccent(ov)); doc.setLineWidth(0.5); doc.roundedRect(dx-dotD/2,dy-dotD/2,dotD,dotD,1.5,1.5,"S");
+      doc.setTextColor(...ragAccent(ov)); doc.setFont("helvetica","bold"); doc.setFontSize(3.5);
+      doc.text(String(fi+1),dx,dy+1.2,{align:"center"});
     });
   }
 
   // ── Insight strip ────────────────────────────────────────────────────────
   {
-    const iY=FTR_Y-10;
-    fr(0,iY,PW,10,NAVYM);
-    fr(0,iY,3,10,GOLD);
-    txt("INSIGHT",PAD+6,iY+3.5,4,GOLD,"bold");
-    txt(insight,PAD+26,iY+3.5,4,WHITE,"normal");
+    const iY=FTR_Y-12, iH=11;
+    frr(PAD,iY,TW,iH,2.5,[22,30,50] as RGB);
+    // gold left accent
+    doc.setFillColor(...GOLD); doc.roundedRect(PAD,iY,3,iH,1.5,1.5,"F");
+    txt("INSIGHT",PAD+7,iY+4,5.5,GOLD,"bold");
+    txt("·",PAD+24,iY+4,6,GOLD,"normal");
+    txt(insight,PAD+28,iY+4,5,[203,213,225] as RGB,"normal");
   }
 
   doc.save(fileName);
