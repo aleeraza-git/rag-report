@@ -128,31 +128,20 @@ const PRINT_OPTS: { v: RAGStatus; l: string }[] = [
 ];
 
 const RAG: Record<RAGStatus, { bg: string; border: string; text: string; label: string; dot: string }> = {
-  green: { bg:"#edf7f0", border:"#a8d5b5", text:"#1a6b35", label:"Operational", dot:"#22c55e" },
-  amber: { bg:"#fef8ec", border:"#f5d48a", text:"#7a5200", label:"Degraded",    dot:"#f59e0b" },
-  red:   { bg:"#fdf0f0", border:"#f5b8b8", text:"#8b1c1c", label:"Critical",    dot:"#ef4444" },
-  na:    { bg:"#f1f4f8", border:"#c8d0dc", text:"#6b7280", label:"N/A",         dot:"#9ca3af" },
+  green: { bg:"#E6F0EB", border:"#BFD8CB", text:"#0E3D2F", label:"Operational", dot:"#1E7A5A" },
+  amber: { bg:"#F5EDDA", border:"#E2CFA4", text:"#6E5214", label:"Degraded",    dot:"#C49A3C" },
+  red:   { bg:"#F3E6E5", border:"#E0BCBA", text:"#7A2E2A", label:"Critical",    dot:"#B85450" },
+  na:    { bg:"#EEF1F3", border:"#D4DBD8", text:"#5A6F68", label:"N/A",         dot:"#8A9BA8" },
 };
 const CAT_COLORS: Record<string,string> = {
-  Projects:"#3b5bdb", Imarat:"#0c7a6d", Graana:"#7c3aed", Agency21:"#c05621",
-};
-const TICKET_STATUS: Record<string,{ bg:string; text:string; lbl:string; border:string }> = {
-  open:       { bg:"#fdf0f0", text:"#8b1c1c", lbl:"Open",       border:"#f5b8b8" },
-  inprogress: { bg:"#fef8ec", text:"#7a5200", lbl:"In Progress", border:"#f5d48a" },
-  resolved:   { bg:"#edf7f0", text:"#1a6b35", lbl:"Resolved",    border:"#a8d5b5" },
-  pending:    { bg:"#f0f4ff", text:"#3b5bdb", lbl:"Pending",     border:"#b4c6fb" },
+  Projects:"#2C5F7C", Imarat:"#0E3D2F", Graana:"#6B4E7D", Agency21:"#A65D3A",
 };
 
 function nowTime() {
-  return new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", second:"2-digit" });
+  return new Date().toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", second:"2-digit", hour12:true });
 }
 function nowFull() {
-  return new Date().toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit" });
-}
-function imatTicketId() {
-  const num = Math.floor(1000 + Math.random() * 9000);
-  const alpha = Math.random().toString(36).substr(2, 3).toUpperCase();
-  return `IM-${num}-${alpha}`;
+  return new Date().toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"numeric", minute:"2-digit", second:"2-digit", hour12:true });
 }
 function uid() { return Math.random().toString(36).substr(2, 9).toUpperCase(); }
 function calcOverall(s: FacilityState): RAGStatus {
@@ -170,9 +159,9 @@ function bwCompare(cur: string, req: string): { label: string; bg: string; borde
   const r = parseFloat(req?.replace(/[^0-9.]/g,"") || "");
   if (!c || !r) return null;
   const pct = Math.round((c/r)*100);
-  if (pct >= 100) return { label:`${pct}% OK`,       bg:"#edf7f0", border:"#a8d5b5", color:"#1a6b35" };
-  if (pct >= 70)  return { label:`${pct}% LOW`,      bg:"#fef8ec", border:"#f5d48a", color:"#7a5200" };
-  return             { label:`${pct}% CRITICAL`, bg:"#fdf0f0", border:"#f5b8b8", color:"#8b1c1c" };
+  if (pct >= 100) return { label:`${pct}% OK`,       bg:"#E6F0EB", border:"#BFD8CB", color:"#0E3D2F" };
+  if (pct >= 70)  return { label:`${pct}% LOW`,      bg:"#F5EDDA", border:"#E2CFA4", color:"#6E5214" };
+  return             { label:`${pct}% CRITICAL`, bg:"#F3E6E5", border:"#E0BCBA", color:"#7A2E2A" };
 }
 function fieldLabel(f: string): string {
   const m: Record<string,string> = { internet:"Internet", bio:"Biometric", printing:"Printing", bandwidth:"Current BW", requiredBandwidth:"Required BW", issue:"Reported Issue", notes:"Notes" };
@@ -207,8 +196,6 @@ export default function Dashboard() {
   const [lastSync, setLastSync] = useState("");
   const [now, setNow] = useState("");
   const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [showTicketForm, setShowTicketForm] = useState(false);
-  const [newTicket, setNewTicket] = useState({ office:"", description:"", reportedBy:"", assignedTo:"", medium:"" });
   const [stats, setStats] = useState<DailyStats>({ received:0, resolved:0, pending:0, inprogress:0 });
   const [activityLog, setActivityLog] = useState<ActivityLog[]>([]);
   const [logFrom, setLogFrom] = useState("");
@@ -227,10 +214,6 @@ export default function Dashboard() {
     return res.json();
   }, []);
 
-  const loadTickets = useCallback(async () => {
-    const rows = await apiFetch("/api/tickets");
-    setTickets(rows.map((r: any) => r.data).sort((a: Ticket, b: Ticket) => b.ts.localeCompare(a.ts)));
-  }, [apiFetch]);
 
   const loadLog = useCallback(async () => {
     const rows = await apiFetch("/api/activity-log");
@@ -271,8 +254,8 @@ export default function Dashboard() {
     setState(init);
     loadAll(true);
 
-    const clockTick = () => setClock(new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", second:"2-digit" }));
-    const fmt = () => new Date().toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
+    const clockTick = () => setClock(new Date().toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", second:"2-digit", hour12:true }));
+    const fmt = () => new Date().toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"numeric", minute:"2-digit", hour12:true });
     setNow(fmt());
     clockTick();
     const clockTimer = setInterval(() => { setNow(fmt()); clockTick(); }, 1000);
@@ -368,45 +351,8 @@ export default function Dashboard() {
     });
   };
 
-  const addTicket = async () => {
-    if (!newTicket.description) return;
-    const t: Ticket = {
-      id: imatTicketId(), office: newTicket.office||"Unknown / Remote Office",
-      medium: newTicket.medium||"—", description: newTicket.description,
-      reportedBy: newTicket.reportedBy||"Unknown", assignedTo: newTicket.assignedTo,
-      resolvedBy: "", status: "open", ts: nowFull(), resolvedTs: "",
-    };
-    setTickets(prev => [t, ...prev]);
-    await apiFetch("/api/tickets", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: t.id, data: t }),
-    });
-    await addLog({ facility: t.office, field:"Ticket Created", oldVal:"—", newVal:`${t.id}: ${t.description}`, type:"ticket" });
-    setNewTicket({ office:"", description:"", reportedBy:"", assignedTo:"", medium:"" });
-    setShowTicketForm(false);
-  };
 
-  const updateTicket = async (id:string, field:keyof Ticket, val:string) => {
-    const ticket = tickets.find(t => t.id === id); if (!ticket) return;
-    const updated = { ...ticket, [field]: val };
-    if (field === "status" && val === "resolved") updated.resolvedTs = nowFull();
-    setTickets(prev => prev.map(t => t.id === id ? updated : t));
-    await apiFetch("/api/tickets", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, data: updated }),
-    });
-    if (field === "status") await addLog({ facility: ticket.office, field:`Ticket ${id}`, oldVal: humanVal(ticket.status), newVal: humanVal(val), type:"ticket" });
-    if (field === "assignedTo") await addLog({ facility: ticket.office, field:`Ticket ${id} Assigned`, oldVal: ticket.assignedTo||"—", newVal: val||"—", type:"ticket" });
-  };
 
-  const deleteTicket = async (id:string) => {
-    const ticket = tickets.find(t => t.id === id);
-    setTickets(prev => prev.filter(t => t.id !== id));
-    await apiFetch(`/api/tickets/${id}`, { method: "DELETE" });
-    if (ticket) await addLog({ facility: ticket.office, field:"Ticket Deleted", oldVal: id, newVal:"—", type:"ticket" });
-  };
 
   // ── computed values ──────────────────────────────────────────────────────────
 
@@ -451,7 +397,7 @@ export default function Dashboard() {
   const exportPDF = async () => {
     const d       = new Date();
     const dateStr = d.toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
-    const timeStr = d.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+    const timeStr = d.toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", hour12:true });
     const refNo   = `IGC-IT-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}-${String(d.getHours()).padStart(2,"0")}${String(d.getMinutes()).padStart(2,"0")}`;
 
     // ── Logo: load & invert to white-on-transparent for dark header ───────────
@@ -488,29 +434,29 @@ export default function Dashboard() {
     // ── Colour system ─────────────────────────────────────────────────────────
     type RGB = [number,number,number];
     const C = {
-      // Core
-      ocean:   [18,  46,  82] as RGB,   // header / footer
-      oceanM:  [26,  62, 108] as RGB,
-      oceanL:  [38,  82, 136] as RGB,
-      coral:   [235, 94,  40] as RGB,   // primary accent
-      coralL:  [255,236,228] as RGB,
-      bg:      [240,244,255] as RGB,    // page background (cool lavender-white)
+      // Core — forest-green editorial system
+      ocean:   [14,  61,  47] as RGB,   // brand green: header / footer
+      oceanM:  [15,  36,  32] as RGB,   // emphasis deep
+      oceanL:  [24,  62,  52] as RGB,
+      coral:   [200,168, 106] as RGB,   // gold accent
+      coralL:  [245,238, 220] as RGB,
+      bg:      [244,246,243] as RGB,    // warm sage page ground
       white:   [255,255,255] as RGB,
-      ink:     [22,  36,  60] as RGB,
-      inkM:    [80, 100, 135] as RGB,
-      inkL:    [145,162,198] as RGB,
-      border:  [210,220,240] as RGB,
-      shadow:  [200,212,235] as RGB,
-      // Status
-      gC:  [14, 160, 110] as RGB,  gL:  [210,246,232] as RGB,  gD:  [6,  88, 58]  as RGB,
-      aC:  [210,138,  0] as RGB,   aL:  [255,238,170] as RGB,  aD:  [100, 64,  0] as RGB,
-      rC:  [210, 40,  55] as RGB,  rL:  [255,210,215] as RGB,  rD:  [130, 10,  22] as RGB,
-      nC:  [148,162,190] as RGB,   nL:  [232,236,248] as RGB,  nD:  [80,  96, 130] as RGB,
-      // Divisions (completely new palette)
-      iC:  [0,  148,136] as RGB,   iL:  [205,246,242] as RGB,  // Imarat   – jade teal
-      pC:  [108, 56, 210] as RGB,  pL:  [234,224,255] as RGB,  // Projects – violet
-      grC: [194,108,  0] as RGB,   grL: [255,238,190] as RGB,  // Graana   – amber
-      a21C:[198, 32,  70] as RGB,  a21L:[255,218,228] as RGB,  // Agency21 – crimson
+      ink:     [18,  32,  28] as RGB,
+      inkM:    [90, 111, 104] as RGB,
+      inkL:    [138,160,153] as RGB,
+      border:  [227,231,227] as RGB,
+      shadow:  [214,222,216] as RGB,
+      // Status — muted earthy RAG
+      gC:  [30, 122,  90] as RGB,  gL:  [230,240,235] as RGB,  gD:  [14,  61, 47] as RGB,
+      aC:  [196,154,  60] as RGB,  aL:  [245,237,218] as RGB,  aD:  [110, 82, 20] as RGB,
+      rC:  [184, 84,  80] as RGB,  rL:  [243,230,229] as RGB,  rD:  [122, 46, 42] as RGB,
+      nC:  [138,155,168] as RGB,   nL:  [238,241,243] as RGB,  nD:  [90, 111,104] as RGB,
+      // Divisions — earthy, brand-anchored
+      iC:  [14,  61,  47] as RGB,  iL:  [230,240,235] as RGB,  // Imarat   – brand green
+      pC:  [44,  95, 124] as RGB,  pL:  [225,235,241] as RGB,  // Projects – slate teal
+      grC: [107, 78, 125] as RGB,  grL: [237,231,241] as RGB,  // Graana   – muted plum
+      a21C:[166, 93,  58] as RGB,  a21L:[246,232,224] as RGB,  // Agency21 – terracotta
     };
     const CAT_C:  Record<string,RGB> = { Imarat:C.iC,  Projects:C.pC,  Graana:C.grC, Agency21:C.a21C };
     const CAT_BG: Record<string,RGB> = { Imarat:C.iL,  Projects:C.pL,  Graana:C.grL, Agency21:C.a21L };
@@ -584,17 +530,17 @@ export default function Dashboard() {
     const TX = PAD + 53;
     t("IT FACILITIES RAG DASHBOARD", TX, 13, 12, C.white, "bold");
     t("IMARAT GROUP OF COMPANIES  ·  IT Department", TX, 19, 5.5, C.coral, "bold");
-    t(`Daily Operational Report  ·  ${FACILITIES.length} Sites  ·  ${dateStr}`, TX, 24.5, 4, [110,140,185] as RGB);
+    t(`Daily Operational Report  ·  ${FACILITIES.length} Sites  ·  ${dateStr}`, TX, 24.5, 4, [150,176,163] as RGB);
 
     // Right block
     t(timeStr, PW-PAD, 13, 11, C.white, "bold", "right");
     t(dateStr, PW-PAD, 19.5, 5.5, C.coral, "bold", "right");
-    t(`Ref: ${refNo}`, PW-PAD, 24.5, 3.8, [100,130,175] as RGB, "normal", "right");
+    t(`Ref: ${refNo}`, PW-PAD, 24.5, 3.8, [140,168,155] as RGB, "normal", "right");
 
     // =========================================================================
     // KPI STRIP  (Y:29–45, height 16)
     // Background band
-    fr(0,KY-1,PW,KH+2,[230,236,250] as RGB);
+    fr(0,KY-1,PW,KH+2,[239,242,238] as RGB);
 
     const totalSites = FACILITIES.length;
     const healthPct  = totalSites>0 ? counts.green/totalSites : 0;
@@ -637,11 +583,11 @@ export default function Dashboard() {
     const hCol:RGB = healthPct>=0.8?C.gC:healthPct>=0.5?C.aC:C.rC;
     frr(PAD, divStartY, HSW, divCardH, 2, C.ocean);  // solid ocean card
     // Small label
-    t("OVERALL HEALTH SCORE", PAD+HSW/2, divStartY+3.8, 4, [140,168,215] as RGB, "bold", "center");
+    t("OVERALL HEALTH SCORE", PAD+HSW/2, divStartY+3.8, 4, [150,180,166] as RGB, "bold", "center");
     // Big %
     t(`${Math.round(healthPct*100)}%`, PAD+HSW/2, divStartY+9.5, 18, C.white, "bold", "center");
     // Progress bar at bottom of card
-    frr(PAD+4, divStartY+divCardH-3, HSW-8, 2, 1, [38,62,100] as RGB);
+    frr(PAD+4, divStartY+divCardH-3, HSW-8, 2, 1, [34,72,60] as RGB);
     if(healthPct>0) frr(PAD+4, divStartY+divCardH-3, Math.max((HSW-8)*healthPct,2), 2, 1, hCol);
 
     // ── Division cards ────────────────────────────────────────────────────────
@@ -776,16 +722,16 @@ export default function Dashboard() {
     const f1=FTR+4.2, f2=FTR+7.8, f3=FTR+11;
 
     t("IMARAT GROUP OF COMPANIES", PAD, f1, 5.8, C.coral, "bold");
-    t("IT Department  ·  it.support@imarat.com.pk", PAD, f2, 4, [110,138,180] as RGB);
-    t("CONFIDENTIAL — AUTHORISED PERSONNEL ONLY", PAD, f3, 3.5, [80,110,155] as RGB);
+    t("IT Department  ·  it.support@imarat.com.pk", PAD, f2, 4, [148,174,161] as RGB);
+    t("CONFIDENTIAL — AUTHORISED PERSONNEL ONLY", PAD, f3, 3.5, [112,140,128] as RGB);
 
     t("SYSTEM GENERATED REPORT", PW/2, f1, 5.5, C.white, "bold", "center");
-    t(`RAG Dashboard  ·  Ref: ${refNo}`, PW/2, f2, 4, [110,138,180] as RGB, "normal", "center");
-    t("Imarat IT Automation — Do Not Alter", PW/2, f3, 3.5, [80,110,155] as RGB, "normal", "center");
+    t(`RAG Dashboard  ·  Ref: ${refNo}`, PW/2, f2, 4, [148,174,161] as RGB, "normal", "center");
+    t("Imarat IT Automation — Do Not Alter", PW/2, f3, 3.5, [112,140,128] as RGB, "normal", "center");
 
     t(`${dateStr}  ·  ${timeStr}`, PW-PAD, f1, 5.8, C.coral, "bold", "right");
-    t(`${FACILITIES.length} Sites  ·  All Divisions`, PW-PAD, f2, 4, [110,138,180] as RGB, "normal", "right");
-    t("imarat.com.pk", PW-PAD, f3, 3.5, [80,110,155] as RGB, "normal", "right");
+    t(`${FACILITIES.length} Sites  ·  All Divisions`, PW-PAD, f2, 4, [148,174,161] as RGB, "normal", "right");
+    t("imarat.com.pk", PW-PAD, f3, 3.5, [112,140,128] as RGB, "normal", "right");
 
     doc.save(`Imarat_IT_RAG_${d.toISOString().slice(0,10)}.pdf`);
   };
@@ -794,7 +740,7 @@ export default function Dashboard() {
   // ── loading screen ───────────────────────────────────────────────────────────
 
   if (!mounted) return (
-    <div style={{ minHeight:"100vh", background:"#0A1628", display:"flex", alignItems:"center", justifyContent:"center" }}>
+    <div style={{ minHeight:"100vh", background:"#0E3D2F", display:"flex", alignItems:"center", justifyContent:"center" }}>
       <div style={{ textAlign:"center" }}>
         <div style={{ marginBottom:24 }}>
           <div style={{ fontSize:28, fontWeight:800, color:"#fff", letterSpacing:2, marginBottom:4 }}>IMARAT GROUP</div>
@@ -802,7 +748,7 @@ export default function Dashboard() {
         </div>
         <div style={{ display:"flex", justifyContent:"center", gap:6, marginBottom:16 }}>
           {[0,1,2,3].map(i=>(
-            <div key={i} style={{ width:8, height:8, borderRadius:"50%", background:"#C9A84C", opacity:0.3+i*0.2, animation:`bounce 1.2s ease-in-out ${i*0.15}s infinite` }} />
+            <div key={i} style={{ width:8, height:8, borderRadius:"50%", background:"#C8A86A", opacity:0.3+i*0.2, animation:`bounce 1.2s ease-in-out ${i*0.15}s infinite` }} />
           ))}
         </div>
         <div style={{ color:"#4A6FA5", fontSize:13 }}>Loading data...</div>
@@ -814,11 +760,12 @@ export default function Dashboard() {
   // ── styles ───────────────────────────────────────────────────────────────────
 
   const S = {
-    bg: "#F0F4F8", card: "#FFFFFF", navy: "#0A1628", navyLight: "#112240", gold: "#C9A84C",
-    border: "#E2E8F0", text: "#1A202C", textMuted: "#718096", textLight: "#A0AEC0",
-    green: "#1a6b35", greenBg: "#edf7f0", greenBorder: "#a8d5b5",
-    amber: "#7a5200", amberBg: "#fef8ec", amberBorder: "#f5d48a",
-    red: "#8b1c1c", redBg: "#fdf0f0", redBorder: "#f5b8b8",
+    bg: "#F4F6F3", card: "#FFFFFF", navy: "#0E3D2F", navyLight: "#0F2420", gold: "#C8A86A",
+    border: "#E3E7E3", text: "#12201C", textMuted: "#5A6F68", textLight: "#8AA099",
+    green: "#0E3D2F", greenBg: "#E6F0EB", greenBorder: "#BFD8CB",
+    amber: "#6E5214", amberBg: "#F5EDDA", amberBorder: "#E2CFA4",
+    red: "#7A2E2A", redBg: "#F3E6E5", redBorder: "#E0BCBA",
+    surfaceAlt: "#EFF2EE", accent: "#1E7A5A",
   };
   const inputBase: React.CSSProperties = {
     padding:"8px 12px", border:`1px solid ${S.border}`, borderRadius:8,
@@ -840,12 +787,12 @@ export default function Dashboard() {
     <div style={{ minHeight:"100vh", background:S.bg, fontFamily:"'Inter','Segoe UI',Arial,sans-serif" }}>
       <style>{`
         * { box-sizing: border-box; }
-        input:focus, select:focus { outline: none; border-color: #C9A84C !important; box-shadow: 0 0 0 3px rgba(201,168,76,0.15); }
-        tr:hover td { background: #F7FAFC !important; }
+        input:focus, select:focus { outline: none; border-color: #1E7A5A !important; box-shadow: 0 0 0 3px rgba(30,122,90,0.15); }
+        tr:hover td { background: #F7F9F7 !important; }
         button:hover { opacity: 0.88; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #F0F4F8; }
-        ::-webkit-scrollbar-thumb { background: #CBD5E0; border-radius: 3px; }
+        ::-webkit-scrollbar-track { background: #EFF2EE; }
+        ::-webkit-scrollbar-thumb { background: #C2CCC6; border-radius: 3px; }
         @keyframes pulse2 { 0%,100%{opacity:1} 50%{opacity:.3} }
         @keyframes fadein { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
       `}</style>
@@ -857,10 +804,10 @@ export default function Dashboard() {
             <span style={{ color:"#fff", fontWeight:800, fontSize:16, letterSpacing:1.5, lineHeight:1 }}>IMARAT GROUP</span>
             <span style={{ color:S.gold, fontSize:9.5, letterSpacing:2.5, fontWeight:500, marginTop:2 }}>IT FACILITIES DASHBOARD</span>
           </div>
-          <div style={{ width:1, height:32, background:"rgba(201,168,76,0.3)", margin:"0 8px" }} />
+          <div style={{ width:1, height:32, background:"rgba(200,168,106,0.3)", margin:"0 8px" }} />
           <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-            <span style={{ width:7, height:7, borderRadius:"50%", background:syncing?"#f59e0b":"#22c55e", display:"inline-block", animation:"pulse2 2s infinite" }} />
-            <span style={{ fontSize:11, color:"#718096" }}>{syncing ? "Syncing..." : `Live · ${clock}`}</span>
+            <span style={{ width:7, height:7, borderRadius:"50%", background:syncing?"#C49A3C":"#1E7A5A", display:"inline-block", animation:"pulse2 2s infinite" }} />
+            <span style={{ fontSize:11, color:"#5A6F68" }}>{syncing ? "Syncing..." : `Live · ${clock}`}</span>
           </div>
         </div>
         <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:10 }}>
@@ -879,9 +826,9 @@ export default function Dashboard() {
         {/* ── LIVE STATUS FEED ── */}
         <div style={{ ...card, marginBottom:20, overflow:"hidden", animation:"fadein 0.3s ease" }}>
           <div style={{ background:S.navyLight, padding:"12px 20px", display:"flex", alignItems:"center", gap:10 }}>
-            <div style={{ width:8, height:8, borderRadius:"50%", background:"#22c55e", animation:"pulse2 2s infinite" }} />
+            <div style={{ width:8, height:8, borderRadius:"50%", background:"#1E7A5A", animation:"pulse2 2s infinite" }} />
             <span style={{ color:"#fff", fontWeight:700, fontSize:13, letterSpacing:.3 }}>Live RAG Status Feed</span>
-            <span style={{ background:"rgba(255,255,255,0.08)", color:"#A0AEC0", fontSize:11, padding:"2px 8px", borderRadius:20, marginLeft:4 }}>
+            <span style={{ background:"rgba(255,255,255,0.08)", color:"#8AA099", fontSize:11, padding:"2px 8px", borderRadius:20, marginLeft:4 }}>
               {activityLog.filter(l=>l.type==="status").length} changes
             </span>
             <span style={{ marginLeft:"auto", color:"#4A6FA5", fontSize:10 }}>auto-refreshes every 5s · last: {lastSync}</span>
@@ -899,9 +846,9 @@ export default function Dashboard() {
                   const isRed = l.newVal.includes("Down")||l.newVal.includes("Critical");
                   const isAmber = l.newVal.includes("Slow")||l.newVal.includes("Degraded");
                   const isGreen = l.newVal.includes("Working")||l.newVal.includes("OK")||l.newVal.includes("Sync");
-                  const dot = isRed?"#ef4444":isAmber?"#f59e0b":isGreen?"#22c55e":"#9ca3af";
-                  const nvC = isRed?"#8b1c1c":isAmber?"#7a5200":isGreen?"#1a6b35":"#6b7280";
-                  const nvB = isRed?"#fdf0f0":isAmber?"#fef8ec":isGreen?"#edf7f0":"#f1f4f8";
+                  const dot = isRed?"#B85450":isAmber?"#C49A3C":isGreen?"#1E7A5A":"#8A9BA8";
+                  const nvC = isRed?"#7A2E2A":isAmber?"#6E5214":isGreen?"#0E3D2F":"#6b7280";
+                  const nvB = isRed?"#F3E6E5":isAmber?"#F5EDDA":isGreen?"#E6F0EB":"#EEF1F3";
                   const nvBr = isRed?"#f5b8b8":isAmber?"#f5d48a":isGreen?"#a8d5b5":"#c8d0dc";
                   return (
                     <div key={l.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"7px 20px", borderBottom:`1px solid ${S.border}`, background:i%2===0?"#fff":"#FAFBFC", animation:"fadein 0.2s ease" }}>
@@ -909,7 +856,7 @@ export default function Dashboard() {
                       <span style={{ fontWeight:700, color:S.navy, fontSize:12, minWidth:140, whiteSpace:"nowrap" as const, flexShrink:0, overflow:"hidden", textOverflow:"ellipsis" }}>{l.facility}</span>
                       <span style={{ fontSize:11, color:S.textMuted, minWidth:80, flexShrink:0, fontWeight:500 }}>{l.field}</span>
                       <span style={{ fontSize:11, color:S.textLight, minWidth:90, textDecoration:"line-through" }}>{l.oldVal}</span>
-                      <span style={{ fontSize:14, color:"#CBD5E0", fontWeight:700, flexShrink:0 }}>→</span>
+                      <span style={{ fontSize:14, color:"#C2CCC6", fontWeight:700, flexShrink:0 }}>→</span>
                       <span style={{ display:"inline-flex", alignItems:"center", gap:5, background:nvB, border:`1px solid ${nvBr}`, color:nvC, padding:"3px 12px", borderRadius:20, fontSize:11, fontWeight:700, whiteSpace:"nowrap" as const }}>
                         <span style={{ width:6, height:6, borderRadius:"50%", background:dot, display:"inline-block" }} />
                         {l.newVal}
@@ -925,18 +872,18 @@ export default function Dashboard() {
         {/* ── KPI ROW ── */}
         <div style={{ display:"grid", gridTemplateColumns:"repeat(8,1fr)", gap:14, marginBottom:20 }}>
           {[
-            { label:"Total Sites",   value:FACILITIES.length,     color:S.navy,    bg:"#EEF2FF", accent:"#3b5bdb" },
-            { label:"Operational",   value:counts.green,           color:S.green,   bg:S.greenBg, accent:S.green },
-            { label:"Warning",       value:counts.amber,           color:S.amber,   bg:S.amberBg, accent:S.amber },
-            { label:"Critical",      value:counts.red,             color:S.red,     bg:S.redBg,   accent:S.red },
-            { label:"Queries Today", value:autoStats.received,     color:"#1a4a8a", bg:"#EBF4FF", accent:"#2563eb" },
-            { label:"Resolved",      value:autoStats.resolved,     color:S.green,   bg:S.greenBg, accent:S.green },
-            { label:"Pending",       value:autoStats.pending,      color:S.amber,   bg:S.amberBg, accent:S.amber },
-            { label:"In Progress",   value:autoStats.inprogress,   color:"#6b21a8", bg:"#F5F3FF", accent:"#7c3aed" },
+            { label:"Total Sites",   value:FACILITIES.length,     color:S.navy,    bg:"#FFFFFF", accent:S.navy },
+            { label:"Operational",   value:counts.green,           color:S.green,   bg:S.greenBg, accent:S.accent },
+            { label:"Degraded",      value:counts.amber,           color:S.amber,   bg:S.amberBg, accent:"#C49A3C" },
+            { label:"Critical",      value:counts.red,             color:S.red,     bg:S.redBg,   accent:"#B85450" },
+            { label:"Queries Today", value:autoStats.received,     color:S.navy,    bg:"#FFFFFF", accent:"#2C5F7C" },
+            { label:"Resolved",      value:autoStats.resolved,     color:S.green,   bg:S.greenBg, accent:S.accent },
+            { label:"Pending",       value:autoStats.pending,      color:S.amber,   bg:S.amberBg, accent:"#C49A3C" },
+            { label:"In Progress",   value:autoStats.inprogress,   color:"#6B4E7D", bg:"#FFFFFF", accent:"#6B4E7D" },
           ].map(c => (
             <div key={c.label} style={{ ...card, padding:"16px 18px", background:c.bg, borderLeft:`3px solid ${c.accent}` }}>
-              <div style={{ fontSize:10, color:S.textMuted, fontWeight:600, letterSpacing:.5, textTransform:"uppercase" as const, marginBottom:6 }}>{c.label}</div>
-              <div style={{ fontSize:30, fontWeight:800, color:c.color, lineHeight:1 }}>{c.value}</div>
+              <div style={{ fontSize:10, color:S.textMuted, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase" as const, marginBottom:7 }}>{c.label}</div>
+              <div style={{ fontSize:28, fontWeight:700, color:c.color, lineHeight:1, letterSpacing:"-0.02em", fontVariantNumeric:"tabular-nums" }}>{c.value}</div>
             </div>
           ))}
         </div>
@@ -956,7 +903,7 @@ export default function Dashboard() {
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
                     <span style={{ fontSize:12, fontWeight:700, color:S.text }}>{p.title}</span>
                     <div style={{ display:"flex", gap:10 }}>
-                      {([["green","#22c55e",p.green],["amber","#f59e0b",p.amber],["red","#ef4444",p.red]] as [string,string,number][]).map(([,dot,cnt])=>(
+                      {([["green","#1E7A5A",p.green],["amber","#C49A3C",p.amber],["red","#B85450",p.red]] as [string,string,number][]).map(([,dot,cnt])=>(
                         <span key={dot} style={{ display:"flex", alignItems:"center", gap:4, fontSize:11, fontWeight:700, color:S.text }}>
                           <span style={{ width:7, height:7, borderRadius:"50%", background:dot }} />
                           {cnt}
@@ -965,9 +912,9 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div style={{ display:"flex", height:8, borderRadius:4, overflow:"hidden", gap:1 }}>
-                    {p.green>0 && <div style={{ flex:p.green/tot, background:"#22c55e" }} />}
-                    {p.amber>0 && <div style={{ flex:p.amber/tot, background:"#f59e0b" }} />}
-                    {p.red>0   && <div style={{ flex:p.red/tot,   background:"#ef4444" }} />}
+                    {p.green>0 && <div style={{ flex:p.green/tot, background:"#1E7A5A" }} />}
+                    {p.amber>0 && <div style={{ flex:p.amber/tot, background:"#C49A3C" }} />}
+                    {p.red>0   && <div style={{ flex:p.red/tot,   background:"#B85450" }} />}
                   </div>
                 </div>
               );
@@ -994,9 +941,9 @@ export default function Dashboard() {
           {/* live feed */}
           <div style={{ ...card, overflow:"hidden" }}>
             <div style={{ background:S.navyLight, padding:"10px 16px", display:"flex", alignItems:"center", gap:10 }}>
-              <div style={{ width:7, height:7, borderRadius:"50%", background:"#22c55e", animation:"pulse2 2s infinite" }} />
+              <div style={{ width:7, height:7, borderRadius:"50%", background:"#1E7A5A", animation:"pulse2 2s infinite" }} />
               <span style={{ color:"#fff", fontWeight:700, fontSize:12 }}>Live RAG Status Feed</span>
-              <span style={{ background:"rgba(255,255,255,0.08)", color:"#A0AEC0", fontSize:10, padding:"1px 8px", borderRadius:20 }}>
+              <span style={{ background:"rgba(255,255,255,0.08)", color:"#8AA099", fontSize:10, padding:"1px 8px", borderRadius:20 }}>
                 {activityLog.filter(l=>l.type==="status").length} changes
               </span>
               <span style={{ marginLeft:"auto", color:"#4A6FA5", fontSize:10 }}>every 5s · last: {lastSync}</span>
@@ -1014,9 +961,9 @@ export default function Dashboard() {
                     const isRed = l.newVal.includes("Down")||l.newVal.includes("Critical");
                     const isAmber = l.newVal.includes("Slow")||l.newVal.includes("Degraded");
                     const isGreen = l.newVal.includes("Working")||l.newVal.includes("OK")||l.newVal.includes("Sync");
-                    const dot = isRed?"#ef4444":isAmber?"#f59e0b":isGreen?"#22c55e":"#9ca3af";
-                    const nvC = isRed?"#8b1c1c":isAmber?"#7a5200":isGreen?"#1a6b35":"#6b7280";
-                    const nvB = isRed?"#fdf0f0":isAmber?"#fef8ec":isGreen?"#edf7f0":"#f1f4f8";
+                    const dot = isRed?"#B85450":isAmber?"#C49A3C":isGreen?"#1E7A5A":"#8A9BA8";
+                    const nvC = isRed?"#7A2E2A":isAmber?"#6E5214":isGreen?"#0E3D2F":"#6b7280";
+                    const nvB = isRed?"#F3E6E5":isAmber?"#F5EDDA":isGreen?"#E6F0EB":"#EEF1F3";
                     const nvBr = isRed?"#f5b8b8":isAmber?"#f5d48a":isGreen?"#a8d5b5":"#c8d0dc";
                     return (
                       <div key={l.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"6px 16px", borderBottom:`1px solid ${S.border}`, background:i%2===0?"#fff":"#FAFBFC" }}>
@@ -1024,7 +971,7 @@ export default function Dashboard() {
                         <span style={{ fontWeight:700, color:S.navy, fontSize:11, minWidth:130, flexShrink:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{l.facility}</span>
                         <span style={{ fontSize:10, color:S.textMuted, minWidth:70, flexShrink:0 }}>{l.field}</span>
                         <span style={{ fontSize:10, color:S.textLight, textDecoration:"line-through", minWidth:80 }}>{l.oldVal}</span>
-                        <span style={{ color:"#CBD5E0", fontWeight:700, flexShrink:0 }}>→</span>
+                        <span style={{ color:"#C2CCC6", fontWeight:700, flexShrink:0 }}>→</span>
                         <span style={{ display:"inline-flex", alignItems:"center", gap:4, background:nvB, border:`1px solid ${nvBr}`, color:nvC, padding:"2px 10px", borderRadius:20, fontSize:10, fontWeight:700, whiteSpace:"nowrap" as const }}>
                           <span style={{ width:5, height:5, borderRadius:"50%", background:dot }} />
                           {l.newVal}
@@ -1049,10 +996,10 @@ export default function Dashboard() {
               {(["all","green","amber","red"] as FilterMode[]).map(f => {
                 const active = filter === f;
                 const colors: Record<FilterMode,{bg:string;text:string;border:string}> = {
-                  all:   {bg:active?S.navy:"#F7FAFC", text:active?"#fff":S.textMuted, border:active?S.navy:S.border},
-                  green: {bg:active?S.greenBg:"#F7FAFC", text:active?S.green:S.textMuted, border:active?S.greenBorder:S.border},
-                  amber: {bg:active?S.amberBg:"#F7FAFC", text:active?S.amber:S.textMuted, border:active?S.amberBorder:S.border},
-                  red:   {bg:active?S.redBg:"#F7FAFC", text:active?S.red:S.textMuted, border:active?S.redBorder:S.border},
+                  all:   {bg:active?S.navy:"#F7F9F7", text:active?"#fff":S.textMuted, border:active?S.navy:S.border},
+                  green: {bg:active?S.greenBg:"#F7F9F7", text:active?S.green:S.textMuted, border:active?S.greenBorder:S.border},
+                  amber: {bg:active?S.amberBg:"#F7F9F7", text:active?S.amber:S.textMuted, border:active?S.amberBorder:S.border},
+                  red:   {bg:active?S.redBg:"#F7F9F7", text:active?S.red:S.textMuted, border:active?S.redBorder:S.border},
                 };
                 const labels: Record<FilterMode,string> = { all:"All", green:"Operational", amber:"Warning", red:"Critical" };
                 const c2 = colors[f];
@@ -1068,7 +1015,7 @@ export default function Dashboard() {
           <div style={{ overflowX:"auto" }}>
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
               <thead>
-                <tr style={{ background:"#F7FAFC", borderBottom:`2px solid ${S.border}` }}>
+                <tr style={{ background:"#F7F9F7", borderBottom:`2px solid ${S.border}` }}>
                   {["#","FACILITY","CAT","INTERNET","BIOMETRIC","PRINTING","OVERALL","CUR BW","REQ BW","BW STATUS","REPORTED ISSUE","NOTES","UPDATED"].map(h=>(
                     <th key={h} style={{ textAlign:"left", padding:"10px 12px", color:S.textLight, fontWeight:600, fontSize:10, letterSpacing:.5, whiteSpace:"nowrap" }}>{h}</th>
                   ))}
@@ -1114,14 +1061,14 @@ export default function Dashboard() {
                       <td style={{ padding:"9px 12px" }}>
                         <div style={{ display:"flex", alignItems:"center", gap:4 }}>
                           <input defaultValue={s.bandwidth} onBlur={e=>updateField(f.name,"bandwidth",e.target.value)} placeholder="0"
-                            style={{ background:"#EBF4FF", border:"1px solid #93C5FD", borderRadius:6, padding:"4px 7px", color:"#1a4a8a", fontSize:11, width:52, fontWeight:600, textAlign:"center" as const }} />
+                            style={{ background:"#E1EBF1", border:"1px solid #B3C9D6", borderRadius:6, padding:"4px 7px", color:"#2C5F7C", fontSize:11, width:52, fontWeight:600, textAlign:"center" as const }} />
                           <span style={{ fontSize:9, color:S.textLight }}>Mbps</span>
                         </div>
                       </td>
                       <td style={{ padding:"9px 12px" }}>
                         <div style={{ display:"flex", alignItems:"center", gap:4 }}>
                           <input defaultValue={s.requiredBandwidth} onBlur={e=>updateField(f.name,"requiredBandwidth",e.target.value)} placeholder="0"
-                            style={{ background:"#F5F3FF", border:"1px solid #C4B5FD", borderRadius:6, padding:"4px 7px", color:"#6b21a8", fontSize:11, width:52, fontWeight:600, textAlign:"center" as const }} />
+                            style={{ background:"#EDE7F1", border:"1px solid #CBBBD6", borderRadius:6, padding:"4px 7px", color:"#6B4E7D", fontSize:11, width:52, fontWeight:600, textAlign:"center" as const }} />
                           <span style={{ fontSize:9, color:S.textLight }}>Mbps</span>
                         </div>
                       </td>
@@ -1160,7 +1107,7 @@ export default function Dashboard() {
                   {Object.keys(activeDowntime.current).length} Active
                 </span>
               )}
-              <span style={{ background:"#EEF2FF", border:"1px solid #C7D2FE", color:"#3730a3", padding:"4px 12px", borderRadius:20, fontSize:11, fontWeight:600 }}>
+              <span style={{ background:"#EFF2EE", border:"1px solid #D6DDD8", color:"#0E3D2F", padding:"4px 12px", borderRadius:20, fontSize:11, fontWeight:600 }}>
                 {downtimeRecords.length} Records
               </span>
               <button onClick={()=>setShowDowntime(v=>!v)} style={{ ...btnPrimary, padding:"6px 14px", fontSize:11 }}>
@@ -1196,7 +1143,7 @@ export default function Dashboard() {
               : (
                 <div style={{ overflowX:"auto", maxHeight:300, overflowY:"auto" }}>
                   <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
-                    <thead style={{ position:"sticky" as const, top:0, background:"#F7FAFC" }}>
+                    <thead style={{ position:"sticky" as const, top:0, background:"#F7F9F7" }}>
                       <tr style={{ borderBottom:`2px solid ${S.border}` }}>
                         {["FACILITY","FIELD","WENT DOWN","RECOVERED","DURATION","SEVERITY"].map(h=>(
                           <th key={h} style={{ textAlign:"left", padding:"10px 14px", color:S.textLight, fontWeight:600, fontSize:10, letterSpacing:.5, whiteSpace:"nowrap" }}>{h}</th>
@@ -1215,7 +1162,7 @@ export default function Dashboard() {
                             <td style={{ padding:"9px 14px", fontFamily:"monospace", fontSize:11, color:S.red }}>{r.startTs}</td>
                             <td style={{ padding:"9px 14px", fontFamily:"monospace", fontSize:11, color:S.green }}>{r.endTs}</td>
                             <td style={{ padding:"9px 14px" }}>
-                              <span style={{ background:"#EEF2FF", border:"1px solid #C7D2FE", color:"#3730a3", padding:"3px 10px", borderRadius:6, fontSize:11, fontWeight:600 }}>{dur}</span>
+                              <span style={{ background:"#EFF2EE", border:"1px solid #D6DDD8", color:"#0E3D2F", padding:"3px 10px", borderRadius:6, fontSize:11, fontWeight:600 }}>{dur}</span>
                             </td>
                             <td style={{ padding:"9px 14px" }}>
                               <span style={{ background:sev.bg, color:sev.text, border:`1px solid ${sev.text}33`, padding:"3px 10px", borderRadius:6, fontSize:10, fontWeight:700 }}>{sev.label}</span>
@@ -1230,134 +1177,6 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* ── TICKETS ── */}
-        <div style={{ ...card, overflow:"hidden" }}>
-          <div style={{ padding:"14px 20px", borderBottom:`1px solid ${S.border}`, display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" as const }}>
-            <div>
-              <div style={{ fontSize:14, fontWeight:700, color:S.text }}>IT Support Tickets</div>
-              <div style={{ fontSize:11, color:S.textMuted, marginTop:2 }}>Live across all team members</div>
-            </div>
-            <div style={{ display:"flex", gap:8, marginLeft:"auto", alignItems:"center", flexWrap:"wrap" as const }}>
-              {[
-                { label:"Open",        count:tCounts.open,       bg:S.redBg,   text:S.red,    border:S.redBorder },
-                { label:"In Progress", count:tCounts.inprogress, bg:S.amberBg, text:S.amber,  border:S.amberBorder },
-                { label:"Pending",     count:tCounts.pending,    bg:"#EEF2FF", text:"#3730a3", border:"#C7D2FE" },
-                { label:"Resolved",    count:tCounts.resolved,   bg:S.greenBg, text:S.green,  border:S.greenBorder },
-              ].map(b=>(
-                <div key={b.label} style={{ background:b.bg, border:`1px solid ${b.border}`, color:b.text, padding:"5px 14px", borderRadius:20, fontSize:12, fontWeight:600, display:"flex", alignItems:"center", gap:6 }}>
-                  <span style={{ fontSize:15, fontWeight:800 }}>{b.count}</span>
-                  <span style={{ fontSize:10, opacity:.8 }}>{b.label}</span>
-                </div>
-              ))}
-              <button onClick={()=>setShowTicketForm(v=>!v)} style={{ ...btnPrimary, background:S.gold }}>+ New Ticket</button>
-            </div>
-          </div>
-
-          {showTicketForm && (
-            <div style={{ padding:"20px", background:"#FAFBFF", borderBottom:`1px solid ${S.border}` }}>
-              <div style={{ fontSize:13, fontWeight:700, color:S.text, marginBottom:14 }}>New Support Ticket</div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 2fr 1fr", gap:12, marginBottom:12 }}>
-                <div>
-                  <div style={{ fontSize:10, color:S.textMuted, fontWeight:600, marginBottom:5, letterSpacing:.5 }}>OFFICE / LOCATION</div>
-                  <input value={newTicket.office} onChange={e=>setNewTicket(p=>({...p,office:e.target.value}))} placeholder="Office name" style={inputBase} />
-                </div>
-                <div>
-                  <div style={{ fontSize:10, color:S.textMuted, fontWeight:600, marginBottom:5, letterSpacing:.5 }}>MEDIUM</div>
-                  <select value={newTicket.medium} onChange={e=>setNewTicket(p=>({...p,medium:e.target.value}))} style={{ ...inputBase }}>
-                    <option value="">— Select —</option>
-                    <option value="Email">Email</option>
-                    <option value="Helpdesk Ticket">Helpdesk Ticket</option>
-                    <option value="Whatsapp">Whatsapp</option>
-                    <option value="In Person">In Person</option>
-                  </select>
-                </div>
-                <div>
-                  <div style={{ fontSize:10, color:S.textMuted, fontWeight:600, marginBottom:5, letterSpacing:.5 }}>ISSUE DESCRIPTION</div>
-                  <input value={newTicket.description} onChange={e=>setNewTicket(p=>({...p,description:e.target.value}))} placeholder="Describe the issue..." style={inputBase} />
-                </div>
-                <div>
-                  <div style={{ fontSize:10, color:S.textMuted, fontWeight:600, marginBottom:5, letterSpacing:.5 }}>REPORTED BY</div>
-                  <input value={newTicket.reportedBy} onChange={e=>setNewTicket(p=>({...p,reportedBy:e.target.value}))} placeholder="Name" style={inputBase} />
-                </div>
-              </div>
-              <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                <div style={{ flex:"0 0 200px" }}>
-                  <div style={{ fontSize:10, color:S.textMuted, fontWeight:600, marginBottom:5, letterSpacing:.5 }}>ASSIGN TO</div>
-                  <select value={newTicket.assignedTo} onChange={e=>setNewTicket(p=>({...p,assignedTo:e.target.value}))} style={{ ...inputBase }}>
-                    {TEAM.map(m=><option key={m} value={m.startsWith("—")?"":m}>{m}</option>)}
-                  </select>
-                </div>
-                <div style={{ display:"flex", gap:8, marginTop:18 }}>
-                  <button onClick={addTicket} style={{ ...btnPrimary, background:S.gold, padding:"9px 22px" }}>Add Ticket</button>
-                  <button onClick={()=>setShowTicketForm(false)} style={{ padding:"9px 16px", background:"#F7FAFC", border:`1px solid ${S.border}`, borderRadius:8, fontSize:12, color:S.textMuted, cursor:"pointer" }}>Cancel</button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {tickets.length === 0
-            ? <div style={{ padding:"40px", textAlign:"center", color:S.textLight, fontSize:13, fontStyle:"italic" }}>No tickets yet. Click "+ New Ticket" to log an issue.</div>
-            : (
-              <div style={{ overflowX:"auto" }}>
-                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
-                  <thead>
-                    <tr style={{ background:"#F7FAFC", borderBottom:`2px solid ${S.border}` }}>
-                      {["TICKET ID","OFFICE / LOCATION","MEDIUM","ISSUE","REPORTED BY","ASSIGNED TO","STATUS","RESOLVED BY","OPENED","CLOSED",""].map(h=>(
-                        <th key={h} style={{ textAlign:"left", padding:"10px 12px", color:S.textLight, fontWeight:600, fontSize:10, letterSpacing:.4, whiteSpace:"nowrap" }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tickets.map((t)=>{
-                      const ts2 = TICKET_STATUS[t.status];
-                      return (
-                        <tr key={t.id} style={{ borderBottom:`1px solid ${S.border}` }}>
-                          <td style={{ padding:"9px 12px", fontFamily:"monospace", fontSize:11, fontWeight:700, color:S.navy }}>{t.id}</td>
-                          <td style={{ padding:"9px 12px", fontWeight:600, color:S.text, whiteSpace:"nowrap" }}>{t.office}</td>
-                          <td style={{ padding:"9px 12px" }}>
-                            <span style={{ background:"#EEF2FF", border:"1px solid #C7D2FE", color:"#3730a3", padding:"2px 8px", borderRadius:20, fontSize:10, fontWeight:600, whiteSpace:"nowrap" as const }}>{t.medium||"—"}</span>
-                          </td>
-                          <td style={{ padding:"9px 12px", color:S.textMuted, maxWidth:220 }}>{t.description}</td>
-                          <td style={{ padding:"9px 12px", color:S.textMuted, whiteSpace:"nowrap" }}>{t.reportedBy}</td>
-                          <td style={{ padding:"9px 12px" }}>
-                            <select value={t.assignedTo} onChange={e=>updateTicket(t.id,"assignedTo",e.target.value)}
-                              style={{ border:`1px solid ${S.border}`, borderRadius:6, padding:"4px 8px", fontSize:11, color:S.text, background:"#fff", cursor:"pointer" }}>
-                              {TEAM.map(m=><option key={m} value={m.startsWith("—")?"":m}>{m}</option>)}
-                            </select>
-                          </td>
-                          <td style={{ padding:"9px 12px" }}>
-                            <select value={t.status} onChange={e=>updateTicket(t.id,"status",e.target.value)}
-                              style={{ background:ts2.bg, color:ts2.text, border:`1px solid ${ts2.border}`, borderRadius:6, padding:"4px 10px", fontSize:11, fontWeight:700, cursor:"pointer" }}>
-                              <option value="open">Open</option>
-                              <option value="inprogress">In Progress</option>
-                              <option value="pending">Pending</option>
-                              <option value="resolved">Resolved</option>
-                            </select>
-                          </td>
-                          <td style={{ padding:"9px 12px" }}>
-                            {t.status==="resolved"
-                              ? <select value={t.resolvedBy} onChange={e=>updateTicket(t.id,"resolvedBy",e.target.value)}
-                                  style={{ border:`1px solid ${S.greenBorder}`, borderRadius:6, padding:"4px 8px", fontSize:11, color:S.green, background:S.greenBg, cursor:"pointer" }}>
-                                  {TEAM.map(m=><option key={m} value={m.startsWith("—")?"":m}>{m}</option>)}
-                                </select>
-                              : <span style={{ color:S.textLight }}>—</span>
-                            }
-                          </td>
-                          <td style={{ padding:"9px 12px", fontFamily:"monospace", fontSize:10, color:S.textLight, whiteSpace:"nowrap" }}>{t.ts}</td>
-                          <td style={{ padding:"9px 12px", fontFamily:"monospace", fontSize:10, color:t.resolvedTs?S.green:S.textLight, whiteSpace:"nowrap" }}>{t.resolvedTs||"—"}</td>
-                          <td style={{ padding:"9px 12px" }}>
-                            <button onClick={()=>deleteTicket(t.id)}
-                              style={{ padding:"3px 10px", background:S.redBg, border:`1px solid ${S.redBorder}`, borderRadius:6, fontSize:10, color:S.red, cursor:"pointer", fontWeight:600 }}>Delete</button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )
-          }
-        </div>
 
       </div>
 

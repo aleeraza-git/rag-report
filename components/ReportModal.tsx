@@ -199,7 +199,7 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
   const ORDER: Record<string, number> = { Imarat:0, Projects:1, Graana:2, Agency21:3 };
   const sorted = [...filtered].sort((a,b) => (ORDER[a.cat]??9) - (ORDER[b.cat]??9));
   const dateStr = new Date().toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
-  const timeStr = new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+  const timeStr = new Date().toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", hour12:true });
   const cats = ["Imarat","Projects","Graana","Agency21"] as const;
 
   // ── Forest-green editorial palette ────────────────────────────────────────
@@ -359,7 +359,7 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
             <div style={{ display:"flex", gap:10, height:208 }}>
 
               {/* 4 · Service Availability */}
-              <Card title="Service Availability" style={{ width:258 }}>
+              <Card title="Service Availability" style={{ width:360 }}>
                 <div style={{ display:"flex", flexDirection:"column" as const, gap:15 }}>
                   {(["internet","bio","printing"] as const).map((key,ki)=>{
                     const lbls=["Internet","Biometric","Printing"];
@@ -387,28 +387,6 @@ function PreviewCanvas({ cfg, facilities, state, counts, autoStats, calcOverall,
                     );
                   })}
                 </div>
-              </Card>
-
-              {/* 5 · Support Tickets */}
-              <Card title="Support Tickets" style={{ width:242 }}>
-                {(()=>{
-                  const maxV=Math.max(autoStats.received,autoStats.resolved,autoStats.pending,1);
-                  const bars=[{v:autoStats.received,c:BRAND,l:"Received"},{v:autoStats.resolved,c:GRN,l:"Resolved"},{v:autoStats.pending,c:AMB,l:"Pending"}];
-                  const barH=104;
-                  return (
-                    <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-around", height:barH+38 }}>
-                      {bars.map(b=>(
-                        <div key={b.l} style={{ display:"flex", flexDirection:"column" as const, alignItems:"center", gap:6, width:54 }}>
-                          <span style={{ fontSize:22, fontWeight:700, color:b.c, lineHeight:1, fontVariantNumeric:"tabular-nums", letterSpacing:"-0.02em" }}>{b.v}</span>
-                          <div style={{ width:"100%", height:barH, background:SURF_ALT, borderRadius:4, display:"flex", alignItems:"flex-end", overflow:"hidden" }}>
-                            <div style={{ width:"100%", background:b.c, borderRadius:4, height:`${Math.max(b.v/maxV*100,4)}%` }}/>
-                          </div>
-                          <span style={{ fontSize:10, color:MUT_C, textAlign:"center" as const }}>{b.l}</span>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })()}
               </Card>
 
               {/* 6 · Facility Overview */}
@@ -553,7 +531,7 @@ async function generatePDF(
 
   const d       = new Date();
   const dateStr = d.toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
-  const timeStr = d.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+  const timeStr = d.toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", hour12:true });
   const refNo   = `IGC-IT-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}-${String(d.getHours()).padStart(2,"0")}${String(d.getMinutes()).padStart(2,"0")}`;
   const fileName = `Imarat_IT_RAG_${d.toISOString().slice(0,10)}.pdf`;
 
@@ -740,8 +718,11 @@ async function generatePDF(
     });
   }
 
+  // ══ Row 2 — two panels (tickets removed) ═════════════════════════════════
+  const R2W1=(TW-GAP3)*0.42, R2W2=TW-GAP3-R2W1, R2X2=PAD+R2W1+GAP3;
+
   // ── Panel 4: Service Availability ────────────────────────────────────────
-  panel(P_X(0),ROW2_Y,PW3,ROW_H,"Service Availability");
+  panel(PAD,ROW2_Y,R2W1,ROW_H,"Service Availability");
   {
     const svcs=[
       {lbl:"Internet",key:"internet" as keyof FacilityState},
@@ -755,60 +736,40 @@ async function generatePDF(
       const sh=vals.length>0?sg/vals.length:0;
       const shC:RGB=sh>=0.8?gC:sh>=0.5?aC:rC;
       const sY=top+si*svcRowH;
-      txt(svc.lbl,P_X(0)+6,sY+5,5.5,INK,"bold");
-      txt(`${sg}/${vals.length}`,P_X(0)+PW3-22,sY+5,4.2,MUTED,"normal","right");
-      txt(`${Math.round(sh*100)}%`,P_X(0)+PW3-6,sY+5,7,shC,"bold","right");
-      const bX=P_X(0)+6, bW=PW3-12, bY=sY+7.5;
+      txt(svc.lbl,PAD+6,sY+5,5.5,INK,"bold");
+      txt(`${sg}/${vals.length}`,PAD+R2W1-24,sY+5,4.2,MUTED,"normal","right");
+      txt(`${Math.round(sh*100)}%`,PAD+R2W1-6,sY+5,7,shC,"bold","right");
+      const bX=PAD+6, bW=R2W1-12, bY=sY+7.5;
       frr(bX,bY,bW,4,2,SURFALT);
       let bx=bX;
       ([{v:sg,c:gC},{v:sa,c:aC},{v:sr,c:rC}] as {v:number;c:RGB}[]).forEach(bk=>{ const bw=bW*bk.v/Math.max(vals.length,1); if(bk.v>0){frr(bx,bY,bw,4,0,bk.c); bx+=bw;} });
-      txt(`${sa} degraded  ·  ${sr} critical`,P_X(0)+6,sY+15,4.2,MUTED);
+      txt(`${sa} degraded  ·  ${sr} critical`,PAD+6,sY+15,4.2,MUTED);
     });
   }
 
-  // ── Panel 5: Support Tickets ─────────────────────────────────────────────
-  panel(P_X(1),ROW2_Y,PW3,ROW_H,"Support Tickets");
+  // ── Panel 5: Facility Overview ───────────────────────────────────────────
+  panel(R2X2,ROW2_Y,R2W2,ROW_H,"Facility Overview");
   {
-    const tkData=[
-      {v:autoStats.received,l:"Received",c:NAVY},
-      {v:autoStats.resolved,l:"Resolved",c:gC},
-      {v:autoStats.pending,l:"Pending",c:aC},
-    ];
-    const maxV=Math.max(...tkData.map(t=>t.v),1);
-    const barTop=ROW2_Y+19, barH=ROW_H-30, barW=(PW3-28)/3;
-    tkData.forEach((tk,ti)=>{
-      const bX=P_X(1)+8+ti*(barW+4);
-      const filled=Math.max(barH*(tk.v/maxV),2.5);
-      txt(String(tk.v),bX+barW/2,barTop-2,11,tk.c,"bold","center");
-      frr(bX,barTop,barW,barH,2,SURFALT);
-      if(tk.v>0) frr(bX,barTop+barH-filled,barW,filled,2,tk.c);
-      txt(tk.l,bX+barW/2,barTop+barH+4.5,4.5,MUTED,"normal","center");
-    });
-  }
-
-  // ── Panel 6: Facility Overview ───────────────────────────────────────────
-  panel(P_X(2),ROW2_Y,PW3,ROW_H,"Facility Overview");
-  {
-    const COLS=6;
+    const COLS=10;
     const top=ROW2_Y+12;
-    const availW=PW3-14, availH=ROW_H-24;
-    const dotD=Math.min(8,Math.floor(availW/COLS)-2);
+    const availW=R2W2-14, availH=ROW_H-24;
+    const dotD=Math.min(9,availW/COLS-2);
     const dotGapX=availW/COLS;
     const rows2=Math.ceil(sorted.length/COLS);
-    const dotGapY=Math.min(dotD+2.5,availH/Math.max(rows2,1));
+    const dotGapY=Math.min(dotD+3,availH/Math.max(rows2,1));
     sorted.forEach((f,fi)=>{
       const col=fi%COLS, row=Math.floor(fi/COLS);
-      const dx=P_X(2)+7+col*dotGapX;
+      const dx=R2X2+7+col*dotGapX;
       const dy=top+row*dotGapY;
       const ov=calcOverall(state[f.name]??defaultState());
       frr(dx,dy,dotD,dotD,1.5,ragFill(ov));
-      doc.setTextColor(...ragAccent(ov)); doc.setFont("helvetica","bold"); doc.setFontSize(3.6);
-      doc.text(String(fi+1),dx+dotD/2,dy+dotD/2+1.2,{align:"center"});
+      doc.setTextColor(...ragAccent(ov)); doc.setFont("helvetica","bold"); doc.setFontSize(3.8);
+      doc.text(String(fi+1),dx+dotD/2,dy+dotD/2+1.3,{align:"center"});
     });
     // legend row at panel foot
     const lgY=ROW2_Y+ROW_H-5;
     ([{c:gC,l:`${grnN} Operational`},{c:aC,l:`${ambN} Degraded`},{c:rC,l:`${redN} Critical`}] as {c:RGB;l:string}[]).forEach((d,di)=>{
-      const lx=P_X(2)+7+di*((PW3-14)/3);
+      const lx=R2X2+7+di*((R2W2-14)/3);
       doc.setFillColor(...d.c); doc.circle(lx+1.2,lgY-1,1.2,"F");
       txt(d.l,lx+4,lgY,4.2,TXT2C,"normal");
     });
