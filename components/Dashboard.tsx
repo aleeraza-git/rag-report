@@ -261,7 +261,7 @@ export default function Dashboard() {
             <div style={{ fontFamily:T.serif, fontSize:19, letterSpacing:"-0.01em", color:T.ink, lineHeight:1.1 }}>
               Imarat
             </div>
-            <Eyebrow style={{ marginTop:5, fontSize:9 }}>Estate reliability</Eyebrow>
+            <Eyebrow style={{ marginTop:5, fontSize:9 }}>IT Operations</Eyebrow>
           </div>
 
           <div className="led-nav" style={{ display:"flex", flexDirection:"column", gap:2 }}>
@@ -325,7 +325,7 @@ export default function Dashboard() {
                   : section==="operations" ? "Operations" : "Reports"}
               </h1>
               <div style={{ fontSize:11.5, color:T.ink3, marginTop:5 }}>
-                {section==="briefing"   && "What is happening across the estate, and what needs attention."}
+                {section==="briefing"   && "What is happening across IT operations, and what needs attention."}
                 {section==="operations" && "Every facility, worst first. Select a row to inspect and update."}
                 {section==="reports"    && "Compose an executive report and export it as a PDF."}
               </div>

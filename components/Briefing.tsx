@@ -69,7 +69,7 @@ export default function Briefing({ facilities, state, log, loading, windowDays, 
       {/* ── 1 · VERDICT ─────────────────────────────────────────────────── */}
       <section style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) 300px", gap:36, alignItems:"start" }}>
         <div>
-          <Eyebrow style={{ marginBottom:14 }}>Estate briefing · {new Date().toLocaleDateString("en-GB",{weekday:"long", day:"numeric", month:"long"})}</Eyebrow>
+          <Eyebrow style={{ marginBottom:14 }}>IT Operations briefing · {new Date().toLocaleDateString("en-GB",{weekday:"long", day:"numeric", month:"long"})}</Eyebrow>
           <h1 style={{ margin:0, fontFamily:T.serif, fontSize:38, lineHeight:1.18, fontWeight:400,
                        letterSpacing:"-0.022em", color:T.ink, textWrap:"balance", maxWidth:"20ch" }}>
             {a.v.headline}

@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Estate Reliability Report — multi-page executive document.
+// IT Operations Report — multi-page executive document.
 //
 // Portrait A4: this gets emailed, printed and read in a meeting, not projected
 // as a dashboard. Structure follows how a decision-maker reads — verdict, then
@@ -65,7 +65,7 @@ export async function buildReport(
   const genDate = d.toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"});
   const genTime = d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true});
   const stamp = new Date(o.range.to).toISOString().slice(0,10);
-  const fileName = `Imarat_Estate_Reliability_${stamp}.pdf`;
+  const fileName = `Imarat_IT_Operations_${stamp}.pdf`;
 
   // ── primitives ────────────────────────────────────────────────────────────
   const A=(a:number)=>{ try{(doc as any).setGState(new (doc as any).GState({opacity:a}));}catch{} };
@@ -118,7 +118,7 @@ export async function buildReport(
     page++;
     rect(0,0,PW,PH,PAPER);
     txt("IMARAT GROUP",M,13,{size:7.5,weight:"bold",color:INK});
-    txt("Estate Reliability Report",M+30,13,{size:7.5,color:INK3});
+    txt("IT Operations Report",M+30,13,{size:7.5,color:INK3});
     txt(title,PW-M,13,{size:7.5,color:INK3,align:"right"});
     line(M,16,PW-M,16);
     return 25;
@@ -127,7 +127,8 @@ export async function buildReport(
     const y=PH-12;
     line(M,y-5,PW-M,y-5);
     txt(`${o.org} · IT Department`,M,y,{size:6.8,color:INK4});
-    if(o.confidential) txt("CONFIDENTIAL",PW/2,y,{size:6.8,color:INK4,align:"center"});
+    txt(o.confidential ? "CONFIDENTIAL · SYSTEM GENERATED" : "SYSTEM GENERATED",
+        PW/2,y,{size:6.8,color:INK4,align:"center"});
     txt(String(page),PW-M,y,{size:7.5,font:"mono",color:INK3,align:"right"});
   };
 
@@ -156,6 +157,93 @@ export async function buildReport(
   const last = hist.points[hist.points.length-1];
   const counts = { green:last?.green??0, amber:last?.amber??0, red:last?.red??0, na:last?.na??0 };
   const total = fac.length||1;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // COVER — title page. Gives the report an identity before the analysis, and
+  // puts the single most important number where the eye lands first.
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    page++;
+    rect(0,0,PW,PH,PAPER);
+
+    // masthead rule
+    rect(0,0,PW,2.2,INK);
+
+    let y = 44;
+    txt("IMARAT GROUP",M,y,{size:9,weight:"bold",color:INK});
+    txt("OF COMPANIES",M+doc.getTextWidth("IMARAT GROUP")+3,y,{size:9,color:INK3});
+    y += 7;
+    line(M,y,M+34,y,INK,0.7);
+    y += 16;
+
+    txt("IT Operations",M,y,{size:34,font:"serif",color:INK});
+    y += 13;
+    txt("Report",M,y,{size:34,font:"serif",color:INK3});
+    y += 16;
+
+    txt(fmtRange(R),M,y,{size:11,font:"mono",color:INK2});
+    txt(`${days} day${days>1?"s":""}`,M+doc.getTextWidth(fmtRange(R))*0.72+8,y,{size:9,color:INK4});
+    y += 6;
+    txt(o.divFilter==="all" ? `All divisions · ${fac.length} facilities`
+                            : `${o.divFilter} division · ${fac.length} facilities`,
+        M,y,{size:9,color:INK3});
+
+    // ── the headline number, as a gauge ─────────────────────────────────────
+    const gx = PW - M - 38, gy = 92;
+    drawGauge(gx,gy,30,21,health,statusRGB[v.tone]);
+    txt(`${Math.round(health*100)}%`,gx,gy+2,{size:20,font:"mono",color:statusRGB[v.tone],align:"center"});
+    txt("CAPACITY",gx,gy+9,{size:5.8,color:INK4,align:"center",weight:"bold"});
+
+    // ── verdict ─────────────────────────────────────────────────────────────
+    y = 152;
+    line(M,y,PW-M,y,INK,0.5);
+    y += 12;
+    for(const l of wrap(v.headline,CW-6,17,"serif")){ txt(l,M,y,{size:17,font:"serif",color:INK}); y+=7.6; }
+    y += 3;
+    for(const l of wrap(v.sub,CW-24,9,"sans")){ txt(l,M,y,{size:9,color:INK2}); y+=5; }
+
+    // ── key figures strip ───────────────────────────────────────────────────
+    y = 208;
+    eyebrow("At a glance",M,y); y+=6;
+    const figs = [
+      { l:"Operational", v:String(counts.green), c:OK },
+      { l:"Degraded",    v:String(counts.amber), c:counts.amber?WARN:INK3 },
+      { l:"Critical",    v:String(counts.red),   c:counts.red?CRIT:INK3 },
+      { l:"Recoveries",  v:String(change.recovered), c:change.recovered?OK:INK3 },
+      { l:"Regressions", v:String(change.degraded),  c:change.degraded?CRIT:INK3 },
+    ];
+    const fw = CW/figs.length;
+    line(M,y,PW-M,y);
+    figs.forEach((f,i)=>{
+      const x=M+i*fw;
+      if(i) line(x,y+3,x,y+21,LINE);
+      txt(f.v,x+5,y+15,{size:17,font:"mono",color:f.c});
+      eyebrow(f.l,x+5,y+20,INK4,5.6);
+    });
+    line(M,y+24,PW-M,y+24);
+
+    // ── contents ────────────────────────────────────────────────────────────
+    y = 248;
+    eyebrow("Contents",M,y); y+=6;
+    const toc: string[] = ["Executive summary"];
+    if(o.sections.performance) toc.push("Performance");
+    if(o.sections.exceptions)  toc.push("Exceptions");
+    if(o.sections.appendix)    toc.push("Availability and register");
+    toc.forEach((t,i)=>{
+      txt(String(i+2).padStart(2,"0"),M,y,{size:7.5,font:"mono",color:INK4});
+      txt(t,M+10,y,{size:9.5,color:INK2});
+      y+=6;
+    });
+
+    // ── system generated notice ─────────────────────────────────────────────
+    const ny = PH-32;
+    rect(M,ny,CW,16,SOFT);
+    rect(M,ny,1.2,16,INK3);
+    txt("THIS REPORT IS SYSTEM GENERATED",M+6,ny+6.5,{size:7.2,weight:"bold",color:INK2});
+    txt(`Produced automatically from the IT Operations activity log on ${genDate} at ${genTime}. No manual figures.`,
+        M+6,ny+11.5,{size:6.8,color:INK3});
+    if(o.confidential) txt("CONFIDENTIAL",PW-M,PH-10,{size:6.8,weight:"bold",color:INK4,align:"right"});
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // PAGE 1 — EXECUTIVE SUMMARY
@@ -250,20 +338,32 @@ export async function buildReport(
     txt("Ranked weakest first. Delta compares the end of the window against its start.",M,y+2.5,{size:7.5,color:INK3});
     y+=10;
 
-    const dw=(CW-6)/2;
-    divs.forEach((dv,i)=>{
-      const col=i%2, row=Math.floor(i/2);
-      const x=M+col*(dw+6), ry=y+row*26;
-      const c:RGB = dv.health>=0.8?OK:dv.health>=0.5?WARN:CRIT;
-      txt(dv.cat,x,ry+3.5,{size:9.5,weight:"bold",color:INK});
-      txt(`${Math.round(dv.health*100)}%`,x+dw-16,ry+3.5,{size:11,font:"mono",color:c,align:"right"});
-      if(dv.delta!==null&&hasHist) delta(dv.delta,x+dw-14,ry+3.5,7);
-      const ser=divSer.find(s=>s.cat===dv.cat);
-      if(hasHist&&ser&&ser.series.length>1) drawSpark(x,ry+5.5,dw,9,ser.series,c);
-      meter(x,ry+16.5,dw,2.2,[{v:dv.green,c:OK},{v:dv.amber,c:WARN},{v:dv.red,c:CRIT},{v:dv.na,c:NONE}]);
-      txt(`${dv.green} of ${dv.total} operational`,x,ry+22.5,{size:6.8,color:INK4});
-    });
-    y+=Math.ceil(divs.length/2)*26+8;
+    // ranked bars on one shared 0-100 scale: lengths from a common baseline
+    // are far easier to compare than segments at differing offsets
+    rect(M,y-3,CW,divs.length*13+11,WHITE);
+    doc.setDrawColor(...LINE);doc.setLineWidth(0.25);doc.rect(M,y-3,CW,divs.length*13+11,"S");
+    drawRankedBars(M+5,y+2,CW-10,divs.map(dv=>({
+      label: dv.cat,
+      value: dv.health*100,
+      sub: `${dv.green}/${dv.total} operational`,
+      c: dv.health>=0.8?OK:dv.health>=0.5?WARN:CRIT,
+      delta: hasHist ? dv.delta : null,
+    })));
+    y+=divs.length*13+16;
+
+    // per-division trend, small multiples
+    if(hasHist){
+      eyebrow("Trend by division",M,y); y+=4;
+      const tw=(CW-9)/4;
+      divs.slice(0,4).forEach((dv,i)=>{
+        const x=M+i*(tw+3);
+        const c:RGB = dv.health>=0.8?OK:dv.health>=0.5?WARN:CRIT;
+        const ser=divSer.find(z=>z.cat===dv.cat);
+        txt(dv.cat,x,y+3.5,{size:7,color:INK3});
+        if(ser&&ser.series.length>1) drawSpark(x,y+5,tw,9,ser.series,c);
+      });
+      y+=20;
+    }
 
     txt("Service reliability and recovery",M,y,{size:13,font:"serif",color:INK}); y+=4;
     txt(`Availability across ${total} sites. Recovery time is measured from each fault to its fix, for outages resolved inside the window.`,
@@ -275,19 +375,21 @@ export async function buildReport(
       const x=M+i*(sw+6);
       const c:RGB = s.availability>=0.8?OK:s.availability>=0.5?WARN:CRIT;
       const m = mttr.find(z=>z.service===s.service);
-      rect(x,y,sw,46,WHITE);
-      doc.setDrawColor(...LINE);doc.setLineWidth(0.25);doc.rect(x,y,sw,46,"S");
+      rect(x,y,sw,48,WHITE);
+      doc.setDrawColor(...LINE);doc.setLineWidth(0.25);doc.rect(x,y,sw,48,"S");
       txt(SERVICE_LABEL[s.service],x+5,y+7,{size:9,weight:"bold",color:INK});
       if(s.delta!==null&&hasHist) delta(s.delta,x+sw-13,y+7,7);
-      txt(`${Math.round(s.availability*100)}%`,x+5,y+17,{size:15,font:"mono",color:c});
-      if(hasHist&&s.series.length>1) drawSpark(x+5,y+19.5,sw-10,8,s.series,c);
-      line(x+5,y+31,x+sw-5,y+31,SOFT);
-      eyebrow("Mean recovery",x+5,y+35.5,INK3,5.8);
-      txt(durLabel(m?.meanMs ?? null),x+5,y+42,{size:10,font:"mono",color:INK});
+      // half-ring gauge gives the tile a visual anchor at a glance
+      drawHalfGauge(x+sw/2,y+24,13,9.2,s.availability,c);
+      txt(`${Math.round(s.availability*100)}%`,x+sw/2,y+23,{size:13,font:"mono",color:c,align:"center"});
+      txt(`${s.ok}/${s.total} sites`,x+sw/2,y+28.5,{size:6.2,color:INK4,align:"center"});
+      line(x+5,y+32,x+sw-5,y+32,SOFT);
+      eyebrow("Mean recovery",x+5,y+36.5,INK3,5.8);
+      txt(durLabel(m?.meanMs ?? null),x+5,y+43,{size:10,font:"mono",color:INK});
       txt(m?.count ? `${m.count} outage${m.count>1?"s":""}` : "none resolved",
-          x+sw-5,y+42,{size:6.5,color:INK4,align:"right"});
+          x+sw-5,y+43,{size:6.5,color:INK4,align:"right"});
     });
-    y+=54;
+    y+=56;
 
     txt("Fault and recovery volume",M,y,{size:13,font:"serif",color:INK}); y+=4;
     txt("Recoveries above the line, regressions below. A period fixing faster than it breaks sits mostly above.",
@@ -492,13 +594,64 @@ export async function buildReport(
   }
 
   // provenance
-  txt(`Generated ${genDate} at ${genTime} · window ${fmtRange(R)} · ${log.length} logged events${hasHist?"":" · no recorded history in window"}`,
+  txt(`System generated ${genDate} at ${genTime} · window ${fmtRange(R)} · ${log.length} logged events${hasHist?"":" · no recorded history in window"}`,
       M,PH-20,{size:6.4,color:INK4});
 
   doc.save(fileName);
   return fileName;
 
   // ── charts ────────────────────────────────────────────────────────────────
+
+
+  /** Polygon-approximated arc segment, used for gauges. */
+  function arcSeg(cx:number,cy:number,ro:number,ri:number,a1:number,a2:number,c:RGB){
+    const steps=Math.max(6,Math.ceil(Math.abs(a2-a1)/4));
+    const pts:[number,number][]=[];
+    for(let i=0;i<=steps;i++){const a=(a1+i*(a2-a1)/steps)*Math.PI/180;pts.push([cx+ro*Math.cos(a),cy+ro*Math.sin(a)]);}
+    for(let i=steps;i>=0;i--){const a=(a1+i*(a2-a1)/steps)*Math.PI/180;pts.push([cx+ri*Math.cos(a),cy+ri*Math.sin(a)]);}
+    const rel:[number,number][]=[];
+    for(let i=1;i<pts.length;i++) rel.push([pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]]);
+    fill(c,1);
+    (doc as any).lines(rel,pts[0][0],pts[0][1],[1,1],"F",true);
+    A(1);
+  }
+
+  /** Ring gauge. Track plus a filled sweep proportional to `pct`. */
+  function drawGauge(cx:number,cy:number,ro:number,ri:number,pct:number,c:RGB){
+    arcSeg(cx,cy,ro,ri,-90,270,SOFT);
+    if(pct>0.001) arcSeg(cx,cy,ro,ri,-90,-90+360*Math.min(pct,1),c);
+  }
+
+  /** Half-ring gauge — compact, used for the three service tiles. */
+  function drawHalfGauge(cx:number,cy:number,ro:number,ri:number,pct:number,c:RGB){
+    arcSeg(cx,cy,ro,ri,180,360,SOFT);
+    if(pct>0.001) arcSeg(cx,cy,ro,ri,180,180+180*Math.min(pct,1),c);
+  }
+
+  /**
+   * Ranked horizontal bars. Proper bars with a shared scale beat the meter
+   * strips for comparison, because the eye compares lengths from a common
+   * baseline rather than segment widths at different offsets.
+   */
+  function drawRankedBars(x:number,y:number,w:number,rows:{label:string;value:number;sub?:string;c:RGB;delta?:number|null}[],rowH=13){
+    const labelW = 34, valueW = 26;
+    const barW = w - labelW - valueW;
+    // gridlines at 0 / 50 / 100
+    for(let g=0;g<=2;g++){
+      const gx = x+labelW+(barW*g)/2;
+      line(gx,y-2,gx,y+rows.length*rowH-2,g===0?LINE:SOFT,0.2);
+      txt(`${g*50}`,gx,y+rows.length*rowH+2.5,{size:5.4,font:"mono",color:INK4,align:"center"});
+    }
+    rows.forEach((r,i)=>{
+      const ry=y+i*rowH;
+      txt(clip(r.label,labelW-3,8),x,ry+3.4,{size:8,color:INK});
+      if(r.sub) txt(r.sub,x,ry+7.4,{size:5.8,color:INK4});
+      const bw=Math.max(barW*(Math.min(r.value,100)/100),0.6);
+      rect(x+labelW,ry,bw,5.2,r.c);
+      txt(`${Math.round(r.value)}%`,x+labelW+barW+valueW-2,ry+4,{size:8.5,font:"mono",color:r.c,align:"right"});
+      if(r.delta!==null&&r.delta!==undefined) delta(r.delta,x+labelW+barW+2,ry+4,6.4);
+    });
+  }
 
   /** Stacked status composition across the window. */
   function drawStack(x:number,y:number,w:number,h:number,pts:HealthPoint[],tot:number){

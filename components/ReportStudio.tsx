@@ -119,14 +119,14 @@ export default function ReportStudio({ facilities, state, log, org }: Props) {
       .concat(rows.filter(r=>rank(r)===0));
   },[a.matrix]);
 
-  const pageCount = 1 + (sections.performance?1:0) + (sections.exceptions?1:0)
+  const pageCount = 2 + (sections.performance?1:0) + (sections.exceptions?1:0)
                       + (sections.appendix?1+Math.max(0,Math.ceil((fac.length-26)/34)):0);
 
   const exportPdf = async () => {
     setBusy(true); setDone(null);
     try {
       const name = await buildReport(facilities, state, log, {
-        title:"Estate Reliability Report", org, period:fmtRange(range), author:"IT Department",
+        title:"IT Operations Report", org, period:fmtRange(range), author:"IT Department",
         range, divFilter, sections, confidential,
       });
       setDone(name);
@@ -282,21 +282,25 @@ export default function ReportStudio({ facilities, state, log, org }: Props) {
       {/* ── Live document preview ────────────────────────────────────────── */}
       <div style={{ background:T.sunken, borderRadius:8, padding:"26px 0", border:`1px solid ${T.line}` }}>
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:22 }}>
-          <Sheet n={1} label="Executive summary">
+          <Sheet n={1} label="Cover" bare>
+            <PageCover a={a} range={range} days={days} fac={fac} divFilter={divFilter}
+                       sections={sections} confidential={confidential} />
+          </Sheet>
+          <Sheet n={2} label="Executive summary">
             <PageSummary a={a} total={total} range={range} org={org} hasHist={hasHist} days={days} />
           </Sheet>
           {sections.performance && (
-            <Sheet n={2} label="Performance">
+            <Sheet n={3} label="Performance">
               <PagePerformance a={a} hasHist={hasHist} total={total} days={days} />
             </Sheet>
           )}
           {sections.exceptions && (
-            <Sheet n={2+(sections.performance?1:0)} label="Exceptions">
+            <Sheet n={3+(sections.performance?1:0)} label="Exceptions">
               <PageExceptions a={a} days={days} />
             </Sheet>
           )}
           {sections.appendix && (
-            <Sheet n={2+(sections.performance?1:0)+(sections.exceptions?1:0)} label="Availability & register">
+            <Sheet n={3+(sections.performance?1:0)+(sections.exceptions?1:0)} label="Availability & register">
               <PageAvailability a={a} heatRows={heatRows} fac={fac} state={state} />
             </Sheet>
           )}
@@ -307,25 +311,31 @@ export default function ReportStudio({ facilities, state, log, org }: Props) {
 }
 
 // ── Page shell: true A4 portrait proportion ──────────────────────────────────
-function Sheet({ n, label, children }:{ n:number; label:string; children:React.ReactNode }) {
+function Sheet({ n, label, children, bare=false }:
+  { n:number; label:string; children:React.ReactNode; bare?:boolean }) {
   const W = 620, H = Math.round(W*1.414);
   return (
     <div>
       <Eyebrow style={{ marginBottom:7, marginLeft:2 }}>{n} · {label}</Eyebrow>
       <div style={{ width:W, height:H, background:"#fff", border:`1px solid ${T.line}`,
-                    boxShadow:"0 2px 14px rgba(24,24,27,0.07)", padding:"32px 36px",
+                    boxShadow:"0 2px 14px rgba(24,24,27,0.07)",
+                    padding: bare ? "0" : "32px 36px",
                     display:"flex", flexDirection:"column", overflow:"hidden" }}>
-        <div style={{ display:"flex", alignItems:"baseline", gap:10, paddingBottom:8,
-                      borderBottom:`1px solid ${T.line}`, marginBottom:16 }}>
-          <span style={{ fontFamily:T.sans, fontSize:9, fontWeight:700, color:T.ink, letterSpacing:"0.08em" }}>IMARAT GROUP</span>
-          <span style={{ fontFamily:T.sans, fontSize:9, color:T.ink3 }}>Estate Reliability Report</span>
-          <span style={{ marginLeft:"auto", fontFamily:T.sans, fontSize:9, color:T.ink3 }}>{label}</span>
-        </div>
-        <div style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column" }}>{children}</div>
-        <div style={{ paddingTop:10, borderTop:`1px solid ${T.line}`, display:"flex", justifyContent:"space-between" }}>
-          <span style={{ fontFamily:T.sans, fontSize:8, color:T.ink4 }}>Imarat Group · IT Department</span>
-          <span style={{ fontFamily:T.mono, fontSize:8, color:T.ink4 }}>{n}</span>
-        </div>
+        {bare ? children : (
+          <>
+            <div style={{ display:"flex", alignItems:"baseline", gap:10, paddingBottom:8,
+                          borderBottom:`1px solid ${T.line}`, marginBottom:16 }}>
+              <span style={{ fontFamily:T.sans, fontSize:9, fontWeight:700, color:T.ink, letterSpacing:"0.08em" }}>IMARAT GROUP</span>
+              <span style={{ fontFamily:T.sans, fontSize:9, color:T.ink3 }}>IT Operations Report</span>
+              <span style={{ marginLeft:"auto", fontFamily:T.sans, fontSize:9, color:T.ink3 }}>{label}</span>
+            </div>
+            <div style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column" }}>{children}</div>
+            <div style={{ paddingTop:10, borderTop:`1px solid ${T.line}`, display:"flex", justifyContent:"space-between" }}>
+              <span style={{ fontFamily:T.sans, fontSize:8, color:T.ink4 }}>Imarat Group · IT Department · system generated</span>
+              <span style={{ fontFamily:T.mono, fontSize:8, color:T.ink4 }}>{n}</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -667,5 +677,132 @@ function PageAvailability({ a, heatRows, fac, state }:
         </div>
       </div>
     </>
+  );
+}
+
+/** Ring gauge — the cover's visual anchor. Mirrors drawGauge() in the PDF. */
+function Gauge({ pct, color, size=120, thickness=16 }:
+  { pct:number; color:string; size?:number; thickness?:number }) {
+  const r = (size - thickness) / 2, c = 2 * Math.PI * r, cx = size / 2;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img"
+         aria-label={`capacity ${Math.round(pct*100)} percent`}>
+      <circle cx={cx} cy={cx} r={r} fill="none" stroke={T.sunken} strokeWidth={thickness} />
+      {pct > 0.001 && (
+        <circle cx={cx} cy={cx} r={r} fill="none" stroke={color} strokeWidth={thickness}
+                strokeDasharray={`${c*Math.min(pct,1)} ${c}`} strokeLinecap="butt"
+                style={{ transform:"rotate(-90deg)", transformOrigin:`${cx}px ${cx}px` }} />
+      )}
+    </svg>
+  );
+}
+
+function PageCover({ a, range, days, fac, divFilter, sections, confidential }:{
+  a:A; range:DateRange; days:number; fac:{name:string;cat:string}[];
+  divFilter:string; sections:Record<string,boolean>; confidential:boolean;
+}) {
+  const gen = new Date();
+  const toc = ["Executive summary",
+    ...(sections.performance?["Performance"]:[]),
+    ...(sections.exceptions?["Exceptions"]:[]),
+    ...(sections.appendix?["Availability and register"]:[])];
+  const figs = [
+    { l:"Operational", v:a.counts.green,        c:T.ok },
+    { l:"Degraded",    v:a.counts.amber,        c:a.counts.amber?T.warn:T.ink3 },
+    { l:"Critical",    v:a.counts.red,          c:a.counts.red?T.crit:T.ink3 },
+    { l:"Recoveries",  v:a.change.recovered,    c:a.change.recovered?T.ok:T.ink3 },
+    { l:"Regressions", v:a.change.degraded,     c:a.change.degraded?T.crit:T.ink3 },
+  ];
+  return (
+    <div style={{ height:"100%", display:"flex", flexDirection:"column", padding:"0 0 26px" }}>
+      <div style={{ height:6, background:T.ink, flexShrink:0 }} />
+      <div style={{ padding:"0 44px", display:"flex", flexDirection:"column", flex:1, minHeight:0 }}>
+
+        <div style={{ marginTop:44, display:"flex", alignItems:"flex-start" }}>
+          <div style={{ flex:1 }}>
+            <div>
+              <span style={{ fontFamily:T.sans, fontSize:11, fontWeight:700, color:T.ink, letterSpacing:"0.04em" }}>IMARAT GROUP</span>
+              <span style={{ fontFamily:T.sans, fontSize:11, color:T.ink3, marginLeft:5 }}>OF COMPANIES</span>
+            </div>
+            <div style={{ width:44, height:2, background:T.ink, margin:"9px 0 22px" }} />
+            <h1 style={{ margin:0, fontFamily:T.serif, fontSize:44, lineHeight:1.06, fontWeight:400,
+                         color:T.ink, letterSpacing:"-0.025em" }}>
+              IT Operations<br/><span style={{ color:T.ink3 }}>Report</span>
+            </h1>
+            <div style={{ marginTop:20, display:"flex", alignItems:"baseline", gap:10 }}>
+              <span style={{ fontFamily:T.mono, fontSize:14, color:T.ink2 }}>{fmtRange(range)}</span>
+              <span style={{ fontFamily:T.sans, fontSize:11, color:T.ink4 }}>{days} day{days>1?"s":""}</span>
+            </div>
+            <div style={{ fontFamily:T.sans, fontSize:11, color:T.ink3, marginTop:5 }}>
+              {divFilter==="all" ? `All divisions · ${fac.length} facilities`
+                                 : `${divFilter} division · ${fac.length} facilities`}
+            </div>
+          </div>
+
+          <div style={{ position:"relative", flexShrink:0, marginTop:6 }}>
+            <Gauge pct={a.health} color={statusColor[a.v.tone]} size={124} thickness={17} />
+            <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column",
+                          alignItems:"center", justifyContent:"center" }}>
+              <Num size={27} weight={400} color={statusColor[a.v.tone]} style={{ letterSpacing:"-0.04em" }}>
+                {Math.round(a.health*100)}%
+              </Num>
+              <Eyebrow style={{ fontSize:8, marginTop:3 }}>Capacity</Eyebrow>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ height:1, background:T.ink, marginTop:38 }} />
+        <h2 style={{ margin:"26px 0 0", fontFamily:T.serif, fontSize:21, lineHeight:1.28,
+                     fontWeight:400, color:T.ink, letterSpacing:"-0.015em", textWrap:"balance" }}>
+          {a.v.headline}
+        </h2>
+        <p style={{ margin:"10px 0 0", fontFamily:T.sans, fontSize:11, lineHeight:1.6,
+                    color:T.ink2, maxWidth:"52ch" }}>{a.v.sub}</p>
+
+        <div style={{ marginTop:34 }}>
+          <Eyebrow style={{ marginBottom:8 }}>At a glance</Eyebrow>
+          <div style={{ display:"grid", gridTemplateColumns:`repeat(${figs.length},1fr)`,
+                        borderTop:`1px solid ${T.line}`, borderBottom:`1px solid ${T.line}` }}>
+            {figs.map((f,i)=>(
+              <div key={f.l} style={{ padding:"11px 10px", borderLeft:i?`1px solid ${T.line}`:"none" }}>
+                <Num size={20} weight={400} color={f.c} style={{ display:"block" }}>{f.v}</Num>
+                <Eyebrow style={{ fontSize:8, marginTop:4 }}>{f.l}</Eyebrow>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginTop:30 }}>
+          <Eyebrow style={{ marginBottom:8 }}>Contents</Eyebrow>
+          {toc.map((t,i)=>(
+            <div key={t} style={{ display:"flex", gap:12, alignItems:"baseline", padding:"3px 0" }}>
+              <Num size={9} color={T.ink4}>{String(i+2).padStart(2,"0")}</Num>
+              <span style={{ fontFamily:T.sans, fontSize:11.5, color:T.ink2 }}>{t}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop:"auto", display:"flex", gap:12, alignItems:"stretch",
+                      background:T.sunken, padding:"12px 14px" }}>
+          <div style={{ width:3, background:T.ink3, flexShrink:0 }} />
+          <div>
+            <div style={{ fontFamily:T.sans, fontSize:9.5, fontWeight:700, color:T.ink2, letterSpacing:"0.06em" }}>
+              THIS REPORT IS SYSTEM GENERATED
+            </div>
+            <div style={{ fontFamily:T.sans, fontSize:9, color:T.ink3, marginTop:3, lineHeight:1.5 }}>
+              Produced automatically from the IT Operations activity log on{" "}
+              {gen.toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})} at{" "}
+              {gen.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true})}. No manual figures.
+            </div>
+          </div>
+          {confidential && (
+            <span style={{ marginLeft:"auto", alignSelf:"flex-end", fontFamily:T.sans,
+                           fontSize:8.5, fontWeight:700, color:T.ink4, letterSpacing:"0.08em" }}>
+              CONFIDENTIAL
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

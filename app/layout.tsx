@@ -10,8 +10,8 @@ const sans  = Archivo({ subsets: ["latin"], weight: ["400","500","600","700"], v
 const mono  = JetBrains_Mono({ subsets: ["latin"], weight: ["400","500","600"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
-  title: "Estate Briefing — Imarat Group IT",
-  description: "Facility reliability briefing and reporting for Imarat Group IT",
+  title: "IT Operations — Imarat Group",
+  description: "IT Operations briefing and reporting for Imarat Group",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
