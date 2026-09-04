@@ -44,6 +44,42 @@ export const SERVICE_LABEL: Record<Service, string> = {
 const RAG_SET = new Set(["green", "amber", "red", "na"]);
 const isRag = (v: string): v is RAG => RAG_SET.has(v);
 
+// ─── Log normalisation ───────────────────────────────────────────────────────
+// The dashboard historically wrote human labels into the activity log
+// ("Internet" / "Working / OK") while the analytics expected raw keys
+// ("internet" / "green"). Every status transition was therefore filtered out on
+// read and the whole history silently looked empty. Reads now accept both
+// spellings so existing rows are recovered, and writes use the raw form.
+
+const FIELD_ALIAS: Record<string, Service> = {
+  internet:"internet", Internet:"internet",
+  bio:"bio", Bio:"bio", biometric:"bio", Biometric:"bio",
+  printing:"printing", Printing:"printing",
+};
+const RAG_ALIAS: Record<string, RAG> = {
+  green:"green", amber:"amber", red:"red", na:"na",
+  "working / ok":"green", "working/ok":"green", "working":"green", "ok":"green",
+  "slow / degraded":"amber", "slow/degraded":"amber", "degraded":"amber",
+  "down / critical":"red", "down/critical":"red", "down":"red", "critical":"red",
+  "n/a":"na", "not set":"na", "—":"na", "-":"na",
+};
+
+/** Service a log entry refers to, or null when it is not a status entry. */
+export const logService = (field: string): Service | null =>
+  FIELD_ALIAS[field] ?? FIELD_ALIAS[(field || "").toLowerCase()] ?? null;
+
+/** RAG value a logged label refers to, or null when unrecognised. */
+export const logRag = (v: string): RAG | null =>
+  RAG_ALIAS[v] ?? RAG_ALIAS[(v || "").trim().toLowerCase()] ?? null;
+
+/** Bandwidth fields, in either spelling. */
+export const logBandwidthField = (field: string): "current" | "required" | null => {
+  const f = (field || "").toLowerCase();
+  if (f === "bandwidth" || f === "current bw") return "current";
+  if (f === "requiredbandwidth" || f === "required bw") return "required";
+  return null;
+};
+
 /** Worst-of the three services decides the facility's overall state. */
 export function overallOf(s: FacState): RAG {
   const v = [s.internet, s.bio, s.printing];
@@ -64,11 +100,19 @@ function entryTime(e: LogEntry): number {
 
 /** Status transitions only, newest first, with a usable timestamp. */
 export function statusTransitions(log: LogEntry[]): (LogEntry & { time: number })[] {
-  return log
-    .filter(e => (SERVICES as readonly string[]).includes(e.field) && isRag(e.newVal) && isRag(e.oldVal))
-    .map(e => ({ ...e, time: entryTime(e) }))
-    .filter(e => e.time > 0)
-    .sort((a, b) => b.time - a.time);
+  const out: (LogEntry & { time: number })[] = [];
+  for (const e of log) {
+    const sv = logService(e.field);
+    if (!sv) continue;
+    const from = logRag(e.oldVal), to = logRag(e.newVal);
+    if (!from || !to || from === to) continue;
+    const time = entryTime(e);
+    if (!(time > 0)) continue;
+    // hand downstream the normalised form so `e.field as Service` and
+    // `e.oldVal as RAG` are true rather than merely asserted
+    out.push({ ...e, field: sv, oldVal: from, newVal: to, time });
+  }
+  return out.sort((a, b) => b.time - a.time);
 }
 
 export const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
@@ -920,16 +964,16 @@ export function bandwidthDeficitsAt(
   }
   // rewind bandwidth edits that happened after the window closed
   const edits = log
-    .filter(e => e.field === "Current BW" || e.field === "Required BW")
-    .map(e => ({ ...e, time: e.at ? Date.parse(e.at) : Date.parse(e.ts) }))
-    .filter(e => Number.isFinite(e.time) && e.time > 0)
+    .map(e => ({ e, kind: logBandwidthField(e.field),
+                 time: e.at ? Date.parse(e.at) : Date.parse(e.ts) }))
+    .filter(x => x.kind && Number.isFinite(x.time) && x.time > 0)
     .sort((a,b) => b.time - a.time);
-  for (const e of edits) {
-    if (e.time <= range.to) break;
+  for (const { e, kind, time } of edits) {
+    if (time <= range.to) break;
     const rec = cur[e.facility];
     if (!rec) continue;
-    if (e.field === "Current BW")  rec.c = e.oldVal;
-    else                           rec.r = e.oldVal;
+    if (kind === "current") rec.c = e.oldVal;
+    else                    rec.r = e.oldVal;
   }
 
   const out: { facility:string; cat:string; current:number; required:number; ratio:number }[] = [];
@@ -946,7 +990,10 @@ export function bandwidthDeficitsAt(
 export interface ActivityRow {
   facility: string;
   cat: string;
+  /** Status transitions (green/amber/red moves). */
   changes: number;
+  /** Non-status edits logged in the window: issue text, notes, bandwidth. */
+  edits: number;
   recoveries: number;
   regressions: number;
   services: Service[];
@@ -985,6 +1032,17 @@ export function periodActivity(
     byFac.set(e.facility, arr);
   }
 
+  // Non-status edits — issue text, notes, bandwidth — are work done in the
+  // period too, so the record shows them rather than only RAG moves.
+  const editCount = new Map<string, number>();
+  for (const e of log) {
+    if (logService(e.field)) continue;             // already counted above
+    if (!catOf.has(e.facility)) continue;
+    const t = e.at ? Date.parse(e.at) : Date.parse(e.ts);
+    if (!Number.isFinite(t) || t < range.from || t > range.to) continue;
+    editCount.set(e.facility, (editCount.get(e.facility) ?? 0) + 1);
+  }
+
   const overall = (c: Record<Service,RAG> | undefined): RAG => {
     if (!c) return "na";
     const v = [c.internet, c.bio, c.printing];
@@ -1003,6 +1061,7 @@ export function periodActivity(
       facility,
       cat: catOf.get(facility) ?? "",
       changes: evts.length,
+      edits: editCount.get(facility) ?? 0,
       recoveries,
       regressions,
       services: Array.from(new Set(evts.map(e => e.field as Service))),
@@ -1013,8 +1072,20 @@ export function periodActivity(
     });
   }
 
+  // sites with only non-status edits still did work in the period
+  for (const [facility, n] of Array.from(editCount.entries())) {
+    if (byFac.has(facility)) continue;
+    rows.push({
+      facility, cat: catOf.get(facility) ?? "",
+      changes: 0, edits: n, recoveries: 0, regressions: 0, services: [],
+      firstAt: range.from, lastAt: range.to,
+      endedAt: overall(endState[facility]), netImproved: null,
+    });
+  }
+
   // busiest first — that is the story of the period
-  return rows.sort((a,b) => b.changes - a.changes || b.regressions - a.regressions);
+  return rows.sort((a,b) =>
+    (b.changes - a.changes) || (b.regressions - a.regressions) || (b.edits - a.edits));
 }
 
 /** Totals for the activity table's summary line. */
@@ -1022,6 +1093,7 @@ export function activityTotals(rows: ActivityRow[]) {
   return {
     sitesTouched: rows.length,
     changes:      rows.reduce((s,r) => s + r.changes, 0),
+    edits:        rows.reduce((s,r) => s + r.edits, 0),
     recoveries:   rows.reduce((s,r) => s + r.recoveries, 0),
     regressions:  rows.reduce((s,r) => s + r.regressions, 0),
     improved:     rows.filter(r => r.netImproved === true).length,

@@ -340,10 +340,12 @@ export async function buildReport(
       txt("sites",cx2+4+(actT.sitesTouched>9?7:4),y+11,{size:5.6,color:INK4});
       txt(String(actT.changes),cx2+26,y+11,{size:11,font:"mono",color:INK});
       txt("changes",cx2+26+(actT.changes>9?7:4),y+11,{size:5.6,color:INK4});
-      txt(String(actT.improved),cx2+54,y+11,{size:11,font:"mono",color:actT.improved?OK:INK3});
-      txt("improved",cx2+54+(actT.improved>9?7:4),y+11,{size:5.6,color:INK4});
-      txt(String(actT.worsened),cx2+84,y+11,{size:11,font:"mono",color:actT.worsened?CRIT:INK3});
-      txt("worse",cx2+84+(actT.worsened>9?7:4),y+11,{size:5.6,color:INK4});
+      txt(String(actT.edits),cx2+52,y+11,{size:11,font:"mono",color:INK2});
+      txt("edits",cx2+52+(actT.edits>9?7:4),y+11,{size:5.6,color:INK4});
+      txt(String(actT.improved),cx2+74,y+11,{size:11,font:"mono",color:actT.improved?OK:INK3});
+      txt("better",cx2+74+(actT.improved>9?7:4),y+11,{size:5.6,color:INK4});
+      txt(String(actT.worsened),cx2+98,y+11,{size:11,font:"mono",color:actT.worsened?CRIT:INK3});
+      txt("worse",cx2+98+(actT.worsened>9?7:4),y+11,{size:5.6,color:INK4});
       line(cx2+4,y+14,cx2+colW-4,y+14,SOFT);
       const maxC=Math.max(...acts.map(a2=>a2.changes),1);
       acts.slice(0,4).forEach((a2,i)=>{
@@ -356,7 +358,8 @@ export async function buildReport(
         if(a2.regressions) rect(bx+rw,ry-2.4,Math.max(gw,0.5),2.8,CRIT);
         const arrow = a2.netImproved===null ? "=" : a2.netImproved ? "+" : "-";
         const ac:RGB = a2.netImproved===null ? INK3 : a2.netImproved ? OK : CRIT;
-        txt(String(a2.changes),cx2+colW-11,ry,{size:6.6,font:"mono",color:INK2,align:"right"});
+        txt(a2.changes?String(a2.changes):`${a2.edits}e`,cx2+colW-11,ry,
+            {size:6.6,font:"mono",color:a2.changes?INK2:INK4,align:"right"});
         txt(arrow,cx2+colW-4,ry,{size:6.6,font:"mono",color:ac,align:"right"});
       });
       if(acts.length>4) txt(`+ ${acts.length-4} more sites had activity`,cx2+4,y+40,{size:5.6,color:INK4});

@@ -175,8 +175,11 @@ export default function Dashboard() {
       ["internet","bio","printing"].includes(changedField) ? "status"
       : changedField==="issue" ? "issue"
       : changedField.includes("andwidth") ? "bandwidth" : "notes";
-    await addLog({ facility:name, field:fieldLabel(changedField),
-                   oldVal:humanVal(oldVal)||"—", newVal:humanVal(newVal)||"—", type });
+    // Store the canonical machine values. The log is the historical record the
+    // whole reporting system replays, so it must round-trip exactly; display
+    // labels are derived at render time via fieldLabel()/humanVal().
+    await addLog({ facility:name, field:changedField,
+                   oldVal:oldVal, newVal:newVal, type });
 
     if(["internet","bio","printing"].includes(changedField)){
       const key=`${name}__${changedField}`, ms=Date.now();

@@ -633,6 +633,7 @@ function PageAnalysis({ a, hasHist }:{ a:A; hasHist:boolean }) {
                   {[
                     { n:a.actT.sitesTouched, l:"sites",    c:T.ink },
                     { n:a.actT.changes,      l:"changes",  c:T.ink },
+                    { n:a.actT.edits,        l:"edits",    c:T.ink2 },
                     { n:a.actT.improved,     l:"improved", c:a.actT.improved?T.ok:T.ink3 },
                     { n:a.actT.worsened,     l:"worse",    c:a.actT.worsened?T.crit:T.ink3 },
                   ].map(x=>(
@@ -653,7 +654,9 @@ function PageAnalysis({ a, hasHist }:{ a:A; hasHist:boolean }) {
                         {r.recoveries>0 && <span style={{ width:`${r.recoveries/max*100}%`, background:T.ok }} />}
                         {r.regressions>0 && <span style={{ width:`${r.regressions/max*100}%`, background:T.crit }} />}
                       </span>
-                      <Num size={8} color={T.ink2} style={{ textAlign:"right", display:"block" }}>{r.changes}</Num>
+                      <Num size={8} color={r.changes?T.ink2:T.ink4} style={{ textAlign:"right", display:"block" }}>
+                        {r.changes || `${r.edits}e`}
+                      </Num>
                       <span style={{ fontFamily:T.mono, fontSize:9, textAlign:"right",
                                      color: r.netImproved===null ? T.ink3 : r.netImproved ? T.ok : T.crit }}>
                         {r.netImproved===null ? "=" : r.netImproved ? "▲" : "▼"}
