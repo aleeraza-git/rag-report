@@ -37,7 +37,7 @@ export interface ReportOptions {
   author: string;
   range: DateRange;
   divFilter: string;
-  sections: { summary:boolean; performance:boolean; exceptions:boolean; appendix:boolean };
+  sections: { analysis:boolean; appendix:boolean };
   confidential: boolean;
 }
 
@@ -159,354 +159,260 @@ export async function buildReport(
   const total = fac.length||1;
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // COVER — title page. Gives the report an identity before the analysis, and
-  // puts the single most important number where the eye lands first.
-  // ═══════════════════════════════════════════════════════════════════════════
-  {
-    page++;
-    rect(0,0,PW,PH,PAPER);
-
-    // masthead rule
-    rect(0,0,PW,2.2,INK);
-
-    let y = 44;
-    txt("IMARAT GROUP",M,y,{size:9,weight:"bold",color:INK});
-    txt("OF COMPANIES",M+doc.getTextWidth("IMARAT GROUP")+3,y,{size:9,color:INK3});
-    y += 7;
-    line(M,y,M+34,y,INK,0.7);
-    y += 16;
-
-    txt("IT Operations",M,y,{size:34,font:"serif",color:INK});
-    y += 13;
-    txt("Report",M,y,{size:34,font:"serif",color:INK3});
-    y += 16;
-
-    txt(fmtRange(R),M,y,{size:11,font:"mono",color:INK2});
-    txt(`${days} day${days>1?"s":""}`,M+doc.getTextWidth(fmtRange(R))*0.72+8,y,{size:9,color:INK4});
-    y += 6;
-    txt(o.divFilter==="all" ? `All divisions · ${fac.length} facilities`
-                            : `${o.divFilter} division · ${fac.length} facilities`,
-        M,y,{size:9,color:INK3});
-
-    // ── the headline number, as a gauge ─────────────────────────────────────
-    const gx = PW - M - 38, gy = 92;
-    drawGauge(gx,gy,30,21,health,statusRGB[v.tone]);
-    txt(`${Math.round(health*100)}%`,gx,gy+2,{size:20,font:"mono",color:statusRGB[v.tone],align:"center"});
-    txt("CAPACITY",gx,gy+9,{size:5.8,color:INK4,align:"center",weight:"bold"});
-
-    // ── verdict ─────────────────────────────────────────────────────────────
-    y = 152;
-    line(M,y,PW-M,y,INK,0.5);
-    y += 12;
-    for(const l of wrap(v.headline,CW-6,17,"serif")){ txt(l,M,y,{size:17,font:"serif",color:INK}); y+=7.6; }
-    y += 3;
-    for(const l of wrap(v.sub,CW-24,9,"sans")){ txt(l,M,y,{size:9,color:INK2}); y+=5; }
-
-    // ── key figures strip ───────────────────────────────────────────────────
-    y = 208;
-    eyebrow("At a glance",M,y); y+=6;
-    const figs = [
-      { l:"Operational", v:String(counts.green), c:OK },
-      { l:"Degraded",    v:String(counts.amber), c:counts.amber?WARN:INK3 },
-      { l:"Critical",    v:String(counts.red),   c:counts.red?CRIT:INK3 },
-      { l:"Recoveries",  v:String(change.recovered), c:change.recovered?OK:INK3 },
-      { l:"Regressions", v:String(change.degraded),  c:change.degraded?CRIT:INK3 },
-    ];
-    const fw = CW/figs.length;
-    line(M,y,PW-M,y);
-    figs.forEach((f,i)=>{
-      const x=M+i*fw;
-      if(i) line(x,y+3,x,y+21,LINE);
-      txt(f.v,x+5,y+15,{size:17,font:"mono",color:f.c});
-      eyebrow(f.l,x+5,y+20,INK4,5.6);
-    });
-    line(M,y+24,PW-M,y+24);
-
-    // ── contents ────────────────────────────────────────────────────────────
-    y = 248;
-    eyebrow("Contents",M,y); y+=6;
-    const toc: string[] = ["Executive summary"];
-    if(o.sections.performance) toc.push("Performance");
-    if(o.sections.exceptions)  toc.push("Exceptions");
-    if(o.sections.appendix)    toc.push("Availability and register");
-    toc.forEach((t,i)=>{
-      txt(String(i+2).padStart(2,"0"),M,y,{size:7.5,font:"mono",color:INK4});
-      txt(t,M+10,y,{size:9.5,color:INK2});
-      y+=6;
-    });
-
-    // ── system generated notice ─────────────────────────────────────────────
-    const ny = PH-32;
-    rect(M,ny,CW,16,SOFT);
-    rect(M,ny,1.2,16,INK3);
-    txt("THIS REPORT IS SYSTEM GENERATED",M+6,ny+6.5,{size:7.2,weight:"bold",color:INK2});
-    txt(`Produced automatically from the IT Operations activity log on ${genDate} at ${genTime}. No manual figures.`,
-        M+6,ny+11.5,{size:6.8,color:INK3});
-    if(o.confidential) txt("CONFIDENTIAL",PW-M,PH-10,{size:6.8,weight:"bold",color:INK4,align:"right"});
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PAGE 1 — EXECUTIVE SUMMARY
+  // PAGE 1 — EXECUTIVE DASHBOARD
+  //
+  // Masthead, verdict, KPIs, composition and division ranking on one sheet. The
+  // standalone cover was spending a whole page on a title; folding it into the
+  // masthead buys room for two more charts at no cost in legibility.
   // ═══════════════════════════════════════════════════════════════════════════
   {
     let y = newPage("Executive summary");
-    eyebrow("Executive summary",M,y); y+=6;
-    txt(`${fmtRange(R)}  ·  ${days} day${days>1?"s":""}`,M,y,{size:8,font:"mono",color:INK3}); y+=11;
 
-    for(const l of wrap(v.headline,CW,18,"serif")){ txt(l,M,y,{size:18,font:"serif",color:INK}); y+=8; }
-    y+=2.5;
-    for(const l of wrap(v.sub,CW-4,9,"sans")){ txt(l,M,y,{size:9,color:INK2}); y+=4.9; }
-    y+=7;
+    // ── masthead ────────────────────────────────────────────────────────────
+    txt("IT Operations Report",M,y+4,{size:21,font:"serif",color:INK});
+    txt(fmtRange(R),M,y+11,{size:9,font:"mono",color:INK2});
+    txt(`${days} day${days>1?"s":""}  ·  ${o.divFilter==="all"?"all divisions":o.divFilter}  ·  ${fac.length} facilities`,
+        M,y+16,{size:7.5,color:INK4});
 
-    // KPI band
-    const kpis:{l:string;v:string;d:number|null;c:RGB}[]=[
-      { l:"Capacity",    v:`${Math.round(health*100)}%`, d:cmp.deltaPts, c:statusRGB[v.tone] },
-      { l:"Operational", v:`${counts.green}/${total}`,   d:null,         c:OK },
-      { l:"Critical",    v:String(counts.red),           d:null,         c:counts.red?CRIT:INK3 },
-      { l:"Degraded",    v:String(counts.amber),         d:null,         c:counts.amber?WARN:INK3 },
+    // capacity gauge, right-aligned with the masthead
+    const gx=PW-M-17, gy=y+8;
+    drawGauge(gx,gy,16,11.2,health,statusRGB[v.tone]);
+    txt(`${Math.round(health*100)}%`,gx,gy+1.6,{size:11,font:"mono",color:statusRGB[v.tone],align:"center"});
+    txt("CAPACITY",gx,gy+5.6,{size:4.6,weight:"bold",color:INK4,align:"center"});
+    if(cmp.deltaPts!==null&&hasHist){
+      const dl = `${cmp.deltaPts>0?"+":cmp.deltaPts<0?"-":"="}${Math.abs(cmp.deltaPts)<0.05?"":Math.abs(cmp.deltaPts).toFixed(1)}`;
+      txt(dl,gx,gy+22,{size:6.6,font:"mono",align:"center",
+          color:Math.abs(cmp.deltaPts)<0.05?INK3:cmp.deltaPts>0?OK:CRIT});
+      txt("vs prev",gx,gy+25.5,{size:5,color:INK4,align:"center"});
+    }
+    y+=26;
+
+    // ── verdict ─────────────────────────────────────────────────────────────
+    line(M,y,PW-M,y,INK,0.5); y+=8;
+    for(const l of wrap(v.headline,CW-42,14,"serif")){ txt(l,M,y,{size:14,font:"serif",color:INK}); y+=6.4; }
+    y+=1.5;
+    for(const l of wrap(v.sub,CW-6,8,"sans").slice(0,2)){ txt(l,M,y,{size:8,color:INK2}); y+=4.4; }
+    y+=5;
+
+    // ── KPI band ────────────────────────────────────────────────────────────
+    const kpis:{l:string;v:string;c:RGB}[]=[
+      { l:"Capacity",    v:`${Math.round(health*100)}%`, c:statusRGB[v.tone] },
+      { l:"Operational", v:`${counts.green}/${total}`,   c:OK },
+      { l:"Degraded",    v:String(counts.amber),         c:counts.amber?WARN:INK3 },
+      { l:"Critical",    v:String(counts.red),           c:counts.red?CRIT:INK3 },
+      { l:"Recoveries",  v:String(change.recovered),     c:change.recovered?OK:INK3 },
+      { l:"Regressions", v:String(change.degraded),      c:change.degraded?CRIT:INK3 },
     ];
-    const kw=CW/4;
-    rect(M,y,CW,23,WHITE); line(M,y,PW-M,y); line(M,y+23,PW-M,y+23);
+    const kw=CW/kpis.length;
+    line(M,y,PW-M,y);
     kpis.forEach((k,i)=>{
       const x=M+i*kw;
-      if(i) line(x,y+4,x,y+19,LINE);
-      eyebrow(k.l,x+6,y+8);
-      txt(k.v,x+6,y+18,{size:16,font:"mono",color:k.c});
-      if(k.d!==null&&hasHist){
-        doc.setFont("courier","normal");doc.setFontSize(16);
-        delta(k.d,x+8+doc.getTextWidth(k.v),y+18);
-      }
+      if(i) line(x,y+3,x,y+18,LINE);
+      txt(k.v,x+4,y+13,{size:14,font:"mono",color:k.c});
+      eyebrow(k.l,x+4,y+17.5,INK4,5.4);
     });
-    y+=32;
+    line(M,y+21,PW-M,y+21);
+    y+=29;
 
-    // status composition
-    eyebrow("Status composition across the period",M,y); y+=5;
+    // ── two-column: composition | division ranking ──────────────────────────
+    const colW=(CW-8)/2, cx2=M+colW+8;
+    const colTop=y;
+
+    eyebrow("Status composition",M,y);
     if(hasHist){
-      drawStack(M,y,CW,50,hist.points,total);
-      y+=54;
-      let lx=M;
-      for(const g of [{c:OK,l:"Operational",n:counts.green},{c:WARN,l:"Degraded",n:counts.amber},
-                      {c:CRIT,l:"Critical",n:counts.red},{c:NONE,l:"Not set",n:counts.na}]){
-        fill(g.c,1); doc.rect(lx,y-2.4,2.4,2.4,"F"); A(1);
-        txt(g.l,lx+3.6,y,{size:7,color:INK3});
-        doc.setFont("helvetica","normal");doc.setFontSize(7);
-        lx += 3.6 + doc.getTextWidth(g.l) + 2.5;
-        txt(String(g.n),lx,y,{size:7,font:"mono",color:INK2});
-        doc.setFont("courier","normal");doc.setFontSize(7);
-        lx += doc.getTextWidth(String(g.n)) + 8;
+      drawStack(M,y+3,colW,46,hist.points,total);
+      let lx=M, ly=y+53;
+      for(const g of [{c:OK,l:"Op"},{c:WARN,l:"Deg"},{c:CRIT,l:"Crit"},{c:NONE,l:"N/S"}]){
+        fill(g.c,1); doc.rect(lx,ly-2.2,2.2,2.2,"F"); A(1);
+        txt(g.l,lx+3.2,ly,{size:6,color:INK3});
+        doc.setFont("helvetica","normal");doc.setFontSize(6);
+        lx+=3.2+doc.getTextWidth(g.l)+5;
       }
-      y+=9;
     } else {
-      rect(M,y,CW,22,WHITE); line(M,y,PW-M,y); line(M,y+22,PW-M,y+22);
-      txt("No status changes recorded inside this window.",M+6,y+13,{size:8.5,color:INK4});
-      y+=30;
+      rect(M,y+3,colW,46,WHITE);
+      doc.setDrawColor(...LINE);doc.setLineWidth(0.25);doc.rect(M,y+3,colW,46,"S");
+      for(const l of wrap("No status changes recorded inside this window.",colW-10,7.5,"sans"))
+        { txt(l,M+5,y+26,{size:7.5,color:INK4}); }
     }
 
-    // versus previous period — pinned to the foot of the page
-    y = PH - 62;
-    eyebrow(`Versus the previous ${days} day${days>1?"s":""}`,M,y); y+=6;
-    const comps=[
-      { l:"Capacity",   now:`${Math.round(cmp.currentHealth*100)}%`, was:`${Math.round(cmp.previousHealth*100)}%`,
-        d:cmp.deltaPts, inv:false },
-      { l:"Recoveries", now:String(cmp.currentChanges.recovered), was:String(cmp.previousChanges.recovered),
-        d:cmp.currentChanges.recovered-cmp.previousChanges.recovered, inv:false },
-      { l:"Regressions",now:String(cmp.currentChanges.degraded),  was:String(cmp.previousChanges.degraded),
-        d:cmp.currentChanges.degraded-cmp.previousChanges.degraded, inv:true },
-    ];
-    const cwid=(CW-8)/3;
-    comps.forEach((c,i)=>{
-      const x=M+i*(cwid+4);
-      rect(x,y,cwid,20,WHITE);
-      doc.setDrawColor(...LINE);doc.setLineWidth(0.25);doc.rect(x,y,cwid,20,"S");
-      eyebrow(c.l,x+5,y+6,INK3,6);
-      txt(c.now,x+5,y+14,{size:13,font:"mono",color:INK});
-      doc.setFont("courier","normal");doc.setFontSize(13);
-      delta(c.d,x+7+doc.getTextWidth(c.now),y+14,7,c.inv);
-      txt(`was ${c.was}`,x+cwid-5,y+14,{size:6.5,color:INK4,align:"right"});
-    });
-    footer();
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PAGE 2 — PERFORMANCE
-  // ═══════════════════════════════════════════════════════════════════════════
-  if(o.sections.performance){
-    let y=newPage("Performance");
-    eyebrow("Performance",M,y); y+=7;
-
-    txt("Division comparison",M,y,{size:13,font:"serif",color:INK}); y+=4;
-    txt("Ranked weakest first. Delta compares the end of the window against its start.",M,y+2.5,{size:7.5,color:INK3});
-    y+=10;
-
-    // ranked bars on one shared 0-100 scale: lengths from a common baseline
-    // are far easier to compare than segments at differing offsets
-    rect(M,y-3,CW,divs.length*13+11,WHITE);
-    doc.setDrawColor(...LINE);doc.setLineWidth(0.25);doc.rect(M,y-3,CW,divs.length*13+11,"S");
-    drawRankedBars(M+5,y+2,CW-10,divs.map(dv=>({
+    eyebrow("Division ranking",cx2,y);
+    rect(cx2,y+3,colW,46,WHITE);
+    doc.setDrawColor(...LINE);doc.setLineWidth(0.25);doc.rect(cx2,y+3,colW,46,"S");
+    drawRankedBars(cx2+4,y+8,colW-8,divs.map(dv=>({
       label: dv.cat,
       value: dv.health*100,
-      sub: `${dv.green}/${dv.total} operational`,
+      sub: `${dv.green}/${dv.total}`,
       c: dv.health>=0.8?OK:dv.health>=0.5?WARN:CRIT,
       delta: hasHist ? dv.delta : null,
-    })));
-    y+=divs.length*13+16;
+    })),9.4);
+    y=colTop+58;
 
-    // per-division trend, small multiples
-    if(hasHist){
-      eyebrow("Trend by division",M,y); y+=4;
-      const tw=(CW-9)/4;
-      divs.slice(0,4).forEach((dv,i)=>{
-        const x=M+i*(tw+3);
-        const c:RGB = dv.health>=0.8?OK:dv.health>=0.5?WARN:CRIT;
-        const ser=divSer.find(z=>z.cat===dv.cat);
-        txt(dv.cat,x,y+3.5,{size:7,color:INK3});
-        if(ser&&ser.series.length>1) drawSpark(x,y+5,tw,9,ser.series,c);
-      });
-      y+=20;
-    }
+    // ── versus previous period ──────────────────────────────────────────────
+    eyebrow(`Versus the previous ${days} day${days>1?"s":""}`,M,y); y+=5;
+    const comps=[
+      { l:"Capacity",    now:`${Math.round(cmp.currentHealth*100)}%`, was:`${Math.round(cmp.previousHealth*100)}%`,
+        d:cmp.deltaPts, inv:false },
+      { l:"Recoveries",  now:String(cmp.currentChanges.recovered), was:String(cmp.previousChanges.recovered),
+        d:cmp.currentChanges.recovered-cmp.previousChanges.recovered, inv:false },
+      { l:"Regressions", now:String(cmp.currentChanges.degraded),  was:String(cmp.previousChanges.degraded),
+        d:cmp.currentChanges.degraded-cmp.previousChanges.degraded, inv:true },
+      { l:"Sites needing attention", now:String(attn.length), was:"—", d:null, inv:true },
+    ];
+    const cwid=(CW-9)/4;
+    comps.forEach((c,i)=>{
+      const x=M+i*(cwid+3);
+      rect(x,y,cwid,17,WHITE);
+      doc.setDrawColor(...LINE);doc.setLineWidth(0.25);doc.rect(x,y,cwid,17,"S");
+      eyebrow(c.l,x+4,y+5,INK3,5.2);
+      txt(c.now,x+4,y+13,{size:12,font:"mono",color:INK});
+      doc.setFont("courier","normal");doc.setFontSize(12);
+      if(c.d!==null) delta(c.d,x+6+doc.getTextWidth(c.now),y+13,6.4,c.inv);
+      if(c.was!=="—") txt(`was ${c.was}`,x+cwid-4,y+13,{size:5.8,color:INK4,align:"right"});
+    });
+    y+=25;
 
-    txt("Service reliability and recovery",M,y,{size:13,font:"serif",color:INK}); y+=4;
-    txt(`Availability across ${total} sites. Recovery time is measured from each fault to its fix, for outages resolved inside the window.`,
-        M,y+2.5,{size:7.5,color:INK3});
-    y+=10;
+    // ── system generated notice ─────────────────────────────────────────────
+    const ny=PH-30;
+    rect(M,ny,CW,13,SOFT);
+    rect(M,ny,1.1,13,INK3);
+    txt("THIS REPORT IS SYSTEM GENERATED",M+5,ny+5.5,{size:6.6,weight:"bold",color:INK2});
+    txt(`Produced automatically from the IT Operations activity log on ${genDate} at ${genTime}. No manual figures.`,
+        M+5,ny+10,{size:6.2,color:INK3});
+    footer();
+  }
 
-    const sw=(CW-12)/3;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PAGE 2 — ANALYSIS (service reliability, volume, exceptions)
+  // ═══════════════════════════════════════════════════════════════════════════
+  if(o.sections.analysis){
+    let y=newPage("Analysis");
+
+    // ── service reliability: gauge + MTTR per service ───────────────────────
+    eyebrow("Service reliability and recovery",M,y); y+=5;
+    const sw=(CW-10)/3;
     svcs.forEach((s,i)=>{
-      const x=M+i*(sw+6);
+      const x=M+i*(sw+5);
       const c:RGB = s.availability>=0.8?OK:s.availability>=0.5?WARN:CRIT;
       const m = mttr.find(z=>z.service===s.service);
-      rect(x,y,sw,48,WHITE);
-      doc.setDrawColor(...LINE);doc.setLineWidth(0.25);doc.rect(x,y,sw,48,"S");
-      txt(SERVICE_LABEL[s.service],x+5,y+7,{size:9,weight:"bold",color:INK});
-      if(s.delta!==null&&hasHist) delta(s.delta,x+sw-13,y+7,7);
-      // half-ring gauge gives the tile a visual anchor at a glance
-      drawHalfGauge(x+sw/2,y+24,13,9.2,s.availability,c);
-      txt(`${Math.round(s.availability*100)}%`,x+sw/2,y+23,{size:13,font:"mono",color:c,align:"center"});
-      txt(`${s.ok}/${s.total} sites`,x+sw/2,y+28.5,{size:6.2,color:INK4,align:"center"});
-      line(x+5,y+32,x+sw-5,y+32,SOFT);
-      eyebrow("Mean recovery",x+5,y+36.5,INK3,5.8);
-      txt(durLabel(m?.meanMs ?? null),x+5,y+43,{size:10,font:"mono",color:INK});
-      txt(m?.count ? `${m.count} outage${m.count>1?"s":""}` : "none resolved",
-          x+sw-5,y+43,{size:6.5,color:INK4,align:"right"});
+      rect(x,y,sw,40,WHITE);
+      doc.setDrawColor(...LINE);doc.setLineWidth(0.25);doc.rect(x,y,sw,40,"S");
+      txt(SERVICE_LABEL[s.service],x+4,y+6,{size:8.5,weight:"bold",color:INK});
+      if(s.delta!==null&&hasHist) delta(s.delta,x+sw-12,y+6,6.4);
+      drawHalfGauge(x+22,y+22,12,8.4,s.availability,c);
+      txt(`${Math.round(s.availability*100)}%`,x+22,y+21,{size:11,font:"mono",color:c,align:"center"});
+      txt(`${s.ok}/${s.total}`,x+22,y+25.5,{size:5.6,color:INK4,align:"center"});
+      // right half: breakdown + recovery
+      const rx=x+40;
+      txt("MEAN RECOVERY",rx,y+13,{size:4.8,weight:"bold",color:INK4});
+      txt(durLabel(m?.meanMs ?? null),rx,y+20,{size:11,font:"mono",color:INK});
+      txt(m?.count ? `${m.count} resolved` : "none resolved",rx,y+24.5,{size:5.6,color:INK4});
+      meter(x+4,y+31,sw-8,2.2,[{v:s.ok,c:OK},{v:s.degraded,c:WARN},{v:s.down,c:CRIT}]);
+      txt(`${s.degraded} degraded · ${s.down} down`,x+4,y+37,{size:5.8,color:INK3});
     });
-    y+=56;
+    y+=48;
 
-    txt("Fault and recovery volume",M,y,{size:13,font:"serif",color:INK}); y+=4;
-    txt("Recoveries above the line, regressions below. A period fixing faster than it breaks sits mostly above.",
-        M,y+2.5,{size:7.5,color:INK3});
-    y+=9;
+    // ── two-column: churn volume | instability ──────────────────────────────
+    const colW=(CW-8)/2, cx2=M+colW+8, colTop=y;
+    eyebrow("Fault and recovery volume",M,y);
     if(churn.some(c=>c.recovered||c.regressed)){
-      drawChurn(M,y,CW,40,churn);
-      y+=46;
-      fill(OK,1); doc.rect(M,y-2.4,2.4,2.4,"F"); A(1);
-      txt(`Recovered ${change.recovered}`,M+3.6,y,{size:7,color:INK3});
-      fill(CRIT,1); doc.rect(M+40,y-2.4,2.4,2.4,"F"); A(1);
-      txt(`Regressed ${change.degraded}`,M+43.6,y,{size:7,color:INK3});
-      y+=8;
+      drawChurn(M,y+3,colW,40,churn);
+      fill(OK,1); doc.rect(M,y+48,2.2,2.2,"F"); A(1);
+      txt(`Recovered ${change.recovered}`,M+3.4,y+50.2,{size:6,color:INK3});
+      fill(CRIT,1); doc.rect(M+34,y+48,2.2,2.2,"F"); A(1);
+      txt(`Regressed ${change.degraded}`,M+37.4,y+50.2,{size:6,color:INK3});
     } else {
-      rect(M,y,CW,18,WHITE);
-      doc.setDrawColor(...LINE);doc.setLineWidth(0.25);doc.rect(M,y,CW,18,"S");
-      txt("No status changes recorded inside this window.",M+6,y+11,{size:8,color:INK4});
-      y+=24;
+      rect(M,y+3,colW,40,WHITE);
+      doc.setDrawColor(...LINE);doc.setLineWidth(0.25);doc.rect(M,y+3,colW,40,"S");
+      txt("No status changes inside this window.",M+5,y+24,{size:7,color:INK4});
     }
 
-    if(flappy.length && y < PH-44){
-      txt("Instability",M,y,{size:13,font:"serif",color:INK}); y+=4;
-      txt("Sites that changed state most often. Repeated flapping usually indicates an unresolved root cause.",
-          M,y+2.5,{size:7.5,color:INK3}); y+=9;
-      flappy.slice(0,3).forEach((f,i)=>{
-        const ry=y+i*8;
-        txt(clip(f.facility,120,8.5),M+1,ry,{size:8.5,color:INK});
-        txt(`${f.flips} changes`,PW-M-1,ry,{size:8,font:"mono",color:WARN,align:"right"});
-        line(M,ry+2.5,PW-M,ry+2.5,SOFT);
+    eyebrow("Instability · most frequent changes",cx2,y);
+    rect(cx2,y+3,colW,40,WHITE);
+    doc.setDrawColor(...LINE);doc.setLineWidth(0.25);doc.rect(cx2,y+3,colW,40,"S");
+    if(flappy.length){
+      const maxF=Math.max(...flappy.map(f=>f.flips),1);
+      flappy.slice(0,5).forEach((f,i)=>{
+        const ry=y+9+i*7;
+        txt(clip(f.facility,40,7),cx2+4,ry,{size:7,color:INK});
+        const bw=(colW-58)*(f.flips/maxF);
+        rect(cx2+46,ry-2.6,Math.max(bw,0.6),3,WARN);
+        txt(String(f.flips),cx2+colW-4,ry,{size:7,font:"mono",color:WARN,align:"right"});
       });
+    } else {
+      txt("No repeated state changes in this window.",cx2+5,y+24,{size:7,color:INK4});
     }
-    footer();
-  }
+    y=colTop+52;
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PAGE 3 — EXCEPTIONS
-  // ═══════════════════════════════════════════════════════════════════════════
-  if(o.sections.exceptions){
-    let y=newPage("Exceptions");
-    eyebrow("Exceptions",M,y); y+=7;
-    txt("What needs attention",M,y,{size:13,font:"serif",color:INK}); y+=4;
-    txt("Ranked by severity, then how long the fault has persisted, then instability.",M,y+2.5,{size:7.5,color:INK3});
-    y+=10;
-
+    // ── exceptions ──────────────────────────────────────────────────────────
+    eyebrow("Exceptions · ranked by severity, duration and instability",M,y); y+=5;
     if(!attn.length){
-      rect(M,y,CW,22,OKBG);
-      txt("No exceptions. Every monitored facility reported all services operational at the end of the window.",
-          M+6,y+13,{size:8.5,color:OK});
-      y+=30;
+      rect(M,y,CW,15,OKBG);
+      txt("No exceptions. Every facility reported all services operational at the end of the window.",
+          M+5,y+9,{size:8,color:OK});
+      y+=23;
     } else {
-      const c0=M+1, c1=M+66, c2=M+104, c3=M+128, c4=M+148;
-      eyebrow("Facility",c0,y,INK3,6); eyebrow("Fault",c1,y,INK3,6);
-      eyebrow("Since",c2,y,INK3,6);   eyebrow("Flips",c3,y,INK3,6);
-      eyebrow("Status",c4,y,INK3,6);
-      y+=2.5; line(M,y,PW-M,y,INK3,0.4); y+=5;
-
-      attn.slice(0,14).forEach((it,i)=>{
-        if(i%2===1) rect(M,y-3.6,CW,8.4,WHITE);
-        txt(clip(it.facility,62,8),c0,y,{size:8,color:INK});
-        txt(it.cat,c0,y+3.3,{size:6.2,color:INK4});
-        fill(statusRGB[it.status],1); doc.circle(c1+1,y-1,1,"F"); A(1);
-        txt(clip(it.reason,32,7.4),c1+3.4,y,{size:7.4,color:INK2});
-        txt(it.since?fmtDuration(Date.now()-it.since):"—",c2,y,{size:7.4,font:"mono",color:INK2});
-        txt(it.flips?String(it.flips):"—",c3,y,{size:7.4,font:"mono",color:it.flips>=3?WARN:INK3});
-        rrect(c4,y-3,20,4.6,1,statusBGRGB[it.status]);
-        txt(statusText[it.status],c4+10,y+0.2,{size:5.8,color:statusRGB[it.status],align:"center",weight:"bold"});
-        y+=8.4;
+      const c0=M+1, c1=M+62, c2=M+100, c3=M+124, c4=M+144;
+      eyebrow("Facility",c0,y,INK3,5.4); eyebrow("Fault",c1,y,INK3,5.4);
+      eyebrow("Since",c2,y,INK3,5.4);    eyebrow("Flips",c3,y,INK3,5.4);
+      eyebrow("Status",c4,y,INK3,5.4);
+      y+=2; line(M,y,PW-M,y,INK3,0.4); y+=4.5;
+      const rows=attn.slice(0,10);
+      rows.forEach((it,i)=>{
+        if(i%2===1) rect(M,y-3.2,CW,7.4,WHITE);
+        txt(clip(it.facility,58,7.4),c0,y,{size:7.4,color:INK});
+        txt(it.cat,c0,y+2.9,{size:5.6,color:INK4});
+        fill(statusRGB[it.status],1); doc.circle(c1+0.9,y-1,0.9,"F"); A(1);
+        txt(clip(it.reason,32,6.8),c1+3,y,{size:6.8,color:INK2});
+        txt(it.since?fmtDuration(Date.now()-it.since):"—",c2,y,{size:6.8,font:"mono",color:INK2});
+        txt(it.flips?String(it.flips):"—",c3,y,{size:6.8,font:"mono",color:it.flips>=3?WARN:INK3});
+        rrect(c4,y-2.7,18,4.2,1,statusBGRGB[it.status]);
+        txt(statusText[it.status],c4+9,y+0.2,{size:5.4,color:statusRGB[it.status],align:"center",weight:"bold"});
+        y+=7.4;
       });
-      line(M,y-3,PW-M,y-3);
-      if(attn.length>14){ y+=2; txt(`+ ${attn.length-14} further exceptions.`,M,y,{size:7,color:INK4}); }
-      y+=9;
+      line(M,y-2.8,PW-M,y-2.8);
+      if(attn.length>rows.length){ y+=1.5; txt(`+ ${attn.length-rows.length} further exceptions.`,M,y,{size:6.4,color:INK4}); }
+      y+=7;
     }
 
-    if(worst.length && y < PH-68){
-      txt("Least reliable sites across the window",M,y,{size:13,font:"serif",color:INK}); y+=4;
-      txt(`Share of the ${days}-day window each site spent below fully operational.`,M,y+2.5,{size:7.5,color:INK3});
-      y+=9;
-      const shown=worst.slice(0,6);
-      shown.forEach((w,i)=>{
-        const ry=y+i*8.4;
-        txt(clip(w.facility,74,8),M+1,ry,{size:8,color:INK});
-        meter(M+80,ry-2.2,66,2.4,[{v:w.critShare,c:CRIT},{v:w.badShare-w.critShare,c:WARN},
-                                  {v:Math.max(1-w.badShare,0),c:SOFT}]);
-        txt(`${Math.round(w.badShare*100)}%`,PW-M-1,ry,
-            {size:8,font:"mono",color:w.critShare>0?CRIT:WARN,align:"right"});
-        line(M,ry+2.6,PW-M,ry+2.6,SOFT);
+    // ── two-column: least reliable | capacity risk ──────────────────────────
+    const bTop=y;
+    eyebrow("Least reliable sites",M,y);
+    if(worst.length){
+      worst.slice(0,5).forEach((w,i)=>{
+        const ry=y+7+i*7.4;
+        txt(clip(w.facility,44,7),M+1,ry,{size:7,color:INK});
+        meter(M+50,ry-2.4,colW-72,2.4,[{v:w.critShare,c:CRIT},{v:w.badShare-w.critShare,c:WARN},
+                                       {v:Math.max(1-w.badShare,0),c:SOFT}]);
+        txt(`${Math.round(w.badShare*100)}%`,M+colW-4,ry,
+            {size:7,font:"mono",color:w.critShare>0?CRIT:WARN,align:"right"});
       });
-      y+=shown.length*8.4+8;
-    }
+    } else txt("Every site fully operational across the window.",M+1,y+9,{size:7,color:INK4});
 
-    if(bwDef.length && y < PH-48){
-      txt("Capacity risk",M,y,{size:13,font:"serif",color:INK}); y+=4;
-      txt("Sites currently operating below their stated bandwidth requirement.",M,y+2.5,{size:7.5,color:INK3});
-      y+=9;
+    eyebrow("Capacity risk · below stated requirement",cx2,y);
+    if(bwDef.length){
       bwDef.slice(0,5).forEach((b,i)=>{
-        const ry=y+i*8.4;
-        txt(clip(b.facility,64,8),M+1,ry,{size:8,color:INK});
-        txt(`${b.current} / ${b.required} Mbps`,M+70,ry,{size:7,font:"mono",color:INK3});
-        meter(M+108,ry-2.2,38,2.4,[{v:b.ratio,c:b.ratio<0.6?CRIT:WARN},{v:Math.max(1-b.ratio,0),c:SOFT}]);
-        txt(`${Math.round(b.ratio*100)}%`,PW-M-1,ry,
-            {size:8,font:"mono",color:b.ratio<0.6?CRIT:WARN,align:"right"});
-        line(M,ry+2.6,PW-M,ry+2.6,SOFT);
+        const ry=y+7+i*7.4;
+        txt(clip(b.facility,40,7),cx2+1,ry,{size:7,color:INK});
+        txt(`${b.current}/${b.required}`,cx2+46,ry,{size:6,font:"mono",color:INK3});
+        meter(cx2+66,ry-2.4,colW-92,2.4,[{v:b.ratio,c:b.ratio<0.6?CRIT:WARN},{v:Math.max(1-b.ratio,0),c:SOFT}]);
+        txt(`${Math.round(b.ratio*100)}%`,cx2+colW-4,ry,
+            {size:7,font:"mono",color:b.ratio<0.6?CRIT:WARN,align:"right"});
       });
-    }
+    } else txt("No site is below its stated bandwidth requirement.",cx2+1,y+9,{size:7,color:INK4});
+    y=bTop+50;
+
     footer();
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // PAGE 4+ — AVAILABILITY GRID & REGISTER
+  // PAGE 3 — AVAILABILITY GRID & REGISTER
   // ═══════════════════════════════════════════════════════════════════════════
   if(o.sections.appendix){
     let y=newPage("Availability");
-    eyebrow("Availability",M,y); y+=7;
-    txt("Day-by-day availability",M,y,{size:13,font:"serif",color:INK}); y+=4;
+    eyebrow("Day-by-day availability",M,y); y+=4;
     txt("One column per day, one row per site. Sites never impaired are summarised beneath the grid.",
-        M,y+2.5,{size:7.5,color:INK3});
-    y+=10;
+        M,y+2,{size:6.8,color:INK3});
+    y+=8;
 
     const matrix = facilityDayMatrix(fac,state,log,R,Math.min(days,21));
     const rank = (n:string) => matrix.days.reduce((s,dd)=>{
@@ -515,23 +421,23 @@ export async function buildReport(
     const problem = matrix.facilities.filter(n=>rank(n)>0).sort((a,b)=>rank(b)-rank(a));
 
     if(problem.length===0 || matrix.days.length===0){
-      rect(M,y,CW,20,OKBG);
-      txt("Every facility remained fully operational for the whole window.",M+6,y+12,{size:8.5,color:OK});
-      y+=28;
+      rect(M,y,CW,16,OKBG);
+      txt("Every facility remained fully operational for the whole window.",M+5,y+10,{size:8,color:OK});
+      y+=24;
     } else {
-      const labelW=54, cols=matrix.days.length;
-      const cell=Math.min(4.6,(CW-labelW)/cols-0.6), gapc=0.6;
-      const every=Math.ceil(cols/7);
+      const labelW=50, cols=matrix.days.length;
+      const cell=Math.min(4.4,(CW-labelW)/cols-0.6), gapc=0.6;
+      const every=Math.ceil(cols/8);
       matrix.days.forEach((dd,i)=>{
         if(i%every) return;
         txt(new Date(dd.t).toLocaleDateString("en-GB",{day:"2-digit"}),
-            M+labelW+i*(cell+gapc)+cell/2,y,{size:5.4,font:"mono",color:INK4,align:"center"});
+            M+labelW+i*(cell+gapc)+cell/2,y,{size:5,font:"mono",color:INK4,align:"center"});
       });
-      y+=2.5;
-      const rows=problem.slice(0,18);
+      y+=2;
+      const rows=problem.slice(0,22);
       rows.forEach((n,ri)=>{
-        const ry=y+ri*(cell+1.1);
-        txt(clip(n,labelW-3,6.4),M,ry+cell-1,{size:6.4,color:INK2});
+        const ry=y+ri*(cell+1);
+        txt(clip(n,labelW-3,6),M,ry+cell-1,{size:6,color:INK2});
         matrix.days.forEach((dd,ci)=>{
           const st=dd.status[n] ?? "na";
           const x=M+labelW+ci*(cell+gapc);
@@ -541,58 +447,55 @@ export async function buildReport(
           } else rect(x,ry,cell,cell,statusRGB[st]);
         });
       });
-      y+=rows.length*(cell+1.1)+3;
+      y+=rows.length*(cell+1)+3;
       const clean=matrix.facilities.length-problem.length;
       if(clean>0) txt(`${clean} further facilit${clean===1?"y":"ies"} remained fully operational throughout.`,
-                      M,y,{size:6.8,color:INK4});
-      y+=6;
+                      M,y,{size:6.4,color:INK4});
+      y+=5;
       let lx=M;
       for(const g of [{c:OKBG,l:"Operational"},{c:WARN,l:"Degraded"},{c:CRIT,l:"Critical"},{c:NONE,l:"Not set"}]){
-        rect(lx,y-2.4,2.4,2.4,g.c);
-        txt(g.l,lx+3.4,y,{size:6.5,color:INK3});
-        doc.setFont("helvetica","normal");doc.setFontSize(6.5);
-        lx+=3.4+doc.getTextWidth(g.l)+7;
+        rect(lx,y-2.2,2.2,2.2,g.c);
+        txt(g.l,lx+3.2,y,{size:6,color:INK3});
+        doc.setFont("helvetica","normal");doc.setFontSize(6);
+        lx+=3.2+doc.getTextWidth(g.l)+6;
       }
-      y+=10;
+      y+=8;
     }
 
-    if(y > PH-60){ footer(); y=newPage("Register"); y+=2; }
-    txt("Facility register",M,y,{size:13,font:"serif",color:INK}); y+=4;
-    txt(`Current service state for all ${fac.length} facilities in scope.`,M,y+2.5,{size:7.5,color:INK3});
-    y+=10;
-
-    const c0=M+1, c1=M+72, c2=M+106, c3=M+132, c4=M+158;
-    const header=()=>{
-      eyebrow("Facility",c0,y,INK3,6); eyebrow("Division",c1,y,INK3,6);
-      eyebrow("Internet",c2,y,INK3,6); eyebrow("Biometric",c3,y,INK3,6); eyebrow("Printing",c4,y,INK3,6);
-      y+=2.5; line(M,y,PW-M,y,INK3,0.4); y+=5;
-    };
-    header();
+    // register, two columns to halve its height
+    eyebrow("Facility register",M,y); y+=4;
+    txt(`Current service state for all ${fac.length} facilities in scope.`,M,y+2,{size:6.8,color:INK3});
+    y+=7;
 
     const ordered=[...fac].sort((a,b)=>{
       const r={red:0,amber:1,na:2,green:3} as Record<RAG,number>;
       const sa=state[a.name], sb=state[b.name];
       return (sa?r[overallOf(sa)]:4)-(sb?r[overallOf(sb)]:4) || a.name.localeCompare(b.name);
     });
-
+    const half=Math.ceil(ordered.length/2), regW=(CW-8)/2;
+    const regHeader=(x:number,yy:number)=>{
+      eyebrow("Facility",x+1,yy,INK3,5.2);
+      eyebrow("Int",x+regW-30,yy,INK3,5.2);
+      eyebrow("Bio",x+regW-20,yy,INK3,5.2);
+      eyebrow("Prn",x+regW-10,yy,INK3,5.2);
+      line(x,yy+1.6,x+regW,yy+1.6,INK3,0.35);
+    };
+    regHeader(M,y); regHeader(M+regW+8,y);
+    const rowY=y+5.5;
     ordered.forEach((f,i)=>{
-      if(y>PH-24){ footer(); y=newPage("Register (continued)"); y+=2; header(); }
+      const col=i<half?0:1, idx=i<half?i:i-half;
+      const x=M+col*(regW+8), ry=rowY+idx*6.2;
+      if(ry>PH-20) return;
       const s=state[f.name]; if(!s) return;
-      if(i%2===1) rect(M,y-3.4,CW,7.4,WHITE);
-      txt(clip(f.name,68,8),c0,y,{size:8,color:INK});
-      txt(f.cat,c1,y,{size:7.2,color:INK3});
+      if(idx%2===1) rect(x,ry-3,regW,6.2,WHITE);
+      txt(clip(f.name,regW-36,6.6),x+1,ry,{size:6.6,color:INK});
       SERVICES.forEach((sv,k)=>{
-        const cx=[c2,c3,c4][k], st=s[sv];
-        fill(statusRGB[st],1); doc.circle(cx+1.2,y-1,1,"F"); A(1);
-        txt(st==="green"?"OK":st==="na"?"—":statusText[st],cx+3.8,y,
-            {size:7,color:st==="green"?INK3:statusRGB[st],weight:st==="green"?"normal":"bold"});
+        const cxp=x+regW-30+k*10, st=s[sv];
+        fill(statusRGB[st],1); doc.circle(cxp+1.4,ry-1.1,1.15,"F"); A(1);
       });
-      y+=7.4;
     });
-    line(M,y-3,PW-M,y-3);
     footer();
   }
-
   // provenance
   txt(`System generated ${genDate} at ${genTime} · window ${fmtRange(R)} · ${log.length} logged events${hasHist?"":" · no recorded history in window"}`,
       M,PH-20,{size:6.4,color:INK4});
