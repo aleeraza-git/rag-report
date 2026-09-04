@@ -70,10 +70,10 @@ const D = {
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
 type RGB = [number, number, number];
-const gC: RGB=[14,160,110],  gL: RGB=[210,246,232], gD: RGB=[6,88,58];
-const aC: RGB=[214,142,0],   aL: RGB=[255,238,170], aD: RGB=[100,64,0];
-const rC: RGB=[208,36,50],   rL: RGB=[255,210,216], rD: RGB=[128,10,20];
-const nC: RGB=[148,162,190], nL: RGB=[232,236,248], nD: RGB=[80,96,130];
+const gC: RGB=[34,197,94],   gL: RGB=[210,246,232], gD: RGB=[6,88,58];
+const aC: RGB=[245,158,11],  aL: RGB=[255,238,170], aD: RGB=[100,64,0];
+const rC: RGB=[239,68,68],   rL: RGB=[255,210,216], rD: RGB=[128,10,20];
+const nC: RGB=[148,163,184], nL: RGB=[232,236,248], nD: RGB=[80,96,130];
 const ragFill  = (s: RAGStatus): RGB => ({green:gL,amber:aL,red:rL,na:nL})[s];
 const ragText  = (s: RAGStatus): RGB => ({green:gD,amber:aD,red:rD,na:nD})[s];
 const ragAccent= (s: RAGStatus): RGB => ({green:gC,amber:aC,red:rC,na:nC})[s];
@@ -591,38 +591,40 @@ async function generatePDF(
     (doc as any).lines(lines,pts[0][0],pts[0][1],[1,1],"F",true);
   };
 
-  // Panel: dark title bar + white content area
-  const panel = (x:number,y:number,w:number,h:number,title:string,accent:RGB=GOLD) => {
+  // Panel: white card with bold black title (matches preview)
+  const panel = (x:number,y:number,w:number,h:number,title:string,_accent:RGB=GOLD) => {
     frr(x,y,w,h,2,WHITE);
     doc.setDrawColor(...BDR); doc.setLineWidth(0.2); doc.roundedRect(x,y,w,h,2,2,"S");
-    fr(x,y,w,6.5,NAVY);
-    frr(x,y,2.5,6.5,0,accent);
-    txt(title,x+5,y+4.5,4,GOLD,"bold");
+    txt(title,x+4,y+5.5,5,INK,"bold");
   };
 
   const TOTPG = 1;
-  const drawShell = (pg:number, subtitle="") => {
-    fr(0,0,PW,PH,BGLT);
-    fr(0,0,PW,HDR,NAVY);
-    fr(0,0,PW,1.8,GOLD);
-    if(cfg.includeLogo&&logoData) doc.addImage(logoData,"PNG",PAD,4,32,11);
-    else txt("IMARAT",PAD,13,12,WHITE,"bold");
-    doc.setDrawColor(...GOLD); doc.setLineWidth(0.4);
-    doc.line(PAD+38,3,PAD+38,20);
-    txt(cfg.title,PAD+42,10,9,WHITE,"bold");
-    txt(subtitle||cfg.subtitle,PAD+42,16,4.5,GOLD,"bold");
-    txt(`${cfg.org}  ·  ${cfg.period||dateStr}`,PAD+42,20.5,3.5,MUTED);
-    txt(dateStr,PW-PAD,10,9,GOLD,"bold","right");
-    txt(timeStr,PW-PAD,16,4.5,MUTED,"normal","right");
-    if(cfg.includeRef) txt(`Ref: ${refNo}`,PW-PAD,21,3.2,[60,90,135] as RGB,"normal","right");
-    fr(0,FTR_Y,PW,PH-FTR_Y,NAVY);
-    fr(0,FTR_Y,PW,0.5,GOLD);
-    const fy=FTR_Y+4;
-    txt(cfg.org,PAD,fy,4.5,GOLD,"bold");
-    txt("IT Department  ·  it.support@imarat.com.pk",PAD,fy+3.5,3.2,MUTED);
-    if(cfg.includeTs){txt("SYSTEM GENERATED",PW/2,fy,4.5,WHITE,"bold","center"); txt(`Ref: ${refNo}`,PW/2,fy+3.5,3.2,MUTED,"normal","center");}
-    txt(`Page ${pg} of ${TOTPG}`,PW-PAD,fy,4.5,GOLD,"bold","right");
-    txt(`${sorted.length} facilities`,PW-PAD,fy+3.5,3.2,MUTED,"normal","right");
+  const drawShell = (pg:number, _subtitle="") => {
+    // Light-gray page background
+    fr(0,0,PW,PH,[243,244,246] as RGB);
+    // White header
+    fr(0,0,PW,HDR,WHITE);
+    doc.setDrawColor(...BDR); doc.setLineWidth(0.25); doc.line(0,HDR,PW,HDR);
+    // Gold left accent bar
+    fr(PAD,4,2.5,15,GOLD);
+    // IMARAT wordmark
+    txt("IMARAT",PAD+6,12,11,INK,"bold");
+    txt("Group of Companies · IT Dept",PAD+6,18,3.2,MUTED);
+    // Vertical divider
+    doc.setDrawColor(...BDR); doc.setLineWidth(0.25); doc.line(PAD+52,4,PAD+52,HDR-3);
+    // Report title + org
+    txt(cfg.title,PAD+56,11,8,INK,"bold");
+    txt(`${cfg.org}  ·  ${cfg.period||dateStr}`,PAD+56,17,3.5,MUTED);
+    // Date/time right
+    txt(dateStr,PW-PAD,11,7,INK,"bold","right");
+    txt(timeStr,PW-PAD,17,3.5,MUTED,"normal","right");
+    // White footer
+    fr(0,FTR_Y,PW,PH-FTR_Y,WHITE);
+    doc.setDrawColor(...BDR); doc.setLineWidth(0.25); doc.line(0,FTR_Y,PW,FTR_Y);
+    const fy=FTR_Y+3.5;
+    txt(`${cfg.org}  ·  IT Department  ·  it.support@imarat.com.pk`,PAD,fy+2,3.2,MUTED);
+    if(cfg.includeTs) txt("System Generated · Confidential",PW/2,fy+2,3.2,MUTED,"normal","center");
+    txt(`imarat.com.pk  ·  ${dateStr}`,PW-PAD,fy+2,3.2,MUTED,"normal","right");
   };
 
   const insight = (() => {
