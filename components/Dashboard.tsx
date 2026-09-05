@@ -74,6 +74,9 @@ const nowTime = () => new Date().toLocaleTimeString("en-US",{hour:"numeric",minu
 const nowFull = () => new Date().toLocaleString("en-GB",{day:"2-digit",month:"short",year:"numeric",hour:"numeric",minute:"2-digit",second:"2-digit",hour12:true});
 const uid = () => Math.random().toString(36).substr(2,9).toUpperCase();
 
+const EDITABLE_FIELDS = ["internet","bio","printing","bandwidth",
+                         "requiredBandwidth","issue","notes"] as const;
+
 // How far back the client keeps history. Reports can span a month, and the
 // activity log also carries issue/notes/bandwidth edits, so a small row cap
 // would silently truncate the oldest events in a long window.
@@ -108,7 +111,14 @@ export default function Dashboard() {
   const [saveError, setSaveError] = useState<string|null>(null);
   const [windowDays, setWindow] = useState(14);
 
-  const saveTimer      = useRef<ReturnType<typeof setTimeout>|null>(null);
+  // One timer per facility+field. A single shared timer meant editing notes on
+  // one site and then anything on another within the debounce window cancelled
+  // the first save outright, losing the edit with no error.
+  const saveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // Fields with an unsaved local edit. The 5s poll must not overwrite these or
+  // it wipes text out from under the operator mid-sentence.
+  const pendingEdits = useRef<Map<string, number>>(new Map());
+  const editSeq      = useRef(0);
   const activeDowntime = useRef<Record<string,{field:string;startTs:string;startMs:number}>>({});
 
   const apiFetch = useCallback(async (url:string, opts?:RequestInit) => {
@@ -132,12 +142,26 @@ export default function Dashboard() {
         ]);
         setState(prev=>{
           const next={...prev};
-          (fsRows as any[]).forEach((r:any)=>{ if(init[r.id]!==undefined) next[r.id]={...defaultState(),...r.data}; });
+          (fsRows as any[]).forEach((r:any)=>{
+            if(init[r.id]===undefined) return;
+            const server: FacState = {...defaultState(), ...r.data};
+            const local = prev[r.id];
+            // keep any field the operator is still editing; the server copy is
+            // stale by definition until that edit's save lands
+            if(local){
+              for(const f of EDITABLE_FIELDS){
+                if(pendingEdits.current.has(`${r.id}|${f}`)) (server as any)[f] = (local as any)[f];
+              }
+            }
+            next[r.id]=server;
+          });
           return next;
         });
         // carry the row's ISO timestamp onto the entry — analytics needs a
         // reliable clock, and `data.ts` is a locale string
-        setLog((logRows as any[]).map((r:any)=>({ ...r.data, at:r.updated_at })));
+        // data.at wins: a manually logged (backdated) incident carries its real
+        // event time, while updated_at is only when the row was written
+        setLog((logRows as any[]).map((r:any)=>({ ...r.data, at:r.data?.at ?? r.updated_at })));
         setDowntime((dtRows as any[]).map((r:any)=>r.data));
         setLastSync(nowTime());
       } catch {}
@@ -221,15 +245,106 @@ export default function Dashboard() {
     setLastSync(nowTime());
   },[addLog, apiFetch]);
 
+  /**
+   * Record an outage that was never captured live — the service was fixed
+   * before anyone set the status, or the page was not open at the time.
+   *
+   * Written as a matched PAIR of backdated status transitions rather than a
+   * bespoke record, so every existing analytic picks it up for free: the trend
+   * dips and recovers, MTTR pairs it, churn and the heatmap show it, and it
+   * lands in Activity in this period. Current status is untouched, because the
+   * pair opens and closes entirely in the past.
+   */
+  const logDowntime = useCallback(async (o:{
+    facility:string; service:"internet"|"bio"|"printing";
+    severity:"red"|"amber"; minutes:number; endedAt:number; note?:string;
+  }) => {
+    const endAt   = Math.min(o.endedAt, Date.now());
+    const startAt = endAt - Math.max(1, o.minutes) * 60000;
+
+    const write = async (oldVal:string, newVal:string, at:number) => {
+      const id = uid();
+      const entry = {
+        id, facility:o.facility, field:o.service, oldVal, newVal,
+        type:"status" as const,
+        ts:new Date(at).toLocaleString("en-GB",{day:"2-digit",month:"short",year:"numeric",
+                                                hour:"numeric",minute:"2-digit",hour12:true}),
+        at:new Date(at).toISOString(),   // the real event time, not the write time
+        manual:true,
+      };
+      await apiFetch("/api/activity-log",{
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ id, data:entry }),
+      });
+      return entry;
+    };
+
+    try {
+      const a = await write("green", o.severity, startAt);
+      const b = await write(o.severity, "green", endAt);
+      setLog(prev=>[b as any, a as any, ...prev].slice(0,LOG_CAP));
+
+      const rec: DowntimeRecord = {
+        id: uid(), facility:o.facility, field:fieldLabel(o.service),
+        startTs:new Date(startAt).toLocaleString("en-GB"),
+        endTs:new Date(endAt).toLocaleString("en-GB"),
+        durationMin:Math.round((endAt-startAt)/60000),
+        resolvedBy:o.note?.trim() ? o.note.trim() : "Manually recorded",
+      };
+      setDowntime(prev=>[rec,...prev]);
+      await apiFetch("/api/downtime",{
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ id:rec.id, data:rec }),
+      });
+
+      if(o.note?.trim()){
+        const nid = uid();
+        await apiFetch("/api/activity-log",{
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({ id:nid, data:{
+            id:nid, facility:o.facility, field:"notes", oldVal:"", newVal:o.note.trim(),
+            type:"notes", ts:nowFull(), at:new Date(endAt).toISOString(), manual:true,
+          }}),
+        });
+      }
+      setSaveError(null);
+      setLastSync(nowTime());
+      return true;
+    } catch (err) {
+      console.error("Failed to record downtime", err);
+      setSaveError(`Could not record the downtime for ${o.facility} — it is NOT saved.`);
+      return false;
+    }
+  },[apiFetch]);
+
   const updateField = useCallback((name:string, field:keyof FacState, val:string)=>{
+    const key = `${name}|${String(field)}`;
+    const seq = ++editSeq.current;
+    pendingEdits.current.set(key, seq);
+
+    // Clearing the dirty flag is guarded by seq: if the operator typed again
+    // while an earlier save was in flight, that older save resolving must not
+    // unprotect the field, or the next poll overwrites the newer keystrokes.
+    const settle = () => {
+      if (pendingEdits.current.get(key) === seq) pendingEdits.current.delete(key);
+    };
+
     setState(prev=>{
       const oldData = prev[name] || defaultState();
       const updated = { ...oldData, [field]:val, ts:nowTime() };
-      if(saveTimer.current) clearTimeout(saveTimer.current);
+
+      const existing = saveTimers.current.get(key);
+      if (existing) clearTimeout(existing);
+
       if(["internet","bio","printing"].includes(field as string)){
-        saveFacility(name, updated, oldData, field as string);
+        saveTimers.current.delete(key);
+        void saveFacility(name, updated, oldData, field as string).finally(settle);
       } else {
-        saveTimer.current = setTimeout(()=>saveFacility(name, updated, oldData, field as string), 800);
+        // free text debounces so we are not writing on every keystroke
+        saveTimers.current.set(key, setTimeout(()=>{
+          saveTimers.current.delete(key);
+          void saveFacility(name, updated, oldData, field as string).finally(settle);
+        }, 800));
       }
       return { ...prev, [name]:updated };
     });
@@ -403,7 +518,8 @@ export default function Dashboard() {
 
           {section==="operations" && (
             <Operations facilities={FACILITIES} state={state} log={activityLog as unknown as LogEntry[]}
-              loading={!mounted} selected={selected} onSelect={setSelected} onUpdate={updateField} />
+              loading={!mounted} selected={selected} onSelect={setSelected} onUpdate={updateField}
+              onLogDowntime={logDowntime} />
           )}
 
           {section==="reports" && (

@@ -33,9 +33,11 @@ interface Props {
   selected: string | null;
   onSelect: (f:string|null)=>void;
   onUpdate: (facility:string, field:keyof FacState, value:string)=>void;
+  onLogDowntime: (o:{ facility:string; service:Service; severity:"red"|"amber";
+                      minutes:number; endedAt:number; note?:string })=>Promise<boolean>;
 }
 
-export default function Operations({ facilities, state, log, loading, selected, onSelect, onUpdate }: Props) {
+export default function Operations({ facilities, state, log, loading, selected, onSelect, onUpdate, onLogDowntime }: Props) {
   const [filter, setFilter] = useState<"all"|RAG>("all");
   const [div, setDiv]       = useState<string>("all");
   const [sort, setSort]     = useState<Sort>("severity");
@@ -284,6 +286,10 @@ export default function Operations({ facilities, state, log, loading, selected, 
               </label>
             </div>
 
+            <div style={{ padding:"0 18px 16px" }}>
+              <DowntimeForm facility={selected} onLog={onLogDowntime} />
+            </div>
+
             <footer style={{ padding:"12px 18px", borderTop:`1px solid ${T.line}`, background:T.paper }}>
               <Eyebrow style={{ marginBottom:6 }}>Recent activity</Eyebrow>
               {(()=>{
@@ -310,3 +316,144 @@ export default function Operations({ facilities, state, log, loading, selected, 
     </div>
   );
 }
+
+/**
+ * Record an outage that was never captured live.
+ *
+ * The case this exists for: a service dropped for ~15 minutes and was working
+ * again before anyone touched the dashboard, so the automatic capture never saw
+ * a transition. Logging it here backdates a matched pair of status changes, so
+ * the incident lands in every report for the window it actually happened in —
+ * trend, mean recovery time, churn, the availability grid and period activity.
+ */
+function DowntimeForm({ facility, onLog }:{
+  facility:string;
+  onLog:(o:{ facility:string; service:Service; severity:"red"|"amber";
+             minutes:number; endedAt:number; note?:string })=>Promise<boolean>;
+}) {
+  const [open, setOpen]       = useState(false);
+  const [service, setService] = useState<Service>("internet");
+  const [sev, setSev]         = useState<"red"|"amber">("red");
+  const [minutes, setMinutes] = useState("15");
+  const [ended, setEnded]     = useState<"now"|"custom">("now");
+  const [endedAt, setEndedAt] = useState(()=>toLocalInput(Date.now()));
+  const [note, setNote]       = useState("");
+  const [busy, setBusy]       = useState(false);
+  const [ok, setOk]           = useState(false);
+
+  const mins  = Math.max(0, Math.round(Number(minutes) || 0));
+  const endMs = ended === "now" ? Date.now() : new Date(endedAt).getTime();
+  const valid = mins >= 1 && Number.isFinite(endMs) && endMs <= Date.now() + 6e4;
+  const startMs = endMs - mins * 60000;
+
+  const submit = async () => {
+    if (!valid || busy) return;
+    setBusy(true);
+    const done = await onLog({ facility, service, severity:sev, minutes:mins,
+                               endedAt:endMs, note: note.trim() || undefined });
+    setBusy(false);
+    if (done) {
+      setOk(true);
+      setNote(""); setMinutes("15"); setEnded("now");
+      setTimeout(()=>{ setOk(false); setOpen(false); }, 1600);
+    }
+  };
+
+  const input: React.CSSProperties = {
+    width:"100%", padding:"6px 8px", borderRadius:4, border:`1px solid ${T.line}`,
+    background:T.surface, color:T.ink, fontFamily:T.sans, fontSize:11.5, outline:"none",
+  };
+
+  if (!open) return (
+    <button onClick={()=>setOpen(true)}
+      style={{ width:"100%", padding:"9px 10px", borderRadius:5, cursor:"pointer",
+               border:`1px dashed ${T.line}`, background:"transparent", color:T.ink2,
+               fontFamily:T.sans, fontSize:11.5, fontWeight:500 }}>
+      + Record an unlogged outage
+    </button>
+  );
+
+  return (
+    <div style={{ border:`1px solid ${T.line}`, borderRadius:5, padding:"12px 13px", background:T.paper }}>
+      <div style={{ display:"flex", alignItems:"baseline", marginBottom:10 }}>
+        <Eyebrow>Record downtime</Eyebrow>
+        <button onClick={()=>setOpen(false)} aria-label="Cancel"
+          style={{ marginLeft:"auto", background:"none", border:"none", cursor:"pointer",
+                   color:T.ink4, fontSize:15, lineHeight:1 }}>×</button>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8 }}>
+        <label>
+          <Eyebrow style={{ fontSize:8.5, marginBottom:4 }}>Service</Eyebrow>
+          <select value={service} onChange={e=>setService(e.target.value as Service)} style={input}>
+            {SERVICES.map(sv=><option key={sv} value={sv}>{SERVICE_LABEL[sv]}</option>)}
+          </select>
+        </label>
+        <label>
+          <Eyebrow style={{ fontSize:8.5, marginBottom:4 }}>Severity</Eyebrow>
+          <select value={sev} onChange={e=>setSev(e.target.value as "red"|"amber")} style={input}>
+            <option value="red">Down</option>
+            <option value="amber">Degraded</option>
+          </select>
+        </label>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8 }}>
+        <label>
+          <Eyebrow style={{ fontSize:8.5, marginBottom:4 }}>Duration (min)</Eyebrow>
+          <input type="number" min={1} value={minutes} onChange={e=>setMinutes(e.target.value)}
+                 style={{ ...input, fontFamily:T.mono }} />
+        </label>
+        <label>
+          <Eyebrow style={{ fontSize:8.5, marginBottom:4 }}>Ended</Eyebrow>
+          <select value={ended} style={input}
+                  onChange={e=>{ const v=e.target.value as "now"|"custom";
+                                 setEnded(v); if(v==="custom") setEndedAt(toLocalInput(Date.now())); }}>
+            <option value="now">Just now</option>
+            <option value="custom">Pick a time…</option>
+          </select>
+        </label>
+      </div>
+
+      {ended==="custom" && (
+        <label style={{ display:"block", marginBottom:8 }}>
+          <Eyebrow style={{ fontSize:8.5, marginBottom:4 }}>Ended at</Eyebrow>
+          <input type="datetime-local" value={endedAt} max={toLocalInput(Date.now())}
+                 onChange={e=>setEndedAt(e.target.value)} style={{ ...input, fontFamily:T.mono }} />
+        </label>
+      )}
+
+      <label style={{ display:"block", marginBottom:10 }}>
+        <Eyebrow style={{ fontSize:8.5, marginBottom:4 }}>Action taken (optional)</Eyebrow>
+        <input value={note} onChange={e=>setNote(e.target.value)}
+               placeholder="e.g. router rebooted, ISP link restored" style={input} />
+      </label>
+
+      <div style={{ fontFamily:T.sans, fontSize:10, color:T.ink3, marginBottom:10, lineHeight:1.5 }}>
+        {valid ? (
+          <>Records <strong style={{ color:T.ink }}>{mins} min</strong> of{" "}
+            {sev==="red" ? "downtime" : "degradation"} on {SERVICE_LABEL[service]}, from{" "}
+            <span style={{ fontFamily:T.mono }}>{fmtStamp(startMs)}</span> to{" "}
+            <span style={{ fontFamily:T.mono }}>{fmtStamp(endMs)}</span>. Current status is unchanged.</>
+        ) : (
+          <span style={{ color:T.crit }}>Enter at least 1 minute, and an end time that is not in the future.</span>
+        )}
+      </div>
+
+      <div style={{ display:"flex", gap:9, alignItems:"center" }}>
+        <Btn kind="solid" size="sm" onClick={submit} disabled={!valid || busy}>
+          {busy ? "Recording…" : "Record downtime"}
+        </Btn>
+        {ok && <span style={{ fontFamily:T.sans, fontSize:11, color:T.ok, fontWeight:600 }}>Recorded</span>}
+      </div>
+    </div>
+  );
+}
+
+const toLocalInput = (ms:number) => {
+  const d = new Date(ms), p = (n:number)=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+const fmtStamp = (ms:number) =>
+  new Date(ms).toLocaleString("en-GB",{ day:"2-digit", month:"short",
+    hour:"numeric", minute:"2-digit", hour12:true });
