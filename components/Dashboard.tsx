@@ -19,7 +19,7 @@ import { T, Eyebrow, Num, Dot, Shimmer, Btn } from "./ui";
 import { overallOf, type FacState, type LogEntry, type RAG } from "@/lib/analytics";
 
 const FACILITIES: { name: string; cat: string }[] = [
-  // Imarat corporate (8)
+  // Imarat corporate (9)
   { name: "G9 Group Store",               cat: "Imarat"   },
   { name: "Warehouse",                    cat: "Imarat"   },
   { name: "I8 Guest House",               cat: "Imarat"   },
@@ -28,6 +28,7 @@ const FACILITIES: { name: string; cat: string }[] = [
   { name: "Printing Press",               cat: "Imarat"   },
   { name: "Sialkot Office",               cat: "Imarat"   },
   { name: "Hoon Farm House",              cat: "Imarat"   },
+  { name: "Beverly Head Office",          cat: "Imarat"   },
   // Projects (10)
   { name: "Amazon Mall",                  cat: "Projects" },
   { name: "Golf Floras",                  cat: "Projects" },
